@@ -1,6 +1,6 @@
 const version = new URL(import.meta.url).searchParams.get('v');
 const load = path => import(`${path}${version ? `?v=${encodeURIComponent(version)}` : ''}`);
-const [{ LitElement, html, svg, css, repeat }, { sharedStyles, words, dateTime }] = await Promise.all([load('../f1-lit-3.3.2.js'), load('./view.js')]);
+const [{ LitElement, html, svg, css, repeat }, { sharedStyles, words, dateTime }, { displayTrack }] = await Promise.all([load('../f1-lit-3.3.2.js'), load('./view.js'), load('./map-geometry.js')]);
 class F1TrackMapView extends LitElement {
   static properties = { model: { attribute: false }, module: { attribute: false }, settings: { attribute: false }, width: { state: true }, selected: { state: true }, listOpen: { state: true } };
   static styles = [sharedStyles, css`
@@ -49,7 +49,7 @@ class F1TrackMapView extends LitElement {
   `];
   constructor() {
     super(); this.width = 400; this.selected = ''; this.listOpen = false;
-    this.motions = new Map(); this.motionFrame = 0; this.tickCache = new WeakMap();
+    this.motions = new Map(); this.motionFrame = 0; this.tickCache = new WeakMap(); this.geometryCache = new WeakMap();
   }
   connectedCallback() {
     super.connectedCallback(); this.observer = new ResizeObserver(entries => { this.width = Math.max(200, entries[0].contentRect.width); }); this.observer.observe(this);
@@ -141,12 +141,33 @@ class F1TrackMapView extends LitElement {
     const tone = normalized.includes('red') ? '#e10600' : normalized.includes('yellow') || normalized.includes('safety') ? '#ffd400' : normalized.includes('blue') ? '#2f80ed' : normalized.includes('clear') || normalized.includes('green') ? '#18a558' : '#8a94a6';
     return { value, tone };
   }
-  path() {
-    let open = false;
-    return this.model.points.map(point => {
-      if (!point) { open = false; return ''; }
-      const command = open ? 'L' : 'M'; open = true; return `${command}${point[0]},${point[1]}`;
-    }).join(' ');
+  displayGeometry() {
+    const points = this.model?.points;
+    if (!Array.isArray(points)) return { path: '', segments: [] };
+    const smooth = this.model.geometrySource === 'static_circuit_geometry';
+    let variants = this.geometryCache.get(points);
+    if (!variants) { variants = new Map(); this.geometryCache.set(points, variants); }
+    if (!variants.has(smooth)) variants.set(smooth, displayTrack(points, smooth));
+    return variants.get(smooth);
+  }
+  path() { return this.displayGeometry().path; }
+  hitsTrack(box, padding) {
+    const left = box.left - padding, right = box.right + padding, top = box.top - padding, bottom = box.bottom + padding;
+    return this.displayGeometry().segments.some(([start, end]) => {
+      if (Math.max(start[0], end[0]) < left || Math.min(start[0], end[0]) > right || Math.max(start[1], end[1]) < top || Math.min(start[1], end[1]) > bottom) return false;
+      let lower = 0, upper = 1;
+      for (const [axis, minimum, maximum] of [[0, left, right], [1, top, bottom]]) {
+        const delta = end[axis] - start[axis];
+        if (Math.abs(delta) < 1e-12) {
+          if (start[axis] < minimum || start[axis] > maximum) return false;
+          continue;
+        }
+        const a = (minimum - start[axis]) / delta, b = (maximum - start[axis]) / delta;
+        lower = Math.max(lower, Math.min(a, b)); upper = Math.min(upper, Math.max(a, b));
+        if (lower > upper) return false;
+      }
+      return true;
+    });
   }
   annotationName(field) {
     const names = { map_start_finish: 'modular.start_finish_line', map_corners: 'modular.corner_numbers', map_sectors: 'modular.sector_boundaries', map_speed_traps: 'modular.speed_traps', map_detection_zones: 'modular.detection_zones' };
@@ -195,25 +216,38 @@ class F1TrackMapView extends LitElement {
     return tick;
   }
   markingLabels(annotations, featurePoints, font) {
+    const geometry = this.displayGeometry(), mode = this.module?.options?.track_status_line_mode ?? 'accent';
+    const stroke = this.statusInfo() ? mode === 'accent' ? 3 : mode === 'full' ? 1.4 : 1 : 1;
+    // Include text outlines and the curve-flattening tolerance in the clearance.
+    const padding = stroke / 2 + .4 + .04;
+    const key = JSON.stringify([font, stroke, annotations.corners, annotations.lines, featurePoints]);
+    if (this.labelCache?.geometry === geometry && this.labelCache.key === key) return this.labelCache.labels;
     const labels = new Map(), occupied = [];
-    const place = (id, text, size, candidates) => {
+    const surrounding = point => [3, 4, 5, 6, 7.5, 9, 11, 14, 18, 24].flatMap(radius => Array.from({ length: 24 }, (_, index) => {
+      const angle = index * Math.PI / 12;
+      return [point[0] + radius * Math.cos(angle), point[1] + radius * Math.sin(angle)];
+    }));
+    const place = (id, text, size, candidates, origin) => {
       const width = text.length * size * .78 + .6, height = size * 1.65;
-      const choices = candidates.map(([x, y, anchor = 'middle']) => {
+      const choices = [...candidates, ...surrounding(origin)].map(([x, y, anchor = 'middle']) => {
         const left = anchor === 'end' ? x - width : anchor === 'start' ? x : x - width / 2;
         return { x, y, anchor, box: { left, right: left + width, top: y - height / 2, bottom: y + height / 2 } };
       }).filter(({ box }) => box.left >= 2 && box.right <= 98 && box.top >= 2 && box.bottom <= 98);
       const overlap = choice => occupied.reduce((area, box) => area + Math.max(0, Math.min(choice.box.right, box.right) - Math.max(choice.box.left, box.left) + .35) * Math.max(0, Math.min(choice.box.bottom, box.bottom) - Math.max(choice.box.top, box.top) + .35), 0);
-      const chosen = choices.find(choice => overlap(choice) === 0) ?? choices.reduce((best, choice) => !best || overlap(choice) < overlap(best) ? choice : best, null) ?? choices[0];
+      const clear = choice => !(choice.trackHit ??= this.hitsTrack(choice.box, padding));
+      const chosen = choices.find(choice => overlap(choice) === 0 && clear(choice))
+        ?? choices.filter(clear).reduce((best, choice) => !best || overlap(choice) < overlap(best) ? choice : best, null)
+        ?? choices.reduce((best, choice) => !best || overlap(choice) < overlap(best) ? choice : best, null);
       if (chosen) { labels.set(id, chosen); occupied.push(chosen.box); }
     };
     for (const corner of annotations.corners) {
       const x = corner.point[0] + corner.offset[0] * .7, y = corner.point[1] + corner.offset[1] * .7;
-      place(`corner:${corner.id}`, corner.label, Math.max(1.9, font * .58), [[x, y], [corner.point[0] - 2.5, corner.point[1] - 2.5], [corner.point[0] + 2.5, corner.point[1] - 2.5], [corner.point[0] - 2.5, corner.point[1] + 2.5], [corner.point[0] + 2.5, corner.point[1] + 2.5]]);
+      place(`corner:${corner.id}`, corner.label, Math.max(1.9, font * .58), [[x, y], [corner.point[0] - 2.5, corner.point[1] - 2.5], [corner.point[0] + 2.5, corner.point[1] - 2.5], [corner.point[0] - 2.5, corner.point[1] + 2.5], [corner.point[0] + 2.5, corner.point[1] + 2.5]], corner.point);
     }
     for (const line of annotations.lines.filter(item => item.layer === 'sectors')) {
       const x = (line.start[0] + line.end[0]) / 2, y = (line.start[1] + line.end[1]) / 2;
       const caption = this.sectorStart(line);
-      place(`sector:${line.id}`, caption, Math.max(1.9, font * .55), [[x + 2, y - 2], [x - 2, y - 2], [x + 2, y + 2], [x - 2, y + 2]]);
+      place(`sector:${line.id}`, caption, Math.max(1.9, font * .55), [[x + 2, y - 2], [x - 2, y - 2], [x + 2, y + 2], [x - 2, y + 2]], [x, y]);
     }
     for (const point of featurePoints) {
       const caption = this.featureCaption(point, featurePoints);
@@ -222,8 +256,9 @@ class F1TrackMapView extends LitElement {
       const preferredX = Math.min(97, Math.max(3, x + point.offset[0] * .6));
       const edgeX = Math.min(97, Math.max(3, x + (x > 75 ? 2 : x < 25 ? -2 : 0)));
       const edgeAnchor = x > 75 ? 'end' : x < 25 ? 'start' : 'middle';
-      place(`feature:${point.id}`, caption, size, [[preferredX, Math.min(97, Math.max(3, y + point.offset[1] * .6)), preferredX > 86 ? 'end' : preferredX < 14 ? 'start' : 'middle'], [x - 1.8, y - 1.8, 'end'], [x + 1.8, y - 1.8, 'start'], [x - 1.8, y + 1.8, 'end'], [x + 1.8, y + 1.8, 'start'], [x, y - 3.8], [x, y + 3.8], [edgeX, y - 5.5, edgeAnchor], [edgeX, y + 5.5, edgeAnchor]]);
+      place(`feature:${point.id}`, caption, size, [[preferredX, Math.min(97, Math.max(3, y + point.offset[1] * .6)), preferredX > 86 ? 'end' : preferredX < 14 ? 'start' : 'middle'], [x - 1.8, y - 1.8, 'end'], [x + 1.8, y - 1.8, 'start'], [x - 1.8, y + 1.8, 'end'], [x + 1.8, y + 1.8, 'start'], [x, y - 3.8], [x, y + 3.8], [edgeX, y - 5.5, edgeAnchor], [edgeX, y + 5.5, edgeAnchor]], point.point);
     }
+    this.labelCache = { geometry, key, labels };
     return labels;
   }
   render() {

@@ -49,3 +49,7 @@ export async function moduleView() {
   await load(new URL('modular/view.js', root));
   return card('f1-module-view');
 }
+export async function trackMapView() {
+  await load(new URL('modular/map-view.js', root));
+  return card('f1-track-map-view');
+}
