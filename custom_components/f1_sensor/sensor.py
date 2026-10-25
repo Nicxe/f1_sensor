@@ -2628,6 +2628,10 @@ class F1TeamRadioSensor(
     """Sensor exposing the latest Team Radio clip."""
 
     _device_category = "drivers"
+    # Keep full clips and transcripts live without growing the Recorder database.
+    _unrecorded_attributes = frozenset(
+        {"history", "raw_message", "transcription_text", "transcription_segments"}
+    )
     _history_limit = 20
 
     _attr_translation_key = "team_radio"

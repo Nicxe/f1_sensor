@@ -115,6 +115,7 @@ def find_evidence(api, selected, tree, now):
                 "attempt": run["run_attempt"],
                 "head_sha": run["head_sha"],
                 "tree_sha": tree,
+                "selected_at": now.isoformat(),
                 "checks": checks,
             }
     return {}
@@ -125,14 +126,40 @@ def verify_evidence(api, evidence, tree, now):
         return
     run = api.get(f"actions/runs/{int(evidence['run_id'])}")
     checks = set(evidence["checks"])
+    try:
+        selected_at = datetime.fromisoformat(evidence["selected_at"])
+        if selected_at.tzinfo is None or selected_at > now:
+            raise ValueError("Invalid reuse selection time")
+    except (KeyError, TypeError, ValueError) as error:
+        raise ValueError("Missing or invalid reuse selection time") from error
     if (
         evidence.get("tree_sha") != tree
         or run["head_sha"] != evidence["head_sha"]
         or run["run_attempt"] != evidence["attempt"]
         or not checks
-        or not checks <= evidence_checks(api, run, tree, now)
+        # Freshness is checked when selecting evidence. A slow, unrelated job
+        # must not invalidate an immutable run merely by crossing the TTL.
+        or not checks <= evidence_checks(api, run, tree, selected_at)
     ):
-        raise ValueError("Reused check evidence changed or expired; rerun CI")
+        raise ValueError(
+            "Reused check evidence changed or cannot be verified; rerun CI"
+        )
+    current = api.get(f"actions/runs/{int(evidence['run_id'])}")
+    if any(
+        current.get(key) != run.get(key)
+        for key in (
+            "head_sha",
+            "run_attempt",
+            "status",
+            "conclusion",
+            "path",
+            "head_branch",
+            "event",
+        )
+    ):
+        raise ValueError(
+            "Reused check source changed while verifying its jobs; rerun CI"
+        )
 
 
 def reuse_allowed(event_name: str, branch: str, enabled: bool) -> bool:

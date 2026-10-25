@@ -11,9 +11,21 @@ import tempfile
 import time
 
 try:
-    from .check_npm_audit import AuditUnavailable, audit_findings, evaluate_audit
+    from .check_npm_audit import (
+        AuditUnavailable,
+        evaluate_audit,
+        match_advisory_versions,
+        project_npm_cli,
+        validate_report,
+    )
 except ImportError:  # Direct script execution from the checkout.
-    from check_npm_audit import AuditUnavailable, audit_findings, evaluate_audit
+    from check_npm_audit import (
+        AuditUnavailable,
+        evaluate_audit,
+        match_advisory_versions,
+        project_npm_cli,
+        validate_report,
+    )
 
 
 def read_baseline(base: str, execute=subprocess.run) -> dict[str, str]:
@@ -37,12 +49,15 @@ def read_baseline(base: str, execute=subprocess.run) -> dict[str, str]:
     }
 
 
-def registry_report(execute, sleep, directory: str | None = None) -> dict:
+def registry_report(
+    execute, sleep, directory: str | None = None, *, npm_cli: Path
+) -> dict:
     """Require a complete report after bounded transport retries, never an install."""
     for attempt in range(3):
         try:
             command = [
-                "npm",
+                "node",
+                str(npm_cli),
                 "audit",
                 "--json",
                 "--package-lock-only",
@@ -62,7 +77,7 @@ def registry_report(execute, sleep, directory: str | None = None) -> dict:
             if result.returncode not in (0, 1):
                 raise AuditUnavailable(f"npm exited with status {result.returncode}")
             report = json.loads(result.stdout)
-            audit_findings(report)
+            validate_report(report)
             return report
         except (
             subprocess.TimeoutExpired,
@@ -84,7 +99,9 @@ def run_audit(
     policy: dict | None = None,
     mode: str = "gate",
     base: str | None = None,
+    target_ref: str | None = None,
     read_base=read_baseline,
+    read_lock=lambda: json.loads(Path("package-lock.json").read_text(encoding="utf-8")),
 ) -> int:
     """Gate full release health or only severe advisory paths introduced since base."""
     try:
@@ -93,13 +110,27 @@ def run_audit(
                 "introduced mode requires --base with the tested base commit"
             )
         baseline = None
+        baseline_lock = None
+        npm_cli = project_npm_cli()
         if mode == "introduced":
             files = read_base(base)
+            baseline_lock = json.loads(files["package-lock.json"])
             with tempfile.TemporaryDirectory(prefix="f1-audit-base-") as directory:
                 for name in ("package.json", "package-lock.json"):
                     Path(directory, name).write_text(files[name], encoding="utf-8")
-                baseline = registry_report(execute, sleep, directory)
-        report = registry_report(execute, sleep)
+                baseline = registry_report(execute, sleep, directory, npm_cli=npm_cli)
+        if target_ref:
+            # A trusted current evaluator can scan an older branch without
+            # checking it out, installing its dependencies or executing its code.
+            files = read_base(target_ref)
+            lock = json.loads(files["package-lock.json"])
+            with tempfile.TemporaryDirectory(prefix="f1-audit-target-") as directory:
+                for name in ("package.json", "package-lock.json"):
+                    Path(directory, name).write_text(files[name], encoding="utf-8")
+                report = registry_report(execute, sleep, directory, npm_cli=npm_cli)
+        else:
+            lock = read_lock()
+            report = registry_report(execute, sleep, npm_cli=npm_cli)
         warnings: list[str] = []
         failures = evaluate_audit(
             report,
@@ -107,6 +138,11 @@ def run_audit(
             date.today(),
             policy=policy,
             baseline=baseline,
+            lock=lock,
+            baseline_lock=baseline_lock,
+            match_versions=lambda records: match_advisory_versions(
+                records, npm_cli=npm_cli
+            ),
             warnings=warnings,
         )
     except (ValueError, OSError, subprocess.CalledProcessError) as err:
@@ -123,6 +159,7 @@ def run_audit(
     print(
         f"npm audit {mode} policy passed"
         + (f" against {base}" if baseline is not None else "")
+        + (f" for {target_ref}" if target_ref else "")
     )
     return 0
 
@@ -131,6 +168,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--mode", choices=("gate", "introduced"), default="gate")
     parser.add_argument("--base")
+    parser.add_argument(
+        "--target-ref", help="Audit only npm inputs from this Git ref, never its code"
+    )
     parser.add_argument(
         "--allowlist", type=Path, default=Path("quality/npm-audit-allowlist.json")
     )
@@ -144,7 +184,13 @@ def main() -> int:
     except (ValueError, OSError) as err:
         print(f"npm audit configuration unavailable: {err}")
         return 2
-    return run_audit(allowlist, policy=policy, mode=args.mode, base=args.base)
+    return run_audit(
+        allowlist,
+        policy=policy,
+        mode=args.mode,
+        base=args.base,
+        target_ref=args.target_ref,
+    )
 
 
 if __name__ == "__main__":

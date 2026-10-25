@@ -1,5 +1,10 @@
 """Acceptance cases for required checks and branch routing."""
 
+import json
+import os
+from pathlib import Path
+import sys
+import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
@@ -9,7 +14,9 @@ from scripts.ci_policy import (
     branch_error,
     gate_errors,
     hotfix_matches_dev,
+    main,
     main_promotion_release_error,
+    release_product_checks,
     release_triggering_commits,
     select_jobs,
     should_deploy,
@@ -207,6 +214,8 @@ class PolicyTests(unittest.TestCase):
             None,
             ["unknown.config"],
             [".github/workflows/ci.yml"],
+            [".github/workflows/unknown.yml"],
+            [".github/actions/unknown/action.yml"],
             ["package-lock.json"],
         ]:
             self.assertEqual(
@@ -224,16 +233,190 @@ class PolicyTests(unittest.TestCase):
         self.assertTrue(selected["blueprints"])
         self.assertFalse(selected["backend"])
 
-    def test_promotions_verify_every_release_blocker_before_merge(self):
+    def test_promotions_use_the_same_impact_contract_as_development(self):
         for base, head in [("beta", "dev"), ("main", "beta")]:
             self.assertEqual(
                 select_jobs(["docs/help.md"], pull(base, head), "pull_request", ""),
-                {job: job != "blueprints" for job in JOBS},
+                {job: job == "documentation" for job in JOBS},
             )
             self.assertEqual(
                 select_jobs(["docs/help.md"], {}, "push", base),
-                {job: job != "blueprints" for job in JOBS},
+                {job: job == "documentation" for job in JOBS},
             )
+            runtime = select_jobs(
+                ["custom_components/f1_sensor/coordinator.py"],
+                pull(base, head),
+                "pull_request",
+                "",
+            )
+            self.assertEqual(
+                {job for job, enabled in runtime.items() if enabled},
+                {
+                    "lint",
+                    "backend",
+                    "frontend",
+                    "translations",
+                    "validation",
+                    "package",
+                },
+            )
+            self.assertFalse(runtime["documentation"])
+            self.assertFalse(runtime["audit"])
+
+    def test_issue_metadata_changes_do_not_run_product_browsers_or_security(self):
+        for path in (
+            ".github/scripts/issue-automation.cjs",
+            ".github/workflows/issue-version-check.yml",
+            ".github/ISSUE_TEMPLATE/bug_report.yml",
+            "ci_tests/issues.test.cjs",
+        ):
+            for branch in ("dev", "beta", "main"):
+                with self.subTest(path=path, branch=branch):
+                    selected = select_jobs([path], {}, "push", branch)
+                    self.assertEqual(
+                        {job for job, enabled in selected.items() if enabled},
+                        {"automation"},
+                    )
+
+    def test_audit_evaluator_changes_keep_full_security_enforcement(self):
+        for path in (
+            "scripts/npm_audit_semver.cjs",
+            ".github/workflows/security-health.yml",
+            ".github/workflows/security-snapshot.yml",
+        ):
+            with self.subTest(path=path):
+                files = [path]
+                selected = select_jobs(files, pull("beta", "dev"), "pull_request", "")
+                self.assertTrue(selected["audit"])
+                self.assertTrue(selected["automation"])
+                self.assertEqual(
+                    audit_context(pull("beta", "dev"), "pull_request", "", files),
+                    ("gate", ""),
+                )
+
+    def test_only_release_executions_may_delegate_docs_and_full_security(self):
+        selected = select_jobs(None, {}, "workflow_dispatch", "beta")
+        product = release_product_checks(
+            selected, separate_delivery=True, event_name="push", branch="beta"
+        )
+        self.assertFalse(product["documentation"])
+        self.assertFalse(product["audit"])
+        for job in ("backend", "frontend", "validation", "package"):
+            self.assertTrue(product[job])
+        self.assertTrue(selected["documentation"])
+        self.assertTrue(selected["audit"])
+        for event, branch in (("pull_request", "beta"), ("push", "dev")):
+            with (
+                self.subTest(event=event, branch=branch),
+                self.assertRaises(ValueError),
+            ):
+                release_product_checks(
+                    selected, separate_delivery=True, event_name=event, branch=branch
+                )
+
+    def test_dev_verification_only_is_limited_to_an_explicit_manual_dry_run(self):
+        selected = select_jobs(None, {}, "workflow_dispatch", "dev")
+        product = release_product_checks(
+            selected,
+            separate_delivery=True,
+            event_name="workflow_dispatch",
+            branch="dev",
+            verification_only=True,
+        )
+        self.assertFalse(product["documentation"])
+        self.assertFalse(product["audit"])
+        for job in ("backend", "frontend", "validation", "package"):
+            self.assertTrue(product[job])
+        self.assertTrue(selected["documentation"])
+        self.assertTrue(selected["audit"])
+        for event, branch, verification_only in (
+            ("push", "dev", True),
+            ("pull_request", "dev", True),
+            ("workflow_dispatch", "content", True),
+            ("workflow_dispatch", "dev", False),
+            ("workflow_dispatch", "dev", "false"),
+        ):
+            with (
+                self.subTest(event=event, branch=branch, flag=verification_only),
+                self.assertRaises(ValueError),
+            ):
+                release_product_checks(
+                    selected,
+                    separate_delivery=True,
+                    event_name=event,
+                    branch=branch,
+                    verification_only=verification_only,
+                )
+
+    def test_plan_accepts_explicit_false_and_keeps_immutable_delivery_inputs(self):
+        for release in (False, "false"):
+            with (
+                self.subTest(release=release),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                event = Path(directory) / "event.json"
+                output = Path(directory) / "output.txt"
+                event.write_text(json.dumps({"inputs": {"release": release}}))
+                with (
+                    patch.dict(
+                        os.environ,
+                        {
+                            "GITHUB_EVENT_PATH": str(event),
+                            "GITHUB_OUTPUT": str(output),
+                            "GITHUB_EVENT_NAME": "workflow_dispatch",
+                            "GITHUB_REF_NAME": "dev",
+                            "CI_SEPARATE_DELIVERY": "true",
+                        },
+                    ),
+                    patch.object(sys, "argv", ["ci_policy.py", "plan"]),
+                    patch("scripts.ci_policy.changed_files", return_value=None),
+                    patch(
+                        "scripts.ci_policy.subprocess.check_output",
+                        side_effect=["a" * 40, "b" * 40],
+                    ),
+                ):
+                    self.assertEqual(main(), 0)
+                values = dict(
+                    line.split("=", 1) for line in output.read_text().splitlines()
+                )
+                self.assertEqual(values["tested_sha"], "a" * 40)
+                self.assertEqual(values["tested_tree"], "b" * 40)
+                self.assertEqual(values["audit_mode"], "gate")
+                self.assertEqual(values["deploy"], "false")
+                selected = json.loads(values["selected"])
+                self.assertFalse(selected["documentation"])
+                self.assertFalse(selected["audit"])
+
+    def test_dev_plan_rejects_missing_default_true_and_other_release_input_values(self):
+        for inputs in (
+            {},
+            {"release": True},
+            {"release": "true"},
+            {"release": 0},
+            {"release": None},
+            {"release": "False"},
+        ):
+            with (
+                self.subTest(inputs=inputs),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                event = Path(directory) / "event.json"
+                event.write_text(json.dumps({"inputs": inputs}))
+                with (
+                    patch.dict(
+                        os.environ,
+                        {
+                            "GITHUB_EVENT_PATH": str(event),
+                            "GITHUB_EVENT_NAME": "workflow_dispatch",
+                            "GITHUB_REF_NAME": "dev",
+                            "CI_SEPARATE_DELIVERY": "true",
+                        },
+                    ),
+                    patch.object(sys, "argv", ["ci_policy.py", "plan"]),
+                    patch("scripts.ci_policy.changed_files", return_value=None),
+                    self.assertRaises(ValueError),
+                ):
+                    main()
 
     def test_dependency_changes_are_audited_before_and_after_merge(self):
         for base in ("dev", "content", "beta", "main"):
@@ -281,6 +464,19 @@ class PolicyTests(unittest.TestCase):
             audit_context({"before": "c" * 40}, "push", "dev", ["package-lock.json"]),
             ("introduced", "c" * 40),
         )
+        for base, head in [("beta", "dev"), ("main", "beta")]:
+            self.assertEqual(
+                audit_context(
+                    pull(base, head), "pull_request", "", ["package-lock.json"]
+                ),
+                ("introduced", "a" * 40),
+            )
+            self.assertEqual(
+                audit_context(
+                    {"before": "c" * 40}, "push", base, ["package-lock.json"]
+                ),
+                ("introduced", "c" * 40),
+            )
         for event, trigger, branch in (
             (pull("beta", "dev"), "pull_request", ""),
             (pull("main", "beta"), "pull_request", ""),

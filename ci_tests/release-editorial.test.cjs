@@ -29,6 +29,23 @@ test('selects a release tag only for the matching release branch', () => {
   const run = () => 'v5.8.0-beta.5\nv5.8.0\n';
   assert.equal(editorial.releaseTagAtHead({branch: 'beta', run}), 'v5.8.0-beta.5');
   assert.equal(editorial.releaseTagAtHead({branch: 'main', run}), 'v5.8.0');
+  assert.equal(editorial.releaseTagAtHead({branch: 'dev', run}), '');
+});
+
+test('selects the RC draft when the final beta and first candidate share the tested commit', () => {
+  const run = () => 'v6.1.0-beta.3\nv6.1.0-rc.1\nv6.1.0\n';
+  assert.equal(editorial.releaseTagAtHead({branch: 'beta', run}), 'v6.1.0-rc.1');
+  assert.equal(editorial.releaseTagAtHead({branch: 'main', run}), 'v6.1.0');
+});
+
+test('rejects ambiguous candidate tags or different preview versions at the tested commit', () => {
+  for (const tags of [
+    'v6.1.0-rc.1\nv6.1.0-rc.2\n',
+    'v6.1.0-beta.3\nv6.2.0-rc.1\n',
+    'v6.1.0-beta.2\nv6.1.0-beta.3\n'
+  ]) {
+    assert.throws(() => editorial.releaseTagAtHead({branch: 'beta', run: () => tags}), /Ambiguous/);
+  }
 });
 
 test('retries a newly created draft release until its tag is visible', async () => {

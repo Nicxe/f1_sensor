@@ -7,7 +7,7 @@ const testedTree = 'b'.repeat(40);
 const stableSha = 'c'.repeat(40);
 const nextSha = 'd'.repeat(40);
 const unverifiedSha = 'e'.repeat(40);
-const release = (branch, sha, id = 42) => ({id, head_sha: sha, head_branch: branch,
+const release = (branch, sha, id = sha === stableSha ? 42 : sha === testedSha ? 43 : 44) => ({id, run_attempt: 1, head_sha: sha, head_branch: branch,
   repository: {full_name: 'owner/repo'}, head_repository: {full_name: 'owner/repo'},
   event: 'push', path: '.github/workflows/release-pipeline.yml', status: 'completed', conclusion: 'success'});
 
@@ -15,6 +15,7 @@ function environment({branch = 'beta', tree = testedTree, beta = testedSha, stab
   proofs = {main: [release('main', stableSha)], beta: [release('beta', testedSha)]}, compare} = {}) {
   const requests = [];
   const current = {main: stable, beta};
+  let listedBranch;
   return {
     testedSha, testedTree, targetBranch: branch,
     context: {repo: {owner: 'owner', repo: 'repo'}, ref: 'refs/heads/main'},
@@ -27,7 +28,16 @@ function environment({branch = 'beta', tree = testedTree, beta = testedSha, stab
       actions: {async listWorkflowRuns({workflow_id, branch, page}) {
         assert.equal(workflow_id, 'release-pipeline.yml');
         requests.push([branch, page]);
+        listedBranch = branch;
         return {data: {workflow_runs: proofs[branch].slice((page - 1) * 100, page * 100)}};
+      },
+      async getWorkflowRun({run_id}) {return {data: proofs[listedBranch].find(run => run.id === run_id)};},
+      async listJobsForWorkflowRun({run_id}) {
+        const source = proofs[listedBranch].find(run => run.id === run_id);
+        const jobs = source.conclusion === 'success' || source.documentationVerified ?
+          ['checks / Verify selected checks', 'documentation / documentation'].map(name =>
+            ({name, head_sha: source.head_sha, status: 'completed', conclusion: 'success'})) : [];
+        return {data: {total_count: jobs.length, jobs}};
       }},
       repos: {async compareCommits({base, head}) {
         const history = [stableSha, testedSha, nextSha, unverifiedSha];
@@ -89,6 +99,19 @@ test('companion requires same-repository successful release evidence still in br
   const failed = environment();
   failed.github.rest.actions.listWorkflowRuns = async () => {throw new Error('API unavailable');};
   await assert.rejects(resolveDocumentationRefs(failed), /API unavailable/);
+});
+
+test('companion can use failed release-tool workflow only with its exact successful product and docs jobs', async () => {
+  const proofs = {main: [{...release('main', stableSha), conclusion: 'failure', documentationVerified: true}],
+    beta: [release('beta', testedSha)]};
+  assert.equal((await resolveDocumentationRefs(environment({proofs}))).stable_sha, stableSha);
+  proofs.main[0].documentationVerified = false;
+  await assert.rejects(resolveDocumentationRefs(environment({proofs})), /No successful trusted/);
+});
+
+test('verified ancestry never substitutes for exact target documentation proof', async () => {
+  const proofs = {main: [release('main', stableSha)], beta: [release('beta', stableSha)]};
+  await assert.rejects(resolveDocumentationRefs(environment({proofs})), /no exact successful product and documentation verification/);
 });
 
 test('verified companion search paginates instead of falling back to unverified HEAD', async () => {

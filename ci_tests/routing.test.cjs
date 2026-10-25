@@ -45,7 +45,13 @@ test('documentation verification is independent of multi-channel publication', (
   assert.ok(docs.jobs.documentation.steps.some(step => step.run === 'python3 scripts/run_check.py documentation'));
   assert.ok(!docs.jobs.documentation.steps.some(step => step.uses?.startsWith('actions/upload-pages-artifact@')));
   const release = workflow('release-pipeline.yml');
-  assert.equal(release.jobs.release.needs, 'checks');
+  assert.deepEqual(release.jobs.release.needs, ['checks', 'security']);
+  assert.equal(release.jobs.checks.with.separate_delivery, true);
+  assert.equal(release.jobs.documentation.uses, './.github/workflows/documentation.yml');
+  assert.equal(release.jobs.security.with.mode, 'gate');
+  for (const name of ['documentation', 'security']) {
+    assert.equal(release.jobs[name].with.checkout_ref, '${{ needs.checks.outputs.tested_sha }}');
+  }
   assert.equal(release.jobs.deploy, undefined);
   const publication = workflow('documentation-publication.yml');
   assert.equal(publication.jobs.deploy.needs, 'source');

@@ -39,15 +39,39 @@ class TranslationValidationTests(unittest.TestCase):
         self.assertEqual(failures, [])
         self.assertEqual(untranslated, 1)
 
-    def test_extra_key_is_rejected(self) -> None:
-        failures, _ = self._validate(
-            {
-                "en.json": {"config": {"title": "Setup"}},
-                "sv.json": {"config": {"title": "Konfiguration", "extra": "Fel"}},
-            }
-        )
+    def test_obsolete_keys_warn_without_blocking_legitimate_weblate_updates(
+        self,
+    ) -> None:
+        for flat in (False, True):
+            with (
+                self.subTest(flat=flat),
+                self.assertWarnsRegex(
+                    UserWarning, "sv.json: obsolete translation keys ignored: removed"
+                ),
+            ):
+                failures, missing = self._validate(
+                    {
+                        "en.json": {"title": "Setup", "new": "Hi {name}"},
+                        "sv.json": {"title": "New wording", "removed": " "},
+                        "cy.json": {},
+                    },
+                    flat=flat,
+                )
 
-        self.assertIn("sv.json: extra config.extra", failures)
+                self.assertEqual(failures, [])
+                self.assertEqual(missing, 3)
+
+    def test_obsolete_keys_do_not_mask_broken_current_translations(self) -> None:
+        with self.assertWarns(UserWarning):
+            failures, _ = self._validate(
+                {
+                    "en.json": {"title": "Hi {name}"},
+                    "sv.json": {"title": "Hej {person}", "removed": "Old"},
+                }
+            )
+        self.assertEqual(
+            failures, ["sv.json: title placeholders ['person'] != ['name']"]
+        )
 
     def test_placeholder_changes_and_blank_values_are_rejected(self) -> None:
         failures, _ = self._validate(

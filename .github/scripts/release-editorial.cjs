@@ -5,7 +5,7 @@ const {execFileSync} = require('node:child_process');
 const START = '<!-- release-editorial:start -->';
 const END = '<!-- release-editorial:end -->';
 const RELEASE_LOOKUP_ATTEMPTS = 10;
-const RELEASE_TAG_PATTERN = /^v\d+\.\d+\.\d+(?:-beta\.\d+)?$/;
+const RELEASE_TAG_PATTERN = /^v\d+\.\d+\.\d+(?:-(?:beta|rc)\.\d+)?$/;
 
 function isPromotion(pr) {
   return (pr?.base?.ref === 'beta' && pr?.head?.ref === 'dev')
@@ -39,9 +39,17 @@ function replaceEditorial(notes, editorial) {
 }
 
 function releaseTagAtHead({branch = process.env.GITHUB_REF_NAME, run = execFileSync} = {}) {
-  const tags = String(run('git', ['tag', '--points-at', 'HEAD'], {encoding: 'utf8'}))
+  let tags = String(run('git', ['tag', '--points-at', 'HEAD'], {encoding: 'utf8'}))
     .trim().split('\n').filter(tag => RELEASE_TAG_PATTERN.test(tag))
-    .filter(tag => (branch === 'beta') === tag.includes('-beta.'));
+    .filter(tag => branch === 'beta' ? /-(?:beta|rc)\./.test(tag)
+      : branch === 'main' && !tag.includes('-'));
+  // Starting RC can tag the same tested commit as the final beta. The RC is
+  // the draft to verify and edit; unrelated versions still fail closed.
+  const candidates = tags.filter(tag => tag.includes('-rc.'));
+  if (candidates.length === 1 && tags.every(tag =>
+    tag.replace(/-(?:beta|rc)\.\d+$/, '') === candidates[0].replace(/-rc\.\d+$/, ''))) {
+    tags = candidates;
+  }
   if (tags.length > 1) throw new Error('Ambiguous release tags on the tested commit');
   return tags[0] || '';
 }

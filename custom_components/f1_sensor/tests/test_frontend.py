@@ -99,6 +99,16 @@ def _stale_resource_issue(hass):
     )
 
 
+def test_sync_bundled_assets_delivers_every_javascript_module(tmp_path: Path) -> None:
+    """A new imported module must also be available on a fresh installation."""
+    frontend._sync_bundled_live_data_card_assets(tmp_path)
+
+    for source in frontend.BUNDLED_LIVE_DATA_CARD_DIR.rglob("*.js"):
+        destination = tmp_path / source.relative_to(frontend.BUNDLED_LIVE_DATA_CARD_DIR)
+        assert destination.is_file(), f"Missing runtime module: {destination.name}"
+        assert destination.read_bytes() == source.read_bytes()
+
+
 def test_sync_bundled_assets_copies_card_files_and_changes_cache_key(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -51,6 +51,21 @@ To install or update to beta through HACS:
 
 For testing guidance, see [Beta Testing](/help/beta-tester).
 
+### Release candidates
+
+A release candidate, such as `6.1.0-rc.1`, is the final testing phase of the beta
+channel. Its planned features are complete, and testing focuses on finding
+problems that would prevent a stable release.
+
+Release candidates are published from the same `beta` branch and installed
+through the same HACS steps as numbered betas. They remain pre-releases intended
+for testing. Read the beta documentation when using an RC.
+
+Every RC includes a complete list of changes since the previous stable version.
+Further corrections appear in `rc.2`, `rc.3`, and later candidates, each with an
+updated complete list. After final validation, the maintainer promotes the
+release to stable.
+
 ## Dev channel
 
 The `dev` branch contains all active development work before it is promoted to beta.

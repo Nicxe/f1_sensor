@@ -94,21 +94,34 @@ def display(command: Sequence[str]) -> str:
     return shlex.join(command)
 
 
-def run(plan, *, print_only: bool) -> int:
+def run(plan, *, print_only: bool, results: list[dict] | None = None) -> int:
+    """Finish all selected checks so one attempt reports every actionable failure."""
+    exit_code = 0
     for name, commands, extra_environment in plan:
         print(f"\n==> {name}", flush=True)
+        group_result = {"name": name, "status": "passed", "commands": []}
         for command in commands:
             print(f"$ {display(command)}", flush=True)
             if print_only:
                 continue
             environment = {**tool_environment(), **extra_environment}
-            result = subprocess.run(command, cwd=ROOT, env=environment, check=False)
-            if result.returncode:
-                print(
-                    f"{name} failed with exit code {result.returncode}", file=sys.stderr
-                )
-                return result.returncode
-    return 0
+            try:
+                returncode = subprocess.run(
+                    command, cwd=ROOT, env=environment, check=False
+                ).returncode
+            except OSError as error:
+                print(f"Could not execute {display(command)}: {error}", file=sys.stderr)
+                returncode = 127
+            group_result["commands"].append(
+                {"command": list(command), "returncode": returncode}
+            )
+            if returncode:
+                print(f"{name} failed with exit code {returncode}", file=sys.stderr)
+                group_result["status"] = "failed"
+                exit_code = exit_code or returncode
+        if results is not None and not print_only:
+            results.append(group_result)
+    return exit_code
 
 
 def main() -> int:
@@ -176,7 +189,9 @@ def main() -> int:
                 check=False,
             )
             if result.returncode:
-                return result.returncode
+                raise ValueError(
+                    f"Isolated CI setup failed with exit code {result.returncode}; no checks were verified"
+                )
             errors = environment_errors()
             if errors:
                 raise ValueError("\n".join(errors))
@@ -187,12 +202,8 @@ def main() -> int:
             )
         versions_before = installed_versions()
         dependencies_before = dependency_fingerprints()
-        result = run(plan, print_only=False)
-        if result:
-            receipt_path.write_text(
-                json.dumps({"status": "failed", "source": before}) + "\n"
-            )
-            return result
+        check_results: list[dict] = []
+        result = run(plan, print_only=False, results=check_results)
         if source_fingerprint() != before:
             raise ValueError(
                 "Source files changed during verification; rerun the affected checks"
@@ -205,18 +216,26 @@ def main() -> int:
                 "Installed tools or dependencies changed during verification; rerun the checks"
             )
         receipt = {
-            "status": "local_passed_remote_pending",
+            "status": "failed" if result else "local_passed_remote_pending",
             "completed_at": datetime.now(UTC).isoformat(),
             "source": before,
             "target": args.target,
             "profile": args.mode,
             "base": base_sha,
             "checks": [name for name, _, _ in plan],
+            "results": check_results,
             "versions": versions_before,
             "dependencies": dependencies_before,
             "remote_confirmation": list(REMOTE_ONLY),
         }
         receipt_path.write_text(json.dumps(receipt, indent=2) + "\n")
+        if result:
+            failed = [
+                item["name"] for item in check_results if item["status"] == "failed"
+            ]
+            print("\nFailed checks: " + ", ".join(failed), file=sys.stderr)
+            print(f"Evidence: {receipt_path}")
+            return result
         print(
             f"\nLocal verification passed for source {before[:12]}. GitHub confirmation remains pending."
         )

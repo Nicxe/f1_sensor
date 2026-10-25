@@ -1,6 +1,6 @@
 'use strict';
 
-const {eligibleReleaseRun} = require('./documentation-source.cjs');
+const {eligibleReleaseRun, verifiedDocumentationRun} = require('./documentation-source.cjs');
 const SHA = /^[0-9a-f]{40}$/;
 
 async function currentChannelRefs({github, context}) {
@@ -34,10 +34,12 @@ async function latestVerifiedCommit(environment, branch, currentSha) {
   };
   for (let page = 1; page <= 10; page++) {
     const response = (await github.rest.actions.listWorkflowRuns({...context.repo,
-      workflow_id: 'release-pipeline.yml', branch, status: 'success', per_page: 100, page})).data;
+      workflow_id: 'release-pipeline.yml', branch, status: 'completed', per_page: 100, page})).data;
     for (const run of response.workflow_runs) {
       if (!eligibleReleaseRun(run, repository) || run.head_branch !== branch || seen.has(run.head_sha)) continue;
       seen.add(run.head_sha);
+      if (!await verifiedDocumentationRun({...environment, runId: run.id,
+        expectedSha: run.head_sha, targetBranch: branch})) continue;
       if (!await ancestor(run.head_sha, currentSha)) continue;
       const candidate = {sha: run.head_sha, runId: run.id};
       // The current branch tip dominates every eligible ancestor, even when an
@@ -78,7 +80,10 @@ async function resolveDocumentationRefs(environment) {
     return {publish: false};
   }
   const latestTarget = await latestVerifiedCommit(environment, branch, current[branch]);
-  if (latestTarget.sha !== testedSha && !await isAncestor(environment, latestTarget.sha, testedSha)) {
+  if (latestTarget.sha !== testedSha) {
+    if (await isAncestor(environment, latestTarget.sha, testedSha)) {
+      throw new Error('Tested documentation source has no exact successful product and documentation verification.');
+    }
     core.info('A newer verified source owns documentation publication; skipping this superseded run.');
     return {publish: false};
   }

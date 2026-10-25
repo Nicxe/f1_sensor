@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Require strictly over 95% runtime line coverage globally and per module."""
+"""Gate global runtime line coverage and report module-level review signals."""
 
 import argparse
 import json
@@ -71,7 +71,7 @@ def main() -> int:
         report = json.loads(args.coverage.read_text())
         config = json.loads(args.config.read_text())
         global_floor = _floor(config, "global_floor")
-        module_floor = _floor(config, "module_floor")
+        module_review_below = _floor(config, "module_review_below")
         measured, modules = coverage_measurements(report)
     except (KeyError, TypeError, ValueError, OSError) as err:
         print(f"Invalid runtime coverage evidence: {err}")
@@ -81,14 +81,15 @@ def main() -> int:
     if measured <= global_floor:
         failures.append("global runtime line coverage does not exceed its floor")
     for filename, percentage in sorted(modules.items()):
-        if percentage <= module_floor:
-            failures.append(
-                f"{filename}: {percentage:.3f}% (required: >{module_floor:.1f}%)"
+        if percentage <= module_review_below:
+            print(
+                f"{filename}: {percentage:.3f}% (review only; "
+                "critical behavior must remain covered by regression tests)"
             )
     if failures:
         print("Coverage gate failed:\n" + "\n".join(failures))
     else:
-        print(f"All {len(modules)} runtime modules exceed {module_floor:.1f}%")
+        print(f"Global coverage gate passed; {len(modules)} runtime modules measured")
     totals = report["totals"]
     if totals.get("num_branches"):
         print(

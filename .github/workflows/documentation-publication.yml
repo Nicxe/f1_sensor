@@ -12,7 +12,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   source:
-    name: Wait for exact-commit release verification
+    name: Wait for exact-commit product and documentation verification
     if: >-
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
       (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/beta')
@@ -37,12 +37,12 @@ jobs:
             core.setOutput('publish', String(Boolean(source)));
             if (!source) {
               await core.summary.addHeading('Documentation delivery')
-                .addRaw('No publication: the source was superseded or its release verification did not pass. Product verification remains separate.').write();
+                .addRaw('No publication: the source was superseded or its product/documentation checks did not pass. Release security readiness remains separate.').write();
               return;
             }
             for (const [key, value] of Object.entries(source)) core.setOutput(key, value);
             await core.summary.addHeading('Documentation delivery')
-              .addLink('Successful source verification', `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${source.source_run_id}`)
+              .addLink('Verified product and documentation source', `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${source.source_run_id}`)
               .addRaw(`\n\nTarget: ${source.target_branch}\n\nTested commit: ${source.tested_sha}\n\nTested tree: ${source.tested_tree}\n`).write();
   deploy:
     needs: source

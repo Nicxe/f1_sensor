@@ -4,6 +4,10 @@ module.exports = function releaseComment(issue, release) {
 const isPrerelease = release.prerelease === true;
 const releaseUrl = release.html_url;
 const releaseTag = release.tag_name;
+const isReleaseCandidate = /-rc\.\d+$/.test(releaseTag);
+const previewName = isReleaseCandidate ? 'a release candidate' : 'a BETA pre-release';
+const previewVersion = isReleaseCandidate ? 'release candidate' : 'beta version';
+const feedbackVersion = isReleaseCandidate ? 'release candidate' : 'beta';
 const getIssueLabels = issue =>
   issue.labels.map(label => (label.name || label || '').toString().toLowerCase());
 const hasTitlePrefix = (issue, prefix) =>
@@ -36,12 +40,12 @@ const isCardIssue = issue => {
 const buildReleaseLine = issueType => {
   if (issueType === 'feature') {
     return isPrerelease
-      ? `This feature has been implemented and is available for testing in **[${releaseTag}](${releaseUrl})**, a BETA pre-release of F1 Sensor.`
+      ? `This feature has been implemented and is available for testing in **[${releaseTag}](${releaseUrl})**, ${previewName} of F1 Sensor.`
       : `This feature is now available in **[${releaseTag}](${releaseUrl})**, the latest stable release of F1 Sensor.`;
   }
 
   return isPrerelease
-    ? `A fix for this issue is now available in **[${releaseTag}](${releaseUrl})**, a BETA pre-release of F1 Sensor.`
+    ? `A fix for this issue is now available in **[${releaseTag}](${releaseUrl})**, ${previewName} of F1 Sensor.`
     : `A fix for this issue is now available in **[${releaseTag}](${releaseUrl})**, the latest stable release of F1 Sensor.`;
 };
 const buildComment = (cardIssue, issueType) => {
@@ -51,7 +55,7 @@ const buildComment = (cardIssue, issueType) => {
     const lines = [
       buildReleaseLine(issueType),
       '',
-      'To test the beta version, open HACS in Home Assistant, go to **Integrations**, and find **F1 Sensor**. Click the three-dot menu and select **Redownload**. Make sure **Show beta versions** is enabled in the HACS settings for this integration. Alternatively, you can download the release manually from the [Releases page](' + releaseUrl + ').',
+      `To test the ${previewVersion}, open HACS in Home Assistant, go to **Integrations**, and find **F1 Sensor**. Click the three-dot menu and select **Redownload**. Make sure **Show beta versions** is enabled in the HACS settings for this integration. Alternatively, you can download the release manually from the [Releases page](${releaseUrl}).`,
     ];
 
     if (cardIssue) {
@@ -63,7 +67,7 @@ const buildComment = (cardIssue, issueType) => {
 
     lines.push(
       '',
-      'Your feedback on the beta is very welcome \u2014 please report any issues you run into so they can be addressed before the stable release.'
+      `Your feedback on the ${feedbackVersion} is very welcome \u2014 please report any issues you run into so they can be addressed before the stable release.`
     );
     return lines.join('\n');
   }

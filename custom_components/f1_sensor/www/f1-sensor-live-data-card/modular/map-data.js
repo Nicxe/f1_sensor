@@ -190,7 +190,7 @@ export function mapModel(snapshot, module, focus = {}, now = Date.now(), driverP
   }).filter(row => !inactive.has(row.id) && !inactive.has(String(row.driver).toUpperCase()))
     .filter(row => module.options.focus !== 'filter' || !driver && !team || row.selected);
   rows.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
-  return { rows, points: projection?.points ?? null, annotations: mapAnnotations(snapshot, module, projection), freshness, status: snapshot.status, sourceMode: snapshot.source, sessionKey: JSON.stringify([snapshot.session?.session_key, snapshot.session?.path, snapshot.session?.meeting_key, snapshot.annotations?.binding?.session_generation]),
+  return { rows, points: projection?.points ?? null, geometrySource: snapshot.track?.source ?? null, annotations: mapAnnotations(snapshot, module, projection), freshness, status: snapshot.status, sourceMode: snapshot.source, sessionKey: JSON.stringify([snapshot.session?.session_key, snapshot.session?.path, snapshot.session?.meeting_key, snapshot.annotations?.binding?.session_generation]),
     context: { meeting: snapshot.session?.meeting_name, session: snapshot.session?.session_name, key: snapshot.session?.session_key, source: snapshot.source === 'replay' ? 'f1_replay' : 'f1_live', updated: snapshot.generated_at, updatedKind: 'generated' },
   };
 }

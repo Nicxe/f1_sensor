@@ -55,7 +55,7 @@ async function verifyPublishedRelease({
     await wait(Math.min(1000 * 2 ** (attempt - 1), 8000));
   }
   const tag = expectedReleaseTag(original);
-  if (original.prerelease !== tag.includes('-beta.')) {
+  if (original.prerelease !== /-(?:beta|rc)\./.test(tag)) {
     throw new Error(`The prerelease setting does not match ${tag}.`);
   }
 
