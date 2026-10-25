@@ -148,6 +148,30 @@ test('supports stable releases with the same manual-publication safeguards', asy
   assert.equal(release.draft, false);
 });
 
+test('repairs manually published RC metadata on the beta branch without publishing or editing notes', async () => {
+  const candidate = 'v6.1.0-rc.1';
+  const {release, updates, verify} = fixture({name: candidate});
+  const before = structuredClone(release);
+  assert.deepEqual(await verify(), {...before, tag_name: candidate});
+  assert.deepEqual(updates, [{...context.repo, release_id: 42, tag_name: candidate}]);
+});
+
+test('RC publication requires the prerelease flag and the beta branch for metadata repair', async () => {
+  for (const overrides of [{prerelease: false}, {target_commitish: 'main'}]) {
+    const {updates, verify} = fixture({name: 'v6.1.0-rc.1', ...overrides});
+    await assert.rejects(verify());
+    assert.deepEqual(updates, []);
+  }
+});
+
+test('manual RC publication replay verifies the exact published candidate without writes', async () => {
+  const candidate = 'v6.1.0-rc.2';
+  const {release, updates, resolve} = resolverFixture({name: candidate, tag_name: candidate});
+  const before = structuredClone(release);
+  assert.deepEqual(await resolve({releaseTag: candidate}), before);
+  assert.deepEqual(updates, []);
+});
+
 test('strict publication verification never repairs a placeholder tag', async () => {
   const {release, github, updates} = fixture();
   const before = structuredClone(release);
@@ -196,7 +220,7 @@ test('manual publication replay rejects drafts and incomplete uploaded assets wi
 });
 
 test('manual publication replay rejects invalid tag input before any release lookup', async () => {
-  for (const releaseTag of [placeholder, 'beta', `refs/tags/${tag}`, `${tag}; false`, 'v6.1.0-rc.1']) {
+  for (const releaseTag of [placeholder, 'beta', `refs/tags/${tag}`, `${tag}; false`, 'v6.1.0-alpha.1']) {
     const {github, updates, resolve} = resolverFixture({tag_name: tag});
     let lookups = 0;
     const unexpectedLookup = async () => {

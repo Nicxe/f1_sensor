@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const yaml = require('js-yaml');
 const vm = require('node:vm');
+const {spawnSync} = require('node:child_process');
 
 const root = path.resolve(__dirname, '..');
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
@@ -73,11 +74,61 @@ test('publication consumers use the verified release and stop downstream work if
 });
 
 test('release verification executes fresh checks before target release work', () => {
-  const workflow = read('.github/workflows/release-pipeline.yml');
-  assert.match(workflow, /checks:\n\s+uses: \.\/\.github\/workflows\/ci-checks\.yml\n\s+with:\n\s+allow_reuse: false/);
-  assert.match(workflow, /release:\n\s+needs: \[checks, security\]/);
-  assert.equal(yaml.load(workflow).jobs.deploy, undefined);
-  assert.equal(yaml.load(workflow).jobs.context7, undefined);
+  const workflow = yaml.load(read('.github/workflows/release-pipeline.yml'));
+  assert.equal(workflow.jobs.checks.needs, 'validate');
+  assert.equal(workflow.jobs.checks.uses, './.github/workflows/ci-checks.yml');
+  assert.equal(workflow.jobs.checks.with.allow_reuse, false);
+  assert.deepEqual(workflow.jobs.release.needs, ['checks', 'security']);
+  assert.equal(workflow.jobs.deploy, undefined);
+  assert.equal(workflow.jobs.context7, undefined);
+});
+
+test('manual RC selection reaches the release runner without enabling automatic publication', () => {
+  const pipeline = yaml.load(read('.github/workflows/release-pipeline.yml'));
+  const release = yaml.load(read('.github/workflows/release.yml'));
+  assert.equal(pipeline.on.workflow_dispatch.inputs.create_rc.type, 'boolean');
+  assert.equal(pipeline.on.workflow_dispatch.inputs.create_rc.default, false);
+  assert.match(pipeline.on.workflow_dispatch.inputs.create_rc.description, /^Skapa RC/);
+  const selected = pipeline.jobs.release.with.create_rc.replace(/^\$\{\{\s*|\s*\}\}$/g, '');
+  for (const event_name of ['push', 'workflow_dispatch']) {
+    for (const create_rc of [false, true]) {
+      assert.equal(vm.runInNewContext(selected, {github: {event_name}, inputs: {create_rc}}),
+        event_name === 'workflow_dispatch' && create_rc);
+    }
+  }
+  assert.equal(release.on.workflow_call.inputs.create_rc.type, 'boolean');
+  assert.equal(release.on.workflow_call.inputs.create_rc.default, false);
+  const runner = release.jobs.release.steps.find(step => step.run === 'node .github/scripts/run-release.cjs');
+  assert.equal(runner.env.CREATE_RC, '${{ inputs.create_rc }}');
+  assert.ok(release.jobs.release.steps.some(step => step.name === 'Verify the completed draft for manual publication'));
+});
+
+test('invalid RC requests fail before any checkout or verification starts', () => {
+  const pipeline = yaml.load(read('.github/workflows/release-pipeline.yml'));
+  const validation = pipeline.jobs.validate.steps;
+  assert.equal(validation.length, 1);
+  const run = ({event='workflow_dispatch', branch='beta', release=true, rc=true}={}) => spawnSync(
+    'bash', ['-e', '-c', validation[0].run], {
+      encoding: 'utf8',
+      env: {...process.env, EVENT_NAME: event, RELEASE_BRANCH: branch,
+        CREATE_RELEASE: String(release), CREATE_RC: String(rc)}
+    }
+  );
+  assert.equal(run().status, 0);
+  for (const request of [{branch: 'main'}, {branch: 'dev'}, {release: false}, {event: 'push'}]) {
+    const result = run(request);
+    assert.equal(result.status, 1, JSON.stringify(request));
+    assert.match(result.stdout, /manual beta run with release draft creation enabled/);
+  }
+  for (const request of [{event: 'push', rc: false, release: false},
+    {branch: 'main', rc: false}, {branch: 'dev', rc: false, release: false}]) {
+    assert.equal(run(request).status, 0, JSON.stringify(request));
+  }
+  const release = yaml.load(read('.github/workflows/release.yml'));
+  const guard = release.jobs.release.steps[0];
+  assert.equal(vm.runInNewContext(guard.if, {inputs: {create_rc: true}, github: {ref: 'refs/heads/main'}}), true);
+  assert.equal(vm.runInNewContext(guard.if, {inputs: {create_rc: true}, github: {ref: 'refs/heads/beta'}}), false);
+  assert.equal(spawnSync('bash', ['-e', '-c', guard.run], {encoding: 'utf8'}).status, 1);
 });
 
 test('release safety blocks a draft while unrelated documentation failure does not', () => {

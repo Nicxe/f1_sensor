@@ -19,7 +19,7 @@ function parseVersion(value) {
 function versionState(reported, latest) {
   const a = parseVersion(reported), b = parseVersion(latest);
   if (!a) return 'unknown';
-  if (a.prerelease) return /(?:^|[.-])beta(?:[.-]|$)/i.test(a.prerelease) ? 'beta' : 'unknown';
+  if (a.prerelease) return /(?:^|[.-])(?:beta|rc)(?:[.-]|$)/i.test(a.prerelease) ? 'beta' : 'unknown';
   if (!b || b.prerelease) return 'unknown';
   for (let i = 0; i < 3; i++) {
     if (a.numbers[i] < b.numbers[i]) return 'outdated-version';

@@ -7,24 +7,24 @@ const os = require('node:os');
 const path = require('node:path');
 const { setReleaseContributors } = require('./release-contributors.cjs');
 const {
+  compareReleaseTags, isBranchTag, mergedReleaseTags, parseReleaseTag,
+  releaseStage
+} = require('./release-stage.cjs');
+const {
   extractEditorial,
   findRepairableDraft,
   isUntaggedRelease,
   replaceEditorial
 } = require('./release-editorial.cjs');
 const run = (command, args, options={}) => execFileSync(command,args,{encoding:'utf8',...options});
-const releaseTagPattern = /^v\d+\.\d+\.\d+(?:-beta\.\d+)?$/;
 
 function lines(value) {
   return String(value || '').trim().split('\n').filter(Boolean);
 }
 
-function isBranchTag(tag, branch) {
-  return releaseTagPattern.test(tag) && (branch === 'beta') === tag.includes('-beta.');
-}
-
-function releaseTagsAtHead(branch) {
-  return lines(run('git',['tag','--points-at','HEAD'])).filter(tag => isBranchTag(tag, branch));
+function releaseTagsAtHead(branch, stage) {
+  return lines(run('git',['tag','--points-at','HEAD'])).filter(tag =>
+    isBranchTag(tag, branch) && (!stage || parseReleaseTag(tag).stage === stage));
 }
 
 function releaseTagsMerged(branch, head='HEAD') {
@@ -80,7 +80,7 @@ function hydrateBetaReleaseNotes(branch, releases=listReleases()) {
   try {
     for (const release of releases) {
       const tag = String(release.tag_name || '');
-      if (!release.prerelease || !releaseTagPattern.test(tag) || !tag.includes('-beta.')) continue;
+      if (!release.prerelease || !isBranchTag(tag, branch)) continue;
       addLocalReleaseNote(tag, branch);
     }
   } catch (error) {
@@ -130,20 +130,31 @@ function retryNotePush(noteRef) {
 async function main() {
   const branch = process.env.GITHUB_REF_NAME;
   if (!['main','beta'].includes(branch)) throw new Error('Releases require beta or main');
+  const createRc = process.env.CREATE_RC === 'true';
+  if (createRc && branch !== 'beta') throw new Error('Create RC requires the beta branch.');
   fetchReleaseNotes();
   const releases = listReleases();
+  const tags = mergedReleaseTags();
+  const stage = releaseStage({branch, createRc, tags});
+  assertOpenReleaseCycle({branch, tags, releases});
+  process.env.RELEASE_STAGE = stage;
+  const headTags = releaseTagsAtHead(branch, stage);
+  const allHeadTags = releaseTagsAtHead(branch);
+  if (headTags.length > 1 || (branch === 'beta'
+      && new Set(allHeadTags.map(tag => parseReleaseTag(tag).baseVersion)).size > 1)) {
+    throw new Error('Ambiguous release tags on the tested commit');
+  }
   const interruptedTag = interruptedReleaseTag({branch, releases});
   if (interruptedTag) {
     addLocalReleaseNote(interruptedTag, branch);
     retryNotePush(noteRefForTag(interruptedTag));
     console.warn(`Recovering interrupted release ${interruptedTag} from its tagged commit.`);
     await recoverDraft({branch, tag: interruptedTag, releases});
-    if (releaseTagsAtHead(branch).includes(interruptedTag)) return;
+    if (releaseTagsAtHead(branch, stage).includes(interruptedTag)) return;
   }
   hydrateBetaReleaseNotes(branch, releases);
-  const tags = releaseTagsAtHead(branch);
-  if (!tags.length) {
-    setReleaseContributors({ branch });
+  if (!headTags.length) {
+    setReleaseContributors({ branch, stage });
     try {
       run('npx',['--no-install','semantic-release'],{stdio:'inherit'});
       return;
@@ -151,7 +162,7 @@ async function main() {
       // semantic-release creates the version tag and its local note before
       // pushing the note. GitHub can reject that final write transiently;
       // recover the already-created tag instead of losing the release draft.
-      const partialTags = releaseTagsAtHead(branch);
+      const partialTags = releaseTagsAtHead(branch, stage);
       if (partialTags.length !== 1 || !localRefExists(noteRefForTag(partialTags[0]))) throw error;
       const tag = partialTags[0];
       retryNotePush(noteRefForTag(tag));
@@ -160,8 +171,27 @@ async function main() {
       return;
     }
   }
-  if (tags.length !== 1) throw new Error('Ambiguous release tags on the tested commit');
-  await recoverDraft({branch, tag: tags[0]});
+  await recoverDraft({branch, tag: headTags[0]});
+}
+
+function assertOpenReleaseCycle({branch, tags, releases}) {
+  if (branch !== 'beta') return;
+  const candidate = tags.find(tag => parseReleaseTag(tag)?.stage === 'rc');
+  if (!candidate || parseReleaseTag(tags[0])?.stage === 'stable') return;
+  for (const release of releases) {
+    const tag = release.tag_name;
+    if (release.draft !== false || release.prerelease !== false
+        || parseReleaseTag(tag)?.stage !== 'stable'
+        || compareReleaseTags(tag, candidate) < 0 || tags.includes(tag)) continue;
+    try {
+      run('git', ['rev-parse', '--verify', `${tag}^{commit}`], {stdio: 'ignore'});
+    } catch {
+      throw new Error(`Fetch the published ${tag} tag and synchronize stable history before continuing the RC cycle.`);
+    }
+    // A published stable version reserves this version even if it was made
+    // from an earlier candidate or from a divergent history.
+    throw new Error(`Published ${tag} closes or supersedes this RC series. Merge main into dev, then promote dev to beta before starting the next release cycle.`);
+  }
 }
 
 function promotionEditorial({branch, tag}) {
@@ -205,7 +235,8 @@ async function uploadReleaseAsset({release, filename, request=globalThis.fetch})
 async function recoverDraft({branch, tag, releases=listReleases()}) {
   run('git',['merge-base','--is-ancestor',tag,'HEAD'],{stdio:'ignore'});
   const version = tag.slice(1);
-  setReleaseContributors({ branch, head: tag, excludeTag: tag });
+  const stage = parseReleaseTag(tag).stage;
+  setReleaseContributors({ branch, head: tag, excludeTag: tag, stage });
   const directory = fs.mkdtempSync(path.join(os.tmpdir(),'f1-release-'));
   const source = path.join(directory,'source');
   const archive = path.resolve('f1_sensor.zip');
@@ -227,12 +258,16 @@ async function recoverDraft({branch, tag, releases=listReleases()}) {
       const config = require('../../release.config.cjs');
       // Recover the rare interruption between pushing the version tag and
       // creating its draft, using the same release-notes plugin and template.
-      const previous = releaseTagsMerged(branch,tag).find(candidate => candidate !== tag);
-      const hashes = lines(run('git',['rev-list','--reverse', previous ? `${previous}..${tag}` : tag]));
-      const commits = hashes.map(hash => ({hash, message:run('git',['show','-s','--format=%B',hash]).trim(), committerDate:run('git',['show','-s','--format=%cI',hash]).trim()}));
-      const [,options] = config.plugins.find(p => p[0]==='@semantic-release/release-notes-generator');
-      const {generateNotes} = await import('@semantic-release/release-notes-generator');
-      const generated = await generateNotes(options, {cwd:process.cwd(), env:process.env, logger:console, options:{repositoryUrl:`https://github.com/${process.env.GITHUB_REPOSITORY}.git`}, commits, lastRelease:previous ? {gitTag:previous,version:previous.slice(1)} : {}, nextRelease:{gitTag:tag,version,channel:branch==='beta'?'beta':undefined}});
+      const previous = stage === 'stable'
+        ? releaseTagsMerged(branch,tag).find(candidate => candidate !== tag)
+        : stage === 'beta'
+          ? mergedReleaseTags(tag).find(candidate => candidate !== tag
+            && parseReleaseTag(candidate).stage !== 'rc')
+          : undefined;
+      const {commitsBetween, generateNotes} = require('./release-notes.cjs');
+      const commits = commitsBetween(previous, tag, {cwd: process.cwd(), env: process.env});
+      const [,options] = config.plugins.find(p => p[0]==='./.github/scripts/release-notes.cjs');
+      const generated = await generateNotes(options, {cwd:process.cwd(), env:process.env, logger:console, options:{repositoryUrl:`https://github.com/${process.env.GITHUB_REPOSITORY}.git`}, commits, lastRelease:previous ? {gitTag:previous,version:previous.slice(1)} : {}, nextRelease:{gitTag:tag,gitHead:tag,version,channel:branch==='beta'?'beta':undefined}});
       const notes = replaceEditorial(generated,promotionEditorial({branch,tag})).notes;
       const payload = path.join(directory,'release.json');
       fs.writeFileSync(payload,JSON.stringify({
@@ -283,6 +318,7 @@ async function recoverDraft({branch, tag, releases=listReleases()}) {
 }
 module.exports = {
   addLocalReleaseNote,
+  assertOpenReleaseCycle,
   interruptedReleaseTag,
   main,
   hydrateBetaReleaseNotes,

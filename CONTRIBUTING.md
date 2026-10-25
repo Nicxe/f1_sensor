@@ -148,6 +148,12 @@ The maintainer can push directly to `dev`. Promotions use `dev → beta → main
 
 For a release retry, run **Actions → Release verification → Run workflow**, choose `beta` or `main`, enable the release option. CI verifies that branch head again. An existing published tag is left untouched; an interrupted draft can be recovered without changing its version. Bot-created synchronization PRs use the PR-number input to explicitly check the proposed merge when `GITHUB_TOKEN` does not trigger PR workflows.
 
+To start final release-candidate testing, run **Actions → Release verification → Run workflow**, choose the `beta` branch, keep release draft creation enabled, and enable **Skapa RC**. The workflow verifies the current branch head and creates an `rc.1` draft, including when that commit already has a published beta. RC creation on other branches is rejected. Review the draft, its complete release notes and verified assets before publishing it manually.
+
+The `beta` branch stays in RC mode for the current release cycle. Further release-relevant corrections produce `rc.2`, `rc.3`, and later candidates without enabling **Skapa RC** again. Every RC regenerates its complete user-facing change list from the previous stable version. Keep new features on `dev` during this phase. Promote the validated candidate through the usual `beta → main` merge and publish the stable release manually.
+
+After publishing stable, merge `main` back into `dev` with a merge commit that preserves its history. The next normal `dev → beta` promotion then includes the stable tag and starts a new numbered-beta cycle. Complete this synchronization before starting the next cycle; a completed RC series stays blocked until the stable release is part of the branch history. No additional release branch or automatic branch synchronization is introduced.
+
 From the checkout root, use the isolated local preflight. It installs the repository-pinned Python environment, Node, npm, Chromium and workflow validator without changing global Node or npm:
 
 ```bash
