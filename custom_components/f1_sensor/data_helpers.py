@@ -180,10 +180,16 @@ def _map_session_status_payload(
     return "pre"
 
 
-def _session_status_mapping_context(coordinator) -> tuple[bool, int | None]:
-    """Return derived session context used for semantic status mapping."""
+def _session_status_mapping_context(
+    coordinator, *, use_status_part: bool = False
+) -> tuple[bool, int | None]:
+    """Return announced qualifying context or the part owning the latest status."""
     is_qualifying_like = bool(getattr(coordinator, "is_qualifying_like_session", False))
     qualifying_part = getattr(coordinator, "qualifying_part", None)
+    if use_status_part:
+        status_part = getattr(coordinator, "status_qualifying_part", None)
+        if status_part is not None:
+            qualifying_part = status_part
     try:
         if qualifying_part is not None:
             qualifying_part = int(qualifying_part)

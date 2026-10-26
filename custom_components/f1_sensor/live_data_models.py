@@ -118,6 +118,11 @@ class LiveProjectionModel(StreamStateMixin, ProjectionModel):
             *self.context_bindings.values(),
         }
         inputs = {key: getattr(reg.get(key), "data", None) for key in dependency_keys}
+        status_coordinator = reg.get("session_status_coordinator")
+        inputs["session_status_context"] = (
+            *_session_status_mapping_context(status_coordinator, use_status_part=True),
+            bool(getattr(status_coordinator, "is_testing_session", False)),
+        )
         # Race Control keeps incremental messages separately from its latest row.
         inputs["messages"] = getattr(self.coordinator, "data_list", None)
         inputs["primary"] = self.coordinator.data
@@ -443,7 +448,7 @@ class TrackStatusModel(LiveProjectionModel):
     def _session_is_terminal(self) -> bool:
         payload = getattr(self._session_status_coordinator, "data", None)
         is_qualifying_like, qualifying_part = _session_status_mapping_context(
-            self._session_status_coordinator
+            self._session_status_coordinator, use_status_part=True
         )
         mapped = _map_session_status_payload(
             payload,
@@ -458,6 +463,8 @@ class TrackStatusModel(LiveProjectionModel):
 
     def _handle_session_status_update(self) -> None:
         if not self._session_is_terminal():
+            if self._forced_unavailable:
+                TrackStatusModel.refresh_data(self)
             return
         if self._forced_unavailable:
             return
@@ -607,7 +614,7 @@ class SessionStatusModel(LiveProjectionModel):
 
     def _map_status(self, raw: dict | None) -> str | None:
         is_qualifying_like, qualifying_part = _session_status_mapping_context(
-            self.coordinator
+            self.coordinator, use_status_part=True
         )
         return _map_session_status_payload(
             raw,
@@ -922,7 +929,7 @@ class CurrentSessionModel(LiveProjectionModel):
 
     def _mapped_live_status(self) -> str | None:
         is_qualifying_like, qualifying_part = _session_status_mapping_context(
-            self._status_coordinator
+            self._status_coordinator, use_status_part=True
         )
         return _map_session_status_payload(
             self._live_status_payload(),

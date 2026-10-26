@@ -9,7 +9,11 @@ from homeassistant.helpers.entity_component import EntityComponent
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 import pytest
 
-from custom_components.f1_sensor import LiveModeCoordinator
+from custom_components.f1_sensor import (
+    LiveModeCoordinator,
+    TrackStatusCoordinator,
+    _reset_replay_sensitive_coordinator_state,
+)
 from custom_components.f1_sensor.binary_sensor import (
     F1FormationStartBinarySensor,
     F1OvertakeModeBinarySensor,
@@ -1193,3 +1197,82 @@ async def test_track_status_keeps_state_during_qualifying_break(hass) -> None:
     after = hass.states.get(entity.entity_id)
     assert after is not None
     assert after.state == "VSC"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "resumed_status",
+    [
+        pytest.param({"Status": "Inactive", "Started": "Finished"}, id="break"),
+        pytest.param({"Status": "Started"}, id="live"),
+    ],
+)
+@pytest.mark.parametrize(
+    ("track_status", "expected_state"),
+    [pytest.param("1", "CLEAR", id="clear"), pytest.param("6", "VSC", id="vsc")],
+)
+async def test_track_status_recovers_after_terminal_status_without_track_update(
+    hass, resumed_status, track_status, expected_state
+) -> None:
+    entry_id = "test_entry"
+    status_coordinator = _build_coordinator(hass, {"Status": "Started"})
+    _set_status_context(status_coordinator, is_qualifying_like=True, qualifying_part=3)
+    hass.data.setdefault(DOMAIN, {})[entry_id] = {
+        CONF_OPERATION_MODE: OPERATION_MODE_DEVELOPMENT,
+        "live_state": _LiveState(True),
+        "session_status_coordinator": status_coordinator,
+    }
+    cached_track_status = {"Status": track_status}
+    coordinator = _build_coordinator(hass, cached_track_status)
+    entity = F1TrackStatusSensor(
+        coordinator, f"{entry_id}_track_status", entry_id, "F1"
+    )
+
+    initial = await _add_entity_and_get_state(hass, "sensor", entity)
+    assert initial.state == expected_state
+
+    status_coordinator.async_set_updated_data({"Status": "Finished"})
+    await hass.async_block_till_done()
+    assert hass.states.get(entity.entity_id).state == STATE_UNAVAILABLE
+
+    status_coordinator.async_set_updated_data(resumed_status)
+    await hass.async_block_till_done()
+
+    assert coordinator.data is cached_track_status
+    assert hass.states.get(entity.entity_id).state == expected_state
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("guard", ["missing_data", "inactive_stream", "replay_reset"])
+async def test_track_status_recovery_requires_current_active_track_data(
+    hass, guard
+) -> None:
+    entry_id = "test_entry"
+    status_coordinator = _build_coordinator(hass, {"Status": "Finished"})
+    _set_status_context(status_coordinator, is_qualifying_like=True, qualifying_part=3)
+    live_state = _LiveState(True)
+    hass.data.setdefault(DOMAIN, {})[entry_id] = {
+        CONF_OPERATION_MODE: OPERATION_MODE_DEVELOPMENT,
+        "live_state": live_state,
+        "session_status_coordinator": status_coordinator,
+    }
+    coordinator = TrackStatusCoordinator(hass, session_coord=None)
+    if guard != "missing_data":
+        coordinator._deliver({"Status": "6", "Message": "VSCDeployed"})
+    entity = F1TrackStatusSensor(
+        coordinator, f"{entry_id}_track_status", entry_id, "F1"
+    )
+
+    initial = await _add_entity_and_get_state(hass, "sensor", entity)
+    assert initial.state == STATE_UNAVAILABLE
+
+    if guard == "inactive_stream":
+        live_state.set_live(False)
+    elif guard == "replay_reset":
+        _reset_replay_sensitive_coordinator_state(coordinator)
+
+    status_coordinator.async_set_updated_data({"Status": "Started"})
+    await hass.async_block_till_done()
+
+    assert hass.states.get(entity.entity_id).state == STATE_UNAVAILABLE
+    assert entity.native_value is None

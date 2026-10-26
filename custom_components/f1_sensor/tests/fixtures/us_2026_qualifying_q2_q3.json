@@ -1,0 +1,126 @@
+{
+  "source": "2026 United States Grand Prix qualifying, 2026-10-24; selected original jsonStream messages",
+  "frames": [
+    {
+      "offset": "00:00:00.000",
+      "stream": "SessionInfo",
+      "payload": {
+        "Meeting": {
+          "Key": 1297,
+          "Name": "United States Grand Prix",
+          "OfficialName": "FORMULA 1 MSC CRUISES UNITED STATES GRAND PRIX 2026",
+          "Location": "Austin",
+          "Number": 18,
+          "Country": {
+            "Key": 19,
+            "Code": "USA",
+            "Name": "United States"
+          },
+          "Circuit": {
+            "Key": 9,
+            "ShortName": "Austin"
+          }
+        },
+        "SessionStatus": "Inactive",
+        "ArchiveStatus": {
+          "Status": "Generating"
+        },
+        "Key": 11392,
+        "Type": "Qualifying",
+        "Name": "Qualifying",
+        "StartDate": "2026-10-24T16:00:00",
+        "EndDate": "2026-10-24T17:00:00",
+        "GmtOffset": "-05:00:00",
+        "Path": "2026/2026-10-25_United_States_Grand_Prix/2026-10-24_Qualifying/"
+      }
+    },
+    {
+      "offset": "00:00:46.626",
+      "stream": "TrackStatus",
+      "payload": {
+        "Status": "1",
+        "Message": "AllClear"
+      }
+    },
+    {
+      "offset": "00:37:27.781",
+      "stream": "SessionData",
+      "payload": {
+        "Series": {
+          "1": {
+            "Utc": "2026-10-24T21:23:59.626Z",
+            "QualifyingPart": 2
+          }
+        }
+      }
+    },
+    {
+      "offset": "00:38:28.262",
+      "stream": "SessionStatus",
+      "payload": {
+        "Status": "Started",
+        "Started": "Started"
+      }
+    },
+    {
+      "offset": "00:53:28.240",
+      "stream": "SessionStatus",
+      "payload": {
+        "Status": "Finished",
+        "Started": "Finished"
+      }
+    },
+    {
+      "offset": "00:59:28.216",
+      "stream": "SessionData",
+      "payload": {
+        "Series": {
+          "2": {
+            "Utc": "2026-10-24T21:46:00.061Z",
+            "QualifyingPart": 3
+          }
+        }
+      }
+    },
+    {
+      "offset": "00:59:41.207",
+      "stream": "SessionStatus",
+      "payload": {
+        "Status": "Inactive",
+        "Started": "Finished"
+      }
+    },
+    {
+      "offset": "01:00:28.247",
+      "stream": "SessionStatus",
+      "payload": {
+        "Status": "Started",
+        "Started": "Started"
+      }
+    },
+    {
+      "offset": "01:13:28.252",
+      "stream": "SessionStatus",
+      "payload": {
+        "Status": "Finished",
+        "Started": "Finished"
+      }
+    },
+    {
+      "offset": "01:17:27.352",
+      "stream": "SessionStatus",
+      "payload": {
+        "Status": "Finalised",
+        "Started": "Finished"
+      }
+    },
+    {
+      "offset": "01:20:23.481",
+      "stream": "SessionStatus",
+      "payload": {
+        "Status": "Ends",
+        "Started": "Finished"
+      }
+    }
+  ]
+}
