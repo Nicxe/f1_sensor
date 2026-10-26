@@ -8,7 +8,7 @@ F1 Sensor works with public live timing without a Formula 1 account token. Conne
 
 ## Availability matrix
 
-The live columns describe F1 Sensor's current behavior and the accounts tested during United States FP1 on 23 October 2026. They are not guaranteed subscription tiers; every live feature also needs Formula 1 to publish suitable data.
+The live columns describe F1 Sensor's current behavior and the accounts tested during United States FP1 on 23 October and sampled race windows on 25 October 2026. They are observations rather than guaranteed subscription tiers; every live feature also needs Formula 1 to publish suitable data. The tests used separate observation windows, not an uninterrupted recording of every feed for the whole race.
 
 | Feature or data | Without an account token | Free account with accepted token | Paid account with accepted token |
 | --- | --- | --- | --- |
@@ -18,18 +18,22 @@ The live columns describe F1 Sensor's current behavior and the accounts tested d
 | Live Track Map and incident location context | Not available live | Position data not received by the tested account | Fresh position data verified with the tested account |
 | Car telemetry for earlier incident candidates and formation-start refinement | Not available live | Car telemetry not received by the tested account | Fresh car telemetry verified; each feature still needs a suitable session |
 | Team Radio | Connect access to enable it in F1 Sensor | Live clip metadata verified | Published clip metadata received |
-| Detailed Pit Stops | Connect access to enable it in F1 Sensor | No detail feed observed; account requirements unverified | No detail feed observed; account requirements unverified |
-| Championship Prediction | Connect access to enable it in F1 Sensor | No feed observed; account requirements unverified | No feed observed; account requirements unverified |
+| Pit counts | Public source counts can exist, but the Pit Stops entity and card dataset require connected access | Count updates verified through Home Assistant | Count updates verified through Home Assistant |
+| Pit-lane duration | Connect access to enable Pit Stops in F1 Sensor | Alternative duration feed not tested with this account | One live duration record verified; broad coverage remains unverified |
+| Stationary pit-stop time | Connect access to enable Pit Stops in F1 Sensor | No live `PitStopSeries` details observed | No live `PitStopSeries` details observed |
+| Championship Prediction | Connect access to enable it in F1 Sensor | No feed observed in the sampled race comparison | Prediction data received during the race |
 
 Replay Mode uses archived data separately. A free account has accessed the tested replay resources, including archived telemetry and radio; playback still depends on the selected session's available files.
 
 ### What the live checks establish
 
-Public timing delivered fresh updates without a token and with both accounts. Across five sequential free/paid comparisons, live car telemetry (`CarData.z`) and positions (`Position.z`) arrived only with the tested paid account. This supports an account-permission difference for those accounts; it does not establish a rule for every paid plan or a change introduced on that date.
+Public timing delivered fresh updates without a token and with both accounts during practice and the race. Sequential free/paid comparisons received live car telemetry (`CarData.z`) and positions (`Position.z`) only with the tested paid account. During the race, that account also received fresh driver race information (`DriverRaceInfo`) and prediction data (`ChampionshipPrediction`). This supports observed access differences for these accounts and windows; it does not establish a rule for every paid plan or a change introduced on that date.
 
 Team Radio metadata also arrived with the free account. Anonymous live radio metadata was not tested, and the integration continues to request this feed only with connected access. A separate audio-file check succeeded without an account token and with both accounts; that does not establish anonymous access to live radio metadata. Playback through Home Assistant still requires Home Assistant authentication.
 
-The detailed pit-stop, driver race information and championship prediction feeds were absent with both accounts during these practice windows. Their live account requirements remain unverified. Pit counts can appear in public timing without detailed stop records; a count does not prove that the detail feed is available.
+Pit counts advanced during the race, but no `PitStopSeries` detail payload was received in the saved comparison windows with either account. This distinction is separate from token health: a count does not establish a stop's lap, stationary time or pit-lane time. The cause of the missing live detail feed remains unverified. See [Pit Stops](/entities/pit-stops) for count semantics and the available fields.
+
+A separate paid-account diagnostic received one `PitLaneTimeCollection` record containing a pit-lane duration and lap. Its duration matched the same event in the later detail archive, but contained no stationary time. Checks across 57 archived stops support that distinction. F1 Sensor uses this feed as a best-effort live [pit-lane-time fallback](/entities/pit-stops#pit-lane-time-during-live-sessions), retaining the observations it receives. The single captured live event does not prove complete live coverage or access with a free or anonymous account.
 
 ## How F1TV Auth changes live timing
 
@@ -65,7 +69,7 @@ Connected access lets F1 Sensor request additional live feeds for Track Map, Pit
 
 Connect your Formula 1 account through the [F1TV Token Helper](/help/f1tv-token-helper). On 21 October 2026, both a free account and a paid account accessed the archive index and the same 18 tested timing streams; the anonymous archive-index request returned 401. A paid subscription was not required for those verified archive resources.
 
-This is archived timing data, not F1 TV video replay access. It does not guarantee every file for every session: one post-FP1 PitStopSeries archive request on 23 October returned 403, which was inconclusive about archive readiness, live permissions or pit-detail publication. Live feeds and archive files need separate checks. Formula 1 can change access or publication on its unofficial timing API.
+This is archived timing data, not F1 TV video replay access. It does not guarantee every file for every session: individual post-session `PitStopSeries` requests on 23 and 25 October returned 403, which was inconclusive about publication timing or access. The saved Singapore and United States race detail archives were available for later parser checks on 26 October. This does not identify when they became available or change the earlier live observations. Live feeds and archive files need separate checks. Formula 1 can change access or publication on its unofficial timing API.
 
 :::info
 A locally valid token is not proof that Formula 1 accepts it. An accepted token is not proof of every account permission, and a permitted feed can remain quiet when no relevant data is published.
@@ -97,7 +101,8 @@ Downloaded diagnostics can include redacted token health and live timing activit
 - Replay Mode and archive access require accepted Formula 1 account access. A free account worked for the tested archive resources; individual files can still be unavailable or rejected.
 - Automatic renewal requires a usable session in the saved token. You still need Token Helper when that session expires or is revoked.
 - Live car telemetry and positions were verified with the tested paid account, not every subscription plan. They were absent with the tested free account.
-- Driver race information, detailed Pit Stops and Championship Prediction need further live verification during suitable sessions.
+- Live driver race information and prediction data were received with the tested paid account during the race. A prediction snapshot does not by itself prove continuously changing predictions.
+- Detailed Pit Stops depend on the fields actually received. Reported counts, pit-lane duration and stationary time have separate coverage; live stationary time remains unverified.
 - Replay Mode uses the same saved authorization as authenticated live features, but archive access does not prove live-feed access.
 
 ## Related pages

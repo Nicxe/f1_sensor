@@ -38,6 +38,14 @@ Replay can contain archived car-position data. Live positions require optional F
 
 They depend on extra data published for the session. During live timing they can need F1TV Auth; during replay the archive must contain the data. An accepted token alone does not guarantee all feeds. See the [availability matrix](/features/f1tv-auth#availability-matrix).
 
+### Why does Pit Stops have a count but no stop times?
+
+Reported pit counts and timed stop records come from separate data. A positive count with an empty `stops` list is valid when timing reports pit visits but usable detail records have not arrived. Counts can include a visit that ends in retirement; they do not establish stationary time, pit-lane duration or a stop lap.
+
+Tyre stints in Strategy analysis are also separate from stop timing. A valid token or a working replay does not prove that every live pit detail is available. See [Pit Stops](/entities/pit-stops) for nullable fields, count semantics and the difference between stationary time, pit-lane time and estimated loss.
+
+The card's [Pit stops module](/cards/modular#show-pit-stops) shows reported counts separately when a driver has no detail records. A live pit-lane duration can add a partial detail row, but cannot fill the missing stationary time or event timestamp.
+
 ### Why do live sensors stop between sessions?
 
 Live entities follow active practice, qualifying, sprint or race sessions. Outside the live window they can be inactive, unchanged or unavailable. Schedules and other non-live data continue to serve different purposes.
