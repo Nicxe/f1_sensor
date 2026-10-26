@@ -1,0 +1,117 @@
+{
+  "source": "2026 United States Grand Prix qualifying, 2026-10-24; SessionData snapshots reconstructed by merging original jsonStream deltas",
+  "snapshots": {
+    "q3_announced": {
+      "offset": "00:59:28.216",
+      "stream": "SessionData",
+      "payload": {
+        "Series": [
+          {
+            "Utc": "2026-10-24T20:46:39.767Z",
+            "QualifyingPart": 1
+          },
+          {
+            "Utc": "2026-10-24T21:23:59.626Z",
+            "QualifyingPart": 2
+          },
+          {
+            "Utc": "2026-10-24T21:46:00.061Z",
+            "QualifyingPart": 3
+          }
+        ],
+        "StatusSeries": [
+          {
+            "Utc": "2026-10-24T20:46:15.56Z",
+            "TrackStatus": "Yellow"
+          },
+          {
+            "Utc": "2026-10-24T20:47:18.471Z",
+            "TrackStatus": "AllClear"
+          },
+          {
+            "Utc": "2026-10-24T21:00:00.095Z",
+            "SessionStatus": "Started"
+          },
+          {
+            "Utc": "2026-10-24T21:18:00.103Z",
+            "SessionStatus": "Finished"
+          },
+          {
+            "Utc": "2026-10-24T21:24:07.119Z",
+            "SessionStatus": "Inactive"
+          },
+          {
+            "Utc": "2026-10-24T21:25:00.107Z",
+            "SessionStatus": "Started"
+          },
+          {
+            "Utc": "2026-10-24T21:40:00.085Z",
+            "SessionStatus": "Finished"
+          }
+        ]
+      }
+    },
+    "q3_finished": {
+      "offset": "01:13:28.252",
+      "stream": "SessionData",
+      "payload": {
+        "Series": [
+          {
+            "Utc": "2026-10-24T20:46:39.767Z",
+            "QualifyingPart": 1
+          },
+          {
+            "Utc": "2026-10-24T21:23:59.626Z",
+            "QualifyingPart": 2
+          },
+          {
+            "Utc": "2026-10-24T21:46:00.061Z",
+            "QualifyingPart": 3
+          }
+        ],
+        "StatusSeries": [
+          {
+            "Utc": "2026-10-24T20:46:15.56Z",
+            "TrackStatus": "Yellow"
+          },
+          {
+            "Utc": "2026-10-24T20:47:18.471Z",
+            "TrackStatus": "AllClear"
+          },
+          {
+            "Utc": "2026-10-24T21:00:00.095Z",
+            "SessionStatus": "Started"
+          },
+          {
+            "Utc": "2026-10-24T21:18:00.103Z",
+            "SessionStatus": "Finished"
+          },
+          {
+            "Utc": "2026-10-24T21:24:07.119Z",
+            "SessionStatus": "Inactive"
+          },
+          {
+            "Utc": "2026-10-24T21:25:00.107Z",
+            "SessionStatus": "Started"
+          },
+          {
+            "Utc": "2026-10-24T21:40:00.085Z",
+            "SessionStatus": "Finished"
+          },
+          {
+            "Utc": "2026-10-24T21:46:13.052Z",
+            "SessionStatus": "Inactive"
+          },
+          {
+            "Utc": "2026-10-24T21:47:00.092Z",
+            "SessionStatus": "Started"
+          },
+          {
+            "Utc": "2026-10-24T22:00:00.097Z",
+            "SessionStatus": "Finished"
+          }
+        ]
+      }
+    }
+  }
+}

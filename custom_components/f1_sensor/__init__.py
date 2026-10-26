@@ -106,6 +106,7 @@ from .const import (
 )
 from .data_catalog import card_feature_requirements, static_source_requirements
 from .data_choice import async_dismiss_card_data_notice, async_notify_card_data
+from .data_helpers import _session_status_mapping_context
 from .entity import (
     async_prepare_translation_names,
     register_entry_name_settings,
@@ -4056,12 +4057,11 @@ class LiveModeCoordinator(DataUpdateCoordinator):
             context = self._session_status_coordinator
             if bool(getattr(context, "is_testing_session", False)):
                 return False
-            if bool(getattr(context, "is_qualifying_like_session", False)):
-                try:
-                    part = int(getattr(context, "qualifying_part", None))
-                except (TypeError, ValueError):
-                    return False
-                return part not in (1, 2)
+            is_qualifying, part = _session_status_mapping_context(
+                context, use_status_part=True
+            )
+            if is_qualifying:
+                return part not in (None, 1, 2)
             return True
         return status in {"Finalised", "Ends"}
 
@@ -8115,6 +8115,8 @@ def _reset_replay_sensitive_coordinator_state(coordinator: Any) -> None:
         _clear_delayed_ingest_state(coordinator)
         coordinator.is_qualifying_like_session = False
         coordinator.qualifying_part = None
+        coordinator.status_qualifying_part = None
+        coordinator._pending_status_part = None
         coordinator._last_message = None
         coordinator.data_list = []
         coordinator.async_set_updated_data(None)
@@ -10506,6 +10508,8 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
         self.is_qualifying_like_session = False
         self.is_testing_session = False
         self.qualifying_part: int | None = None
+        self.status_qualifying_part: int | None = None
+        self._pending_status_part: tuple[str, int] | None = None
 
     async def async_close(self, *_):
         if self._context_unsubs:
@@ -10624,6 +10628,8 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
         if not isinstance(msg, dict):
             return
         latest_part: int | None = None
+        part_events: list[tuple[datetime, int]] = []
+        complete_part_history = True
         for item in self._iter_series_items(msg.get("Series")):
             part_raw = item.get("QualifyingPart")
             if part_raw is None:
@@ -10631,12 +10637,61 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
             try:
                 latest_part = int(part_raw)
             except (TypeError, ValueError):
+                complete_part_history = False
                 continue
+            utc = dt_util.parse_datetime(str(item.get("Utc") or ""))
+            if utc is not None and utc.tzinfo is not None and latest_part in (1, 2, 3):
+                part_events.append((utc, latest_part))
+            else:
+                complete_part_history = False
+        previous_context = (self.qualifying_part, self.status_qualifying_part)
         if latest_part is not None:
-            changed = self.qualifying_part != latest_part
             self.qualifying_part = latest_part
-            if changed:
-                self._refresh_finished_context()
+            # A reconnect can deliver the status before its segment context.
+            if self.status_qualifying_part is None:
+                self.status_qualifying_part = latest_part
+        # Full reconnect snapshots can disambiguate identical Finished payloads
+        # even when the intervening Started message was missed.
+        payload = self._last_message or {}
+        status = str(payload.get("Status") or payload.get("Message") or "").strip()
+        status_events: list[tuple[datetime, str]] = []
+        incomplete_statuses: set[str] = set()
+        for item in self._iter_series_items(msg.get("StatusSeries")):
+            event_status = item.get("SessionStatus")
+            if not isinstance(event_status, str) or not event_status:
+                continue
+            utc = dt_util.parse_datetime(str(item.get("Utc") or ""))
+            if utc is not None and utc.tzinfo is not None:
+                status_events.append((utc, event_status))
+            else:
+                incomplete_statuses.add(event_status)
+        if complete_part_history and part_events:
+            status_parts = {}
+            for event_status in {
+                event[1] for event in status_events
+            } - incomplete_statuses:
+                latest_status_utc = max(
+                    utc for utc, value in status_events if value == event_status
+                )
+                preceding_parts = [
+                    event for event in part_events if event[0] <= latest_status_utc
+                ]
+                if preceding_parts:
+                    status_parts[event_status] = max(preceding_parts)[1]
+            if status in status_parts:
+                self.status_qualifying_part = status_parts[status]
+            if status_events and not incomplete_statuses:
+                latest_status = max(status_events)[1]
+                if latest_status != status and latest_status in status_parts:
+                    # The full context may arrive before its SessionStatus snapshot.
+                    self._pending_status_part = (
+                        latest_status,
+                        status_parts[latest_status],
+                    )
+                else:
+                    self._pending_status_part = None
+        if previous_context != (self.qualifying_part, self.status_qualifying_part):
+            self._refresh_finished_context()
 
     @staticmethod
     def _parse_message(data):
@@ -10656,6 +10711,19 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
     def _deliver(self, msg: dict) -> None:
         if _is_no_spoiler_blocked(self):
             return
+        previous = self._last_message or {}
+        previous_status = str(
+            previous.get("Status") or previous.get("Message") or ""
+        ).strip()
+        status = str(msg.get("Status") or msg.get("Message") or "").strip()
+        # Announcing Q3 must not turn Q2's Finished (or its reconnect copy)
+        # into a final-session finish before Q3 has actually started.
+        pending_status_part = self._pending_status_part
+        self._pending_status_part = None
+        if pending_status_part is not None and pending_status_part[0] == status:
+            self.status_qualifying_part = pending_status_part[1]
+        elif status != previous_status or self.status_qualifying_part is None:
+            self.status_qualifying_part = self.qualifying_part
         self.available = True
         self._last_message = msg
         self.data_list = [msg]
@@ -10711,6 +10779,8 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
             self.is_qualifying_like_session = False
             self.is_testing_session = False
             self.qualifying_part = None
+            self.status_qualifying_part = None
+            self._pending_status_part = None
             _clear_delayed_ingest_state(self)
             self._last_message = None
             self.data_list = []
