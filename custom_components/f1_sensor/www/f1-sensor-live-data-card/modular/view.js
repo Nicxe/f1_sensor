@@ -421,6 +421,7 @@ export class F1ModuleView extends LitElement {
   choose(key, value) { this.dispatchEvent(new CustomEvent('f1-module-choice', { bubbles: true, composed: true, detail: { module: this.module.id, key, value } })); }
   field(id) {
     const field = fieldDefinition(this.module, id);
+    if (this.module.type === 'pit_stops' && id === 'status') return { ...field, label: 'modular.current_driver_status' };
     return this.model?.sessionKind === 'sprint_qualifying' && /^q[123]_/.test(id) ? { ...field, label: field.label.replace('Q', 'SQ') } : field;
   }
   resultCell(row, id) {
@@ -477,10 +478,10 @@ export class F1ModuleView extends LitElement {
     if (id === 'team' && this.model.teams) return this.driverCell({ ...row, driver: row.team, name: row.team });
     return this.cell(row, id);
   }
-  tableHeader(fields) {
+  tableHeader(fields, labels = {}) {
     const hidden = this.module.show_table_header === false;
     // Keep native column relationships when only the visible labels are hidden.
-    return html`<thead part="table-header" class=${hidden ? 'labels-hidden' : ''}><tr part="table-row">${repeat(fields, id => id, id => html`<th part="table-cell" scope="col"><span class=${hidden ? 'sr' : ''}>${label(this.field(id), this.language)}</span></th>`)}</tr></thead>`;
+    return html`<thead part="table-header" class=${hidden ? 'labels-hidden' : ''}><tr part="table-row">${repeat(fields, id => id, id => html`<th part="table-cell" scope="col"><span class=${hidden ? 'sr' : ''}>${labels[id] ?? label(this.field(id), this.language)}</span></th>`)}</tr></thead>`;
   }
   timingHeader(fields, laps) {
     const hidden = this.module.show_table_header === false;
@@ -492,16 +493,31 @@ export class F1ModuleView extends LitElement {
   results() {
     const rows = this.model.rows ?? [];
     const fields = this.module.fields.filter(id => moduleFields(this.module).includes(id));
+    const countSummary = this.module.type === 'pit_stops' ? this.pitCountSummary() : '';
     const selector = this.module.options.show_selector && this.model.choices?.length ? html`<label class="module-picker"><span>${this.w('modular.round')}</span><select aria-label=${this.w('modular.round')} data-focus="result-round" .value=${this.model.selected} @change=${event => this.choose('round', event.target.value)}>${this.model.choices.map(item => html`<option value=${item.id} .selected=${item.id === this.model.selected}>${item.id} · ${item.name}</option>`)}</select></label>` : '';
+    if (!rows.length && this.model.countRows?.length) return countSummary;
     if (!rows.length) return html`${selector}${this.empty(this.model.filtered ? this.w('modular.no_competitors_match_this_selection') : this.model.emptyMessage ?? this.w('modular.no_data_is_available_for_this_selection_yet'))}`;
     if (!fields.length) return this.empty(this.w('modular.choose_columns_in_the_editor'));
     if (this.module.type === 'results' && this.module.options.presentation === 'grid') return html`${selector}<ol class="result-grid" part="result-grid" aria-label=${this.module.title || this.model.title}>${repeat(rows, row => `${this.model.context?.season}:${this.model.context?.round}:${this.model.context?.session}:${row.id}`, row => html`<li part="result-card" data-driver=${row.id}><dl>${repeat(fields, id => id, id => html`<div><dt>${label(this.field(id), this.language)}</dt><dd>${this.resultCell(row, id)}</dd></div>`)}</dl></li>`)}</ol><p class="muted" style="margin-top:10px">${rows.length} ${this.w('modular.of')} ${this.model.total} ${this.w('modular.competitors')}</p>`;
-    return html`${selector}<div class="table-scroll" part="table-container" tabindex="0" role="region" aria-label=${`${this.module.title || this.model.title} · ${this.w('modular.scroll_horizontally_for_more_columns')}`}><table part="table">
+    return html`${selector}${countSummary}${this.model.countRows?.length ? html`<h3>${this.w('modular.recorded_stop_details')}</h3>` : ''}<div class="table-scroll" part="table-container" tabindex="0" role="region" aria-label=${`${this.module.title || this.model.title} · ${this.w('modular.scroll_horizontally_for_more_columns')}`}><table part="table">
       <caption class="sr">${this.module.title || this.model.title}</caption>${this.tableHeader(fields)}
-      <tbody>${repeat(rows, row => `${this.model.context?.season}:${this.model.context?.round}:${this.model.context?.session}:${row.id}`, row => html`<tr part="table-row" data-driver=${row.id}>${repeat(fields, id => id, id => html`<td part="table-cell">${row.derived && id === fields[0] ? html`<span class="provenance">${this.w('modular.derived_estimate')}</span>` : ''}${this.resultCell(row, id)}</td>`)}</tr>
+      <tbody>${repeat(rows, row => `${this.model.context?.season}:${this.model.context?.round}:${this.model.context?.session}:${row.id}`, row => html`<tr part="table-row" data-driver=${row.id}>${repeat(fields, id => id, id => html`<td part="table-cell">${row.derived && id === fields[0] ? html`<span class="provenance">${this.w('modular.derived_estimate')}</span>` : ''}${this.module.type === 'pit_stops' && row.source === 'PitLaneTimeCollection' && id === fields[0] ? html`<span class="provenance">${this.w('modular.pit_lane_timing_only')}</span>` : ''}${this.resultCell(row, id)}</td>`)}</tr>
       ${this.expanded === row.id ? html`<tr part="table-row"><td part="table-cell" class="details" colspan=${fields.length}><h3>${row.name} · ${row.team ?? '—'}</h3><dl>${fields.filter(id => !['driver', 'team'].includes(id)).map(id => html`<div><dt>${label(this.field(id), this.language)}</dt><dd>${this.resultCell(row, id)}</dd></div>`)}</dl></td></tr>` : ''}`)}</tbody>
     </table></div><div class="section-head" style="margin:10px 0 0"><span class="muted">${rows.length} ${this.w('modular.of')} ${this.model.total} ${this.model.countKind === 'stints' ? this.w('modular.stints') : this.model.countKind === 'stops' ? this.w('modular.stops') : this.model.countKind === 'compounds' ? this.w('modular.compounds') : this.model.countKind === 'comparisons' ? this.w('modular.comparisons') : this.model.countKind === 'events' ? this.w('modular.events') : this.w('modular.competitors')}</span>
       ${this.model.total > this.module.options.rows ? html`<button data-focus="result-count" @click=${() => this.choose('rows', rows.length < this.model.total ? (['pit_stops', 'incidents', 'timeline', 'strategy', 'battles'].includes(this.module.type) ? 500 : 100) : this.module.options.rows)}>${rows.length < this.model.total ? this.w('modular.show_all') : this.w('modular.show_fewer')}</button>` : ''}</div>`;
+  }
+  pitCountSummary() {
+    const rows = this.model.countRows ?? [];
+    if (!rows.length) return '';
+    // These are driver summaries, never synthetic stop events. Keep identity and
+    // the reported count visible even when only timing columns were configured.
+    const fields = ['driver', ...this.module.fields.filter(id => ['team', 'status'].includes(id)), 'pit_count'];
+    const title = this.w('modular.reported_pit_visits');
+    return html`<h3>${title}</h3><div class="table-scroll" part="table-container" tabindex="0" role="region" aria-label=${title}><table part="table" class="pit-count-summary">
+      <caption class="sr">${title}</caption>${this.tableHeader(fields, { pit_count: title })}
+      <tbody>${repeat(rows, row => `${this.model.context?.key}:${row.id}`, row => html`<tr part="table-row" data-count-driver=${row.id}>${repeat(fields, id => id, id => html`<td part="table-cell">${this.resultCell(row, id)}</td>`)}</tr>`)}</tbody>
+    </table></div><div class="section-head" style="margin:10px 0"><span class="muted">${rows.length} ${this.w('modular.of')} ${this.model.countTotal} ${this.w('modular.competitors')}</span>
+      ${this.model.countTotal > this.module.options.rows ? html`<button data-focus="pit-count-expand" @click=${() => this.choose('rows', 500)}>${this.w('modular.show_all')}</button>` : ''}</div>`;
   }
   strategy() {
     const rows = this.model.rows ?? [], presentation = this.module.options.presentation;

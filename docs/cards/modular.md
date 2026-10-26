@@ -69,6 +69,18 @@ Data availability depends on the source and session. Adding a module does not cr
 
 Timing can follow a session profile or use your selected columns. Choosing your own timing columns keeps them as a custom selection. A module pinned to a driver keeps that driver when you change the card's general focus.
 
+### Show Pit stops
+
+Add **Pit stops** to follow reported pit visits and any timed stop records available for the current session. The module distinguishes counts from details: an available count does not establish the lap or duration of an individual stop.
+
+When a driver has a reported count but no detailed stop records, **Reported pit visits** shows the driver, current status and count separately. In a session with mixed coverage, this summary appears alongside genuine detailed stop rows. **All stops** and **Latest stop** apply to the detailed records; summary rows do not become invented stop events.
+
+Select **Stationary time** for the stationary part of a stop, **Pit lane time** for the full passage through the pit lane and **Estimated lap loss** for a lap-time estimate. Unknown times remain unavailable. A driver's **Current status** describes their present state, not their state at an earlier stop. Driver and team selections still filter the module's data.
+
+An observed live pit-lane duration can provide a detail row with a lap and lane time while stationary time and event time remain unknown. The card explains this partial timing coverage. It does not present a lane duration as a stationary service time.
+
+Live counts can arrive while times are missing, and the module explains this partial coverage. The same selected session, live delay and No Spoiler rules apply to counts and details. Connecting access or loading an archive does not guarantee every field. See [Pit Stops](/entities/pit-stops) for field definitions and [F1TV access and data coverage](/features/f1tv-auth) for the tested account differences.
+
 ### Compare practice lap times
 
 In a **Timing** module, add **Gap to fastest lap** (`best_lap_gap`) to your

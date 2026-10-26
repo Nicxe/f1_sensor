@@ -196,6 +196,8 @@ Public live timing works without a token. [F1TV Auth](/features/f1tv-auth) is us
 
 This means Replay Mode can sometimes show data that public live timing did not show during the live session. For example, Pit Stops, Team Radio, Championship Prediction, Track Map, and incident location context can work in replay when the archive contains the needed data.
 
+Pit counts and detailed stop records are separate. The saved Singapore and United States race archives contain stationary and pit-lane times that were absent from the sampled United States live `PitStopSeries` delivery. This does not guarantee every archive or immediate publication after a session. A post-session download failure alone does not prove that the account lacks live access. Replay uses archived detailed stop records; the live pit-lane-time fallback does not fill a missing replay archive. See [Pit Stops](/entities/pit-stops) for the meaning of counts and nullable time fields.
+
 ## What Replay Mode can replay
 
 | Data | Replay behavior |

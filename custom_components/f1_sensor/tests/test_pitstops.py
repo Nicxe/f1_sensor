@@ -619,7 +619,12 @@ async def test_pitstop_first_refresh_wires_sources_and_seeds_delivery(hass) -> N
 
     await coordinator.async_config_entry_first_refresh()
 
-    assert set(subscriptions) == {"SessionInfo", "DriverList", "PitStopSeries"}
+    assert set(subscriptions) == {
+        "SessionInfo",
+        "DriverList",
+        "PitStopSeries",
+        "PitLaneTimeCollection",
+    }
     assert coordinator._session_fingerprint is not None
     assert coordinator._drivers_unsub is not None
     assert coordinator._driver_pit_counts == {"44": 1}

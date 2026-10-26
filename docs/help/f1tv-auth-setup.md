@@ -32,7 +32,7 @@ Use the [data availability matrix](/features/f1tv-auth#availability-matrix) to c
 
 - **Without an account token:** public live timing continues to work.
 - **With a free account:** published archive resources and live radio metadata have been verified. The tested free account did not receive live car telemetry or Track Map positions.
-- **With paid access:** the tested account received live car telemetry and positions. This does not guarantee every feed or every paid plan.
+- **With paid access:** the tested account received live car telemetry and positions, plus driver race information and prediction data during the race. This does not guarantee every feed or every paid plan.
 
 Replay Mode uses archived data separately. A valid token, accepted account access and a currently published feed are different checks; see the matrix for the dated live observations and their limits.
 
@@ -155,7 +155,9 @@ The old session may have expired, already been used, or been created before Home
 
 A valid token status checks local token health. Formula 1 must also accept the token, your account must have access to the required feed, and that feed must publish data for the session.
 
-Compare the feature with the [availability matrix](/features/f1tv-auth#availability-matrix). Live car telemetry and positions were absent with the tested free account even while public timing and live radio metadata worked. Detailed pit stops and championship prediction were quiet with both tested accounts during practice, so their absence alone does not identify an account restriction. An archive request failing also does not establish whether a live feed is available.
+Compare the feature with the [availability matrix](/features/f1tv-auth#availability-matrix). Live car telemetry and positions were absent with the tested free account even while public timing and live radio metadata worked. During sampled United States race windows on 25 October 2026, the paid account received driver race information and prediction data, but neither account received `PitStopSeries` details.
+
+For Pit Stops, check counts and detail records separately. A reported count can update while stop times remain unknown; tyre stints do not fill those missing times. A later archive can contain detail records even when live delivery did not. See [Pit Stops](/entities/pit-stops) before treating missing detail as a token failure. An archive request failing also does not establish whether a live feed is available.
 
 ### Public live timing stops working
 

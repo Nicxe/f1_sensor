@@ -1328,7 +1328,7 @@
   "modular.pinned_team": "Pinned team",
   "modular.pit_cycle_outcomes_compare_teammate_positions_before_and_after_nearby_stops_the_observed_order": "Pit-cycle outcomes compare teammate positions before and after nearby stops. The observed order does not prove that strategy caused the change.",
   "modular.pit_lane": "Pit lane",
-  "modular.pit_stop_timing_needs_f1tv_access_and_a_supported_feed_or_an_archived_replay": "Pit stop timing needs F1TV access and a supported feed, or an archived replay containing PitStopSeries.",
+  "modular.pit_stop_timing_needs_f1tv_access_and_a_supported_feed_or_an_archived_replay": "Pit stop timing needs F1TV access and a supported feed, or an archived replay containing suitable pit data.",
   "modular.places_gained": "places gained",
   "modular.places_lost": "places lost",
   "modular.playback_controls_are_unavailable_because_the_replay_player_has_no_usable_state": "Playback controls are unavailable because the replay player has no usable state.",
@@ -1715,5 +1715,14 @@
   "modular.transcript": "Transcript",
   "modular.data_configuration_required": "The connected F1 Sensor backend requires configuration. Open its integration settings or update the backend to use automatic card data.",
   "modular.open_integration_settings": "Open integration settings",
-  "modular.card_data_settings_help": "Card data is automatic. Choose the modules you want here. Integration sensor settings only control entities exposed in Home Assistant."
+  "modular.card_data_settings_help": "Card data is automatic. Choose the modules you want here. Integration sensor settings only control entities exposed in Home Assistant.",
+  "modular.current_driver_status": "Current status",
+  "modular.no_pit_records_received": "No per-driver pit counts or stop records have been received for this selection yet.",
+  "modular.partial_pit_history": "Detailed records cover only some reported pit visits. Counts and recorded stop rows can differ.",
+  "modular.pit_counts_without_details": "Reported pit visit counts are shown separately because detailed stop records have not been received for these drivers. A visit can end in retirement and does not confirm a completed service stop.",
+  "modular.pit_lane_timing_only": "Pit lane timing only",
+  "modular.pit_lane_without_stationary": "Pit lane timing is available for some records. Stationary time has not been received for those records.",
+  "modular.pit_total_without_driver_records": "Reported pit visits: {count}. Per-driver counts and detailed stop records are not available.",
+  "modular.reported_pit_visits": "Reported pit visits",
+  "modular.recorded_stop_details": "Recorded stop details"
 }

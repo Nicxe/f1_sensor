@@ -1408,6 +1408,8 @@ class TrackLimitsModel(LiveProjectionModel):
 class InvestigationsModel(LiveProjectionModel):
     """Shared calculation for Investigations."""
 
+    NFI_EXPIRY_SECONDS = 300
+
     def __init__(self, coordinator, unique_id, entry_id, device_name):
         super().__init__(coordinator, unique_id, entry_id, device_name)
         self._attr_native_value = 0

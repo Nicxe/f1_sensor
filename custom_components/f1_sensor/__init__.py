@@ -4175,9 +4175,12 @@ class LapCountCoordinator(DataUpdateCoordinator):
             delay_controller=delay_controller,
             live_state=live_state,
         )
+        self._session_info_unsub = None
+        self._live_session_key = None
 
     async def async_close(self, *_):
         self._unsub = _call_unsub(self._unsub)
+        self._session_info_unsub = _call_unsub(self._session_info_unsub)
         self._deliver_handle = _cancel_handle(self._deliver_handle)
         self._delay_listener = _call_unsub(self._delay_listener)
         self._live_state_unsub = _call_unsub(self._live_state_unsub)
@@ -4206,9 +4209,32 @@ class LapCountCoordinator(DataUpdateCoordinator):
             return
         self._deliver(msg)
 
+    def _on_sessioninfo(self, payload: dict) -> None:
+        session_key = _stream_session_key(payload)
+        if session_key is None or session_key == self._live_session_key:
+            return
+        changed = self._live_session_key is not None
+        self._live_session_key = session_key
+        if changed:
+            # Keep later frames already queued for the new session.
+            self._reset_store()
+
+    def _reset_store(self) -> None:
+        self._last_message = None
+        self.data_list = []
+        self.async_set_updated_data(None)
+
     def _deliver(self, msg: dict) -> None:
         if _is_no_spoiler_blocked(self):
             return
+        current = self._last_message
+        msg = dict(msg)
+        if (
+            "TotalLaps" not in msg
+            and isinstance(current, dict)
+            and "TotalLaps" in current
+        ):
+            msg["TotalLaps"] = current["TotalLaps"]
         self.available = True
         self._last_message = msg
         self.data_list = [msg]
@@ -4224,10 +4250,17 @@ class LapCountCoordinator(DataUpdateCoordinator):
 
     async def async_config_entry_first_refresh(self):
         await super().async_config_entry_first_refresh()
+        bus = self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")
         try:
-            self._unsub = (
-                self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")
-            ).subscribe("LapCount", _wrap_delayed_handler(self, self._on_bus_message))  # type: ignore[attr-defined]
+            self._session_info_unsub = bus.subscribe(
+                "SessionInfo", _wrap_delayed_handler(self, self._on_sessioninfo)
+            )
+        except Exception:
+            self._session_info_unsub = None
+        try:
+            self._unsub = bus.subscribe(
+                "LapCount", _wrap_delayed_handler(self, self._on_bus_message)
+            )
         except Exception:
             self._unsub = None
 
@@ -4237,6 +4270,7 @@ class LapCountCoordinator(DataUpdateCoordinator):
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
         if reason == "init":
             return
+        previous_replay_mode = self._replay_mode
         self._replay_mode = _is_replay_delay_reason(reason)
         if self._replay_mode:
             _clear_delayed_ingest_state(self)
@@ -4244,12 +4278,11 @@ class LapCountCoordinator(DataUpdateCoordinator):
             _clear_delayed_ingest_state(self)
             return
         self.available = is_live
-        if not is_live:
+        if not is_live or previous_replay_mode != self._replay_mode:
             _clear_delayed_ingest_state(self)
-            self._last_message = None
-            self.data_list = []
+            self._live_session_key = None
             # Notify entities to clear their state
-            self.async_set_updated_data(self._last_message)
+            self._reset_store()
 
 
 class TeamRadioCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
@@ -4600,6 +4633,7 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
         self._dedup: set[tuple] = set()
         self._driver_map: dict[str, dict[str, Any]] = {}
         self._driver_pit_counts: dict[str, int] = {}
+        self._lane_partial: dict[str, dict[str, Any]] = {}
         self._deliver_handle: asyncio.Handle | None = None
         self._drivers_coord = drivers_coordinator
 
@@ -4630,6 +4664,7 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
             _clear_delayed_ingest_state(self)
         if _is_no_spoiler_live_state(reason):
             _clear_delayed_ingest_state(self)
+            self._lane_partial.clear()
             return
         replay_available = bool(is_live and self._replay_mode)
         auth_live_available = bool(
@@ -4659,6 +4694,7 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
         self._by_car = {}
         self._dedup = set()
         self._driver_pit_counts = {}
+        self._lane_partial = {}
         self._state = {
             "total_stops": 0,
             "cars": {},
@@ -4753,36 +4789,171 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
     def _schedule_deliver(self) -> None:
         self._deliver()
 
-    def _add_stop(self, racing_number: str, stop: dict) -> None:
+    def _add_stop(self, racing_number: str, stop: dict) -> bool:
         rn = self._normalize_racing_number(racing_number)
         if rn is None:
-            return
+            return False
         if rn not in self._by_car and len(self._by_car) >= PITSTOP_MAX_CARS:
-            return
+            return False
         lap = self._parse_int(stop.get("lap"))
         ts = self._bounded_text(stop.get("timestamp"))
         pit_stop_time = self._parse_float(stop.get("pit_stop_time"))
         pit_lane_time = self._parse_float(stop.get("pit_lane_time"))
-
-        # Dedup: prefer timestamp when present, else fall back to lap/times.
-        key = self._dedup_key(rn, lap, ts, pit_lane_time, pit_stop_time)
-        if key in self._dedup:
-            return
-        self._dedup.add(key)
-
+        source = stop.get("source", "PitStopSeries")
+        lane_only = source == "PitLaneTimeCollection"
         entry = {
             "lap": lap,
             "timestamp": ts,
             "pit_stop_time": pit_stop_time,
             "pit_lane_time": pit_lane_time,
             "pit_delta": None,
+            "source": source,
         }
-        self._maybe_update_pit_delta(rn, entry)
-        lst = self._by_car.setdefault(rn, [])
-        lst.append(entry)
-        if len(lst) > self._history_limit:
-            self._by_car[rn] = lst[-self._history_limit :]
+        lst = self._by_car.get(rn, [])
+        if lane_only and any(
+            item.get("lap") == lap
+            and item.get("source", "PitStopSeries") == "PitStopSeries"
+            for item in lst
+        ):
+            return False
+
+        for index, previous in enumerate(lst):
+            same_fallback = (
+                lane_only
+                and previous.get("source") == source
+                and previous.get("lap") == lap
+            )
+            same_series = (
+                not lane_only
+                and ts is not None
+                and previous.get("source", "PitStopSeries") == "PitStopSeries"
+                and previous.get("timestamp") == ts
+            )
+            if not (same_fallback or same_series):
+                continue
+            if same_series:
+                # Corrections can omit unchanged fields; the event timestamp is
+                # the identity, whereas different timestamps remain distinct stops.
+                entry = {**previous, **{k: v for k, v in entry.items() if k in stop}}
+                entry["source"] = "PitStopSeries"
+                if previous.get("lap") != entry.get("lap"):
+                    entry["pit_delta"] = None
+            self._maybe_update_pit_delta(rn, entry)
+            updated = [*lst[:index], entry, *lst[index + 1 :]]
+            if same_series and entry.get("lap") is not None:
+                updated = [
+                    item
+                    for item in updated
+                    if not (
+                        item.get("source") == "PitLaneTimeCollection"
+                        and item.get("lap") == entry["lap"]
+                    )
+                ]
+            if entry == previous and len(updated) == len(lst):
+                return False
+            self._by_car[rn] = updated
             self._rebuild_pitstop_dedup()
+            return True
+
+        if not lane_only and lap is not None:
+            # A collection has no stable stop identifier. Prefer real Series
+            # events over an ambiguous car/lap fallback, without attaching its
+            # duration or stationary time to an arbitrary event.
+            lst = [
+                item
+                for item in lst
+                if not (
+                    item.get("source") == "PitLaneTimeCollection"
+                    and item.get("lap") == lap
+                )
+            ]
+            if len(lst) != len(self._by_car.get(rn, [])):
+                self._by_car[rn] = lst
+                self._rebuild_pitstop_dedup()
+        key = self._dedup_key(rn, lap, ts, pit_lane_time, pit_stop_time)
+        if key in self._dedup:
+            return False
+        self._maybe_update_pit_delta(rn, entry)
+        self._by_car[rn] = [*lst, entry][-self._history_limit :]
+        self._rebuild_pitstop_dedup()
+        return True
+
+    def _on_bus_pit_lane_times(self, msg: dict) -> None:
+        """Keep live lane records after their transient collection entries expire."""
+        if (
+            not isinstance(msg, dict)
+            or self._replay_mode
+            or self._live_session_key is None
+            or not getattr(self._bus, "auth_enabled", False)
+            or _is_no_spoiler_blocked(self)
+        ):
+            return
+        if msg.get("_kf") is True:
+            self._lane_partial.clear()
+        pit_times = msg.get("PitTimes")
+        if not isinstance(pit_times, dict):
+            return
+        deleted = pit_times.get("_deleted")
+        if isinstance(deleted, list):
+            for raw_rn in deleted[:PITSTOP_MAX_CARS_PER_PAYLOAD]:
+                self._lane_partial.pop(self._normalize_racing_number(raw_rn), None)
+        changed = False
+        for car_index, (raw_rn, update) in enumerate(pit_times.items()):
+            if car_index >= PITSTOP_MAX_CARS_PER_PAYLOAD:
+                break
+            rn = self._normalize_racing_number(raw_rn)
+            if rn is None or not isinstance(update, dict):
+                continue
+            if (
+                "RacingNumber" in update
+                and self._normalize_racing_number(update["RacingNumber"]) != rn
+            ):
+                continue
+            if (
+                rn not in self._lane_partial
+                and len(self._lane_partial) >= PITSTOP_MAX_CARS
+            ):
+                continue
+            partial = dict(self._lane_partial.get(rn, {}))
+            if "Lap" in update:
+                raw_lap = update["Lap"]
+                lap = (
+                    int(str(raw_lap).strip())
+                    if not isinstance(raw_lap, bool)
+                    and isinstance(raw_lap, (int, str))
+                    and str(raw_lap).strip().isdecimal()
+                    else None
+                )
+                if lap is None or lap < 1:
+                    self._lane_partial.pop(rn, None)
+                    continue
+                if lap != partial.get("lap"):
+                    partial = {"lap": lap}
+            if "Duration" in update:
+                raw_duration = update["Duration"]
+                duration = (
+                    self._parse_float(raw_duration)
+                    if not isinstance(raw_duration, bool)
+                    else None
+                )
+                if duration is None or not math.isfinite(duration) or duration <= 0:
+                    partial.pop("pit_lane_time", None)
+                else:
+                    partial["pit_lane_time"] = duration
+            self._lane_partial[rn] = partial
+            if "lap" not in partial or "pit_lane_time" not in partial:
+                continue
+            changed |= self._add_stop(
+                rn,
+                {
+                    **partial,
+                    "timestamp": None,
+                    "pit_stop_time": None,
+                    "source": "PitLaneTimeCollection",
+                },
+            )
+        if changed:
+            self._schedule_deliver()
 
     def _ingest_pitstopseries(self, msg: dict) -> None:
         pit_times = (msg or {}).get("PitTimes")
@@ -4812,10 +4983,20 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
                 self._add_stop(
                     pitstop.get("RacingNumber") or rn,
                     {
-                        "lap": pitstop.get("Lap"),
-                        "timestamp": item.get("Timestamp"),
-                        "pit_stop_time": pitstop.get("PitStopTime"),
-                        "pit_lane_time": pitstop.get("PitLaneTime"),
+                        **{
+                            field: pitstop[key]
+                            for field, key in (
+                                ("lap", "Lap"),
+                                ("pit_stop_time", "PitStopTime"),
+                                ("pit_lane_time", "PitLaneTime"),
+                            )
+                            if key in pitstop
+                        },
+                        **(
+                            {"timestamp": item["Timestamp"]}
+                            if "Timestamp" in item
+                            else {}
+                        ),
                     },
                 )
 
@@ -4878,7 +5059,7 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
                 ((rn, self._by_car.get(rn, [])) for rn in sorted_car_numbers),
                 key=lambda kv: int(str(kv[0])),
             ):
-                lst = list(stops or [])
+                lst = deepcopy(stops or [])
                 fallback_count = int(self._driver_pit_counts.get(str(rn), 0))
                 stop_count = max(len(lst), fallback_count)
                 ident = self._get_identity(str(rn))
@@ -4908,7 +5089,7 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
                         len(stops or []),
                         int(self._driver_pit_counts.get(rn, 0)),
                     ),
-                    "stops": list(stops or []),
+                    "stops": deepcopy(stops or []),
                 }
             try:
                 total = sum(
@@ -4958,6 +5139,13 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
                 bus.subscribe(
                     "PitStopSeries",
                     _wrap_delayed_handler(self, self._on_bus_pitstopseries),
+                )
+            )
+        with suppress(Exception):
+            self._unsubs.append(
+                bus.subscribe(
+                    "PitLaneTimeCollection",
+                    _wrap_delayed_handler(self, self._on_bus_pit_lane_times),
                 )
             )
         if self._drivers_coord is not None:
@@ -7869,9 +8057,8 @@ def _reset_replay_sensitive_coordinator_state(coordinator: Any) -> None:
 
     if isinstance(coordinator, LapCountCoordinator):
         _clear_delayed_ingest_state(coordinator)
-        coordinator._last_message = None
-        coordinator.data_list = []
-        coordinator.async_set_updated_data(None)
+        coordinator._live_session_key = None
+        coordinator._reset_store()
         return
 
     if isinstance(coordinator, PitStopCoordinator):

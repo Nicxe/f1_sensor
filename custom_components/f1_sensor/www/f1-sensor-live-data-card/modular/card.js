@@ -713,13 +713,22 @@ export class F1SensorCard extends LitElement {
       }
       if (module.type === 'pit_stops') {
         Object.assign(model, sessionData.pitStopsModel(viewHass, viewEntry, effective, focus));
+        const notices = [];
         if (model.source.status !== 'available') {
           const auth = data.source(viewHass, viewEntry, 'f1tv_token_status');
           const authNeedsAttention = auth.status === 'available' && ['expired', 'invalid', 'rejected', 'refresh_failed'].includes(String(auth.state).toLowerCase());
           if (authNeedsAttention) model.capabilityMessage = this.w('modular.f1tv_access_needs_attention_so_live_pit_stop_data_is_hidden_replay_data_remains');
           else if (module.options.show_availability_notice !== false) model.capabilityMessage = this.w('modular.pit_stop_timing_needs_f1tv_access_and_a_supported_feed_or_an_archived_replay');
+        } else {
+          if (model.countRows.length) notices.push(this.w('modular.pit_counts_without_details'));
+          if (model.rows.length && model.partialDetails) notices.push(this.w('modular.partial_pit_history'));
+          if (!model.rows.length && !model.countRows.length) model.emptyMessage = !model.filtered && model.reportedTotal > 0
+            ? this.w('modular.pit_total_without_driver_records', { count: model.reportedTotal })
+            : this.w('modular.no_pit_records_received');
         }
-        if (module.fields.includes('pit_delta')) model.notice = this.w('modular.estimated_lap_loss_the_longer_of_the_in_out_laps_minus_the_median_reference');
+        if (model.laneOnly) notices.push(this.w('modular.pit_lane_without_stationary'));
+        if (model.rows.length && module.fields.includes('pit_delta')) notices.push(this.w('modular.estimated_lap_loss_the_longer_of_the_in_out_laps_minus_the_median_reference'));
+        model.notice = notices.join(' ');
       }
       if (module.type === 'team_radio') {
         Object.assign(model, teamRadioData.teamRadioModel(viewHass, viewEntry, effective, focus));
