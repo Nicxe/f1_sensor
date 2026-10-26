@@ -56,21 +56,36 @@ export function pitStopsModel(hass, entry, module, focus = {}) {
   const positionSource = source(hass, entry, 'driver_positions');
   const statuses = new Map(positionSource.status === 'available' ? records(positionSource.attributes.drivers).map(item => {
     const rn = key(item.racing_number);
-    return [rn, text(item.status) ?? (item.in_pit === true ? 'in_pit' : null)];
+    const status = text(item.status);
+    return [rn, status === 'pit_in' ? 'in_pit' : status ?? (item.in_pit === true ? 'in_pit' : null)];
   }).filter(([rn]) => rn) : []);
-  const rows = [];
-  for (const [rn, raw] of Object.entries(object(selected.attributes.cars))) {
-    const car = object(raw), identity = person(people, rn);
+  const rows = [], countRows = [], sources = new Set(), partialCars = new Set();
+  const cars = selected.status === 'available' ? object(selected.attributes.cars) : {};
+  for (const [rn, raw] of Object.entries(cars)) {
+    const car = object(raw), identity = person(people, rn), reportedCount = count(car.count);
     const stops = unique(records(car.stops).map((stop, index) => {
       const lap = count(stop.lap), time = stamp(stop.timestamp);
+      const timingSource = stop.source === 'PitLaneTimeCollection' ? stop.source : 'PitStopSeries';
+      sources.add(timingSource);
       return { ...identity, id: `${rn}:${time ?? `lap-${lap ?? 'unknown'}-${index}`}`, status: statuses.get(rn) ?? null, stop_lap: lap,
         event_time: time, stop_time: seconds(stop.pit_stop_time), lane_time: seconds(stop.pit_lane_time),
-        pit_delta: number(stop.pit_delta), pit_count: count(car.count), sourceOrder: index };
+        pit_delta: number(stop.pit_delta), pit_count: reportedCount, source: timingSource, sourceOrder: index };
     }));
+    if (reportedCount !== null && !stops.length) countRows.push({ ...identity, status: statuses.get(rn) ?? null, pit_count: reportedCount });
+    if (reportedCount !== null && reportedCount > stops.length) partialCars.add(rn);
     stops.sort((a, b) => a.event_time && b.event_time ? a.event_time.localeCompare(b.event_time) || a.sourceOrder - b.sourceOrder : a.sourceOrder - b.sourceOrder);
     rows.push(...(module.options.content === 'latest_stop' ? stops.slice(-1) : stops));
   }
-  return { ...selectRows(rows, module, focus), allRows: rows, source: selected, countKind: 'stops', context: context(hass, entry, selected) };
+  const selection = selectRows(rows, module, focus), counts = selectRows(countRows, module, focus);
+  const selectedSources = new Set(selection.rows.map(row => row.source));
+  if (counts.rows.length) selectedSources.add('TimingData / DriverRaceInfo');
+  const sourceContext = context(hass, entry, selected);
+  sourceContext.source = [...selectedSources].join(' · ') || (sources.size ? [...sources].join(' · ') : null);
+  return { ...selection, allRows: rows, countRows: counts.rows, countTotal: counts.total,
+    reportedTotal: selected.status === 'available' ? count(selected.state) : null,
+    partialDetails: [...selection.rows, ...counts.rows].some(row => partialCars.has(row.number)),
+    laneOnly: selection.rows.some(row => row.source === 'PitLaneTimeCollection' && row.stop_time === null),
+    source: selected, countKind: 'stops', context: sourceContext };
 }
 
 export function incidentsModel(hass, entry, module, focus = {}) {

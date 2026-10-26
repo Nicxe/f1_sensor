@@ -142,7 +142,8 @@ test('Pit Stops conversion transfers status and availability controls into the l
   }));
   await page.getByRole('button', { name: 'Review conversion', exact: true }).click();
   const preview = page.locator('f1-sensor-card');
-  await expect(preview.getByRole('columnheader', { name: 'Status', exact: true })).toBeVisible();
+  await expect(preview.getByRole('columnheader', { name: 'Current status', exact: true })).toBeVisible();
+  await expect(preview.getByRole('columnheader', { name: 'Status', exact: true })).toHaveCount(0);
   await expect(preview.getByText('On track', { exact: true }).first()).toBeVisible();
   await page.locator('summary').filter({ hasText: 'Transferred settings' }).click();
   for (const key of ['show_availability_notice', 'show_status']) await expect(page.getByText(key, { exact: true })).toBeVisible();
