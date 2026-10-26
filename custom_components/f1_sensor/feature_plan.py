@@ -131,10 +131,10 @@ FEATURE_DEPENDENCIES: dict[str, FeatureDependency] = {
         coordinators=("team_radio", "session_info"),
     ),
     "pitstops": _dependency(
-        "SessionInfo",
+        *_DRIVER_STREAMS,
         "PitStopSeries",
-        "DriverList",
-        coordinators=("pitstops",),
+        "PitLaneTimeCollection",
+        coordinators=("pitstops", "drivers"),
     ),
     "championship_prediction": _dependency(
         "ChampionshipPrediction",

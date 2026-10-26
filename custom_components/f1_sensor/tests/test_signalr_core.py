@@ -387,6 +387,7 @@ def test_no_auth_live_stream_contract_excludes_gated_and_replay_only_streams():
         "ChampionshipPrediction",
         "TeamRadio",
         "PitStopSeries",
+        "PitLaneTimeCollection",
     )
     assert REPLAY_ONLY_STREAMS == ("LapHistory",)
 

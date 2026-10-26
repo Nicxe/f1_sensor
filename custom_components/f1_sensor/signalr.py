@@ -56,6 +56,7 @@ AUTH_GATED_LIVE_STREAMS = (
     "ChampionshipPrediction",
     "TeamRadio",
     "PitStopSeries",
+    "PitLaneTimeCollection",
 )
 
 REPLAY_ONLY_STREAMS: tuple[str, ...] = ("LapHistory",)
