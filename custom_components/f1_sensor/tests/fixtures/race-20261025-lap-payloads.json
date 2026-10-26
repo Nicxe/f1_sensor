@@ -1,0 +1,10 @@
+{
+  "initial": {
+    "CurrentLap": 1,
+    "TotalLaps": 56,
+    "_kf": true
+  },
+  "incremental": {
+    "CurrentLap": 2
+  }
+}

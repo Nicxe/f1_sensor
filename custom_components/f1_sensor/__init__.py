@@ -4175,9 +4175,12 @@ class LapCountCoordinator(DataUpdateCoordinator):
             delay_controller=delay_controller,
             live_state=live_state,
         )
+        self._session_info_unsub = None
+        self._live_session_key = None
 
     async def async_close(self, *_):
         self._unsub = _call_unsub(self._unsub)
+        self._session_info_unsub = _call_unsub(self._session_info_unsub)
         self._deliver_handle = _cancel_handle(self._deliver_handle)
         self._delay_listener = _call_unsub(self._delay_listener)
         self._live_state_unsub = _call_unsub(self._live_state_unsub)
@@ -4206,9 +4209,32 @@ class LapCountCoordinator(DataUpdateCoordinator):
             return
         self._deliver(msg)
 
+    def _on_sessioninfo(self, payload: dict) -> None:
+        session_key = _stream_session_key(payload)
+        if session_key is None or session_key == self._live_session_key:
+            return
+        changed = self._live_session_key is not None
+        self._live_session_key = session_key
+        if changed:
+            # Keep later frames already queued for the new session.
+            self._reset_store()
+
+    def _reset_store(self) -> None:
+        self._last_message = None
+        self.data_list = []
+        self.async_set_updated_data(None)
+
     def _deliver(self, msg: dict) -> None:
         if _is_no_spoiler_blocked(self):
             return
+        current = self._last_message
+        msg = dict(msg)
+        if (
+            "TotalLaps" not in msg
+            and isinstance(current, dict)
+            and "TotalLaps" in current
+        ):
+            msg["TotalLaps"] = current["TotalLaps"]
         self.available = True
         self._last_message = msg
         self.data_list = [msg]
@@ -4224,10 +4250,17 @@ class LapCountCoordinator(DataUpdateCoordinator):
 
     async def async_config_entry_first_refresh(self):
         await super().async_config_entry_first_refresh()
+        bus = self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")
         try:
-            self._unsub = (
-                self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")
-            ).subscribe("LapCount", _wrap_delayed_handler(self, self._on_bus_message))  # type: ignore[attr-defined]
+            self._session_info_unsub = bus.subscribe(
+                "SessionInfo", _wrap_delayed_handler(self, self._on_sessioninfo)
+            )
+        except Exception:
+            self._session_info_unsub = None
+        try:
+            self._unsub = bus.subscribe(
+                "LapCount", _wrap_delayed_handler(self, self._on_bus_message)
+            )
         except Exception:
             self._unsub = None
 
@@ -4237,6 +4270,7 @@ class LapCountCoordinator(DataUpdateCoordinator):
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
         if reason == "init":
             return
+        previous_replay_mode = self._replay_mode
         self._replay_mode = _is_replay_delay_reason(reason)
         if self._replay_mode:
             _clear_delayed_ingest_state(self)
@@ -4244,12 +4278,11 @@ class LapCountCoordinator(DataUpdateCoordinator):
             _clear_delayed_ingest_state(self)
             return
         self.available = is_live
-        if not is_live:
+        if not is_live or previous_replay_mode != self._replay_mode:
             _clear_delayed_ingest_state(self)
-            self._last_message = None
-            self.data_list = []
+            self._live_session_key = None
             # Notify entities to clear their state
-            self.async_set_updated_data(self._last_message)
+            self._reset_store()
 
 
 class TeamRadioCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
@@ -7869,9 +7902,8 @@ def _reset_replay_sensitive_coordinator_state(coordinator: Any) -> None:
 
     if isinstance(coordinator, LapCountCoordinator):
         _clear_delayed_ingest_state(coordinator)
-        coordinator._last_message = None
-        coordinator.data_list = []
-        coordinator.async_set_updated_data(None)
+        coordinator._live_session_key = None
+        coordinator._reset_store()
         return
 
     if isinstance(coordinator, PitStopCoordinator):
