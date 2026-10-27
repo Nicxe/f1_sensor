@@ -31,7 +31,7 @@ jobs:
       stable_sha: ${{ steps.refs.outputs.stable_sha }}
       beta_sha: ${{ steps.refs.outputs.beta_sha }}
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.workflow_sha }}
           persist-credentials: false
@@ -60,7 +60,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Check out trusted publication tools
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: publication-tools
           ref: ${{ github.workflow_sha }}
@@ -70,14 +70,14 @@ jobs:
           sparse-checkout-cone-mode: false
           persist-credentials: false
       - name: Check out the pinned stable channel
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: stable-docs
           ref: ${{ needs.refs.outputs.stable_sha }}
           fetch-depth: 0
           persist-credentials: false
       - name: Check out the pinned beta channel
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: beta-docs
           ref: ${{ needs.refs.outputs.beta_sha }}
@@ -147,7 +147,7 @@ jobs:
     outputs:
       published: ${{ steps.deployment.outcome == 'success' }}
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.workflow_sha }}
           persist-credentials: false

@@ -13,7 +13,7 @@ jobs:
     # Preserve the documentation check budget even when browser setup is slow.
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: tested
           persist-credentials: false
