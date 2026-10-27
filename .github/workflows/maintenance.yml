@@ -37,7 +37,7 @@ jobs:
           custom_components/f1_sensor/tests/test_release_websocket_load.py
           custom_components/f1_sensor/tests/test_release_replay_load.py
           -m performance --durations=0
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         with:
           name: weekly-python
@@ -67,7 +67,7 @@ jobs:
         env:
           TEST_PROFILE: minimum
         run: python scripts/run_ci_tests.py
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         with:
           name: weekly-python-minimum
@@ -108,7 +108,7 @@ jobs:
         env:
           F1_BROWSER: webkit
         run: npx playwright test --grep 'mounts and unmounts|keyboard actions|timezone wins|clear always'
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: failure()
         with:
           name: weekly-browser
