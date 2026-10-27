@@ -94,7 +94,7 @@ jobs:
               core.setOutput(`${channel}_version_file`, fs.existsSync(file) ? file : 'publication-tools/.node-version');
             }
       - name: Use the pinned stable channel Node version
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: ${{ steps.runtime.outputs.stable_version_file }}
           cache: npm
@@ -109,7 +109,7 @@ jobs:
           F1_DOCS_BASE_URL: /f1_sensor/
           F1_DOCS_CHANNEL: stable
       - name: Use the pinned beta channel Node version
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: ${{ steps.runtime.outputs.beta_version_file }}
           cache: npm
