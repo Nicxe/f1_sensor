@@ -117,9 +117,10 @@ async def test_replay_year_select_handles_year_state_and_lifecycle() -> None:
 @pytest.mark.parametrize(
     ("status", "placeholder"),
     [
+        (None, "Press Refresh to load sessions for 2026"),
         ("no_data", "No data for 2026"),
         ("error", "Session list unavailable"),
-        ("loading", "No sessions for 2026"),
+        ("ok", "No sessions for 2026"),
     ],
 )
 async def test_replay_session_select_builds_options_and_placeholders(

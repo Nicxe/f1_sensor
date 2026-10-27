@@ -1,14 +1,25 @@
 """Acceptance cases for required checks and branch routing."""
 
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
 from scripts.ci_policy import (
     JOBS,
+    audit_context,
     branch_error,
+    dependency_maintenance_commit,
     gate_errors,
     hotfix_matches_dev,
+    main,
     main_promotion_release_error,
+    release_product_checks,
+    release_triggering_commits,
     select_jobs,
     should_deploy,
 )
@@ -30,6 +41,200 @@ def pull(base, head, fork=False):
             "user": {"login": "contributor"},
         }
     }
+
+
+class PromotionHistoryTests(unittest.TestCase):
+    """Exercise promotion policy against commit contents in real Git histories."""
+
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.repository = Path(temporary.name)
+        previous = Path.cwd()
+        os.chdir(self.repository)
+        self.addCleanup(os.chdir, previous)
+        self.git("init", "-b", "main")
+        self.git("config", "user.name", "Policy Test")
+        self.git("config", "user.email", "policy@example.invalid")
+        self.git("config", "commit.gpgsign", "false")
+        self.package = {
+            "name": "policy-fixture",
+            "scripts": {"test": "node --test"},
+            "devDependencies": {"tool": "1.0.0"},
+        }
+        self.write("package.json", json.dumps(self.package))
+        self.write("package-lock.json", '{"lockfileVersion": 3, "version": "1"}')
+        for path in (
+            "requirements-dev.txt",
+            "requirements/ha-current.txt",
+            "requirements/ha-minimum.txt",
+        ):
+            self.write(path, "example==1.0.0\n")
+        self.write("custom_components/f1_sensor/sensor.py", "VALUE = 1\n")
+        self.write("custom_components/f1_sensor/manifest.json", '{"version":"1"}')
+        self.commit("chore: Establish stable baseline")
+        self.git("tag", "v1.0.0")
+        self.git("switch", "-c", "beta")
+        self.write("custom_components/f1_sensor/sensor.py", "VALUE = 2\n")
+        self.commit("feat(integration): Prepare the next release")
+        self.git("switch", "main")
+
+    def git(self, *arguments):
+        return subprocess.run(
+            ["git", *arguments], check=True, capture_output=True, text=True
+        ).stdout.strip()
+
+    def write(self, path, text):
+        target = self.repository / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text)
+
+    def commit(self, message):
+        self.git("add", "--all")
+        self.git("commit", "--allow-empty", "-m", message)
+        return self.git("rev-parse", "HEAD")
+
+    def promotion_error(self):
+        event = pull("main", "beta")
+        event["pull_request"]["base"]["sha"] = self.git("rev-parse", "main")
+        event["pull_request"]["head"]["sha"] = self.git("rev-parse", "beta")
+        return main_promotion_release_error(event)
+
+    def test_dependency_security_fixes_allow_promotion_without_subject_exceptions(self):
+        self.write("package-lock.json", '{"lockfileVersion": 3, "version": "2"}')
+        self.commit("fix: Refresh a newly discovered vulnerable dependency")
+        self.package["overrides"] = {"future-package": "9.4.7"}
+        self.write("package.json", json.dumps(self.package))
+        self.write("package-lock.json", '{"lockfileVersion": 3, "version": "3"}')
+        self.commit("fix(build): Apply a future dependency security repair")
+        self.assertEqual(self.promotion_error(), "")
+        # Promotion permission must not silently change semantic-release analysis.
+        self.assertEqual(len(release_triggering_commits("v1.0.0..main")), 2)
+
+    def test_python_development_dependency_fixes_allow_promotion(self):
+        for path in (
+            "requirements-dev.txt",
+            "requirements/ha-current.txt",
+            "requirements/ha-minimum.txt",
+        ):
+            self.write(path, "example==1.0.1\n")
+            self.commit(f"fix: Refresh {path} dependencies")
+        self.assertEqual(self.promotion_error(), "")
+
+    def test_security_subject_does_not_exempt_runtime_or_mixed_changes(self):
+        self.write("custom_components/f1_sensor/sensor.py", "VALUE = 9\n")
+        sha = self.commit("fix(security): Update vulnerable dependency versions")
+        self.assertIn(sha[:7], self.promotion_error())
+        self.write("package-lock.json", '{"lockfileVersion": 3, "version": "2"}')
+        self.write("custom_components/f1_sensor/sensor.py", "VALUE = 10\n")
+        mixed = self.commit("fix(security): Update vulnerable dependency versions")
+        self.assertIn(mixed[:7], self.promotion_error())
+
+    def test_reverted_runtime_change_remains_blocking(self):
+        self.write("custom_components/f1_sensor/sensor.py", "VALUE = 9\n")
+        sha = self.commit("feat(integration): Add an accidental stable feature")
+        self.git("revert", "--no-edit", sha)
+        self.assertEqual(self.git("diff", "v1.0.0", "main"), "")
+        self.assertIn(sha[:7], self.promotion_error())
+
+    def test_runtime_manifest_dependencies_remain_blocking(self):
+        self.write(
+            "custom_components/f1_sensor/manifest.json",
+            '{"version":"1", "requirements":["runtime==2"]}',
+        )
+        sha = self.commit("fix: Update vulnerable dependency versions")
+        self.assertIn(sha[:7], self.promotion_error())
+
+    def test_package_execution_changes_remain_blocking(self):
+        self.package["scripts"]["test"] = "node unreviewed-script.js"
+        self.write("package.json", json.dumps(self.package))
+        sha = self.commit("fix: Apply latest security dependency overrides")
+        self.assertIn(sha[:7], self.promotion_error())
+
+    def test_breaking_dependency_commits_remain_blocking(self):
+        for index, message in enumerate(
+            (
+                "fix!: Refresh security tooling",
+                "fix: Refresh security tooling\n\nBREAKING CHANGE: Update local setup.",
+                "fix: Refresh security tooling\n\nBREAKING-CHANGE: Update local setup.",
+            )
+        ):
+            self.write("package-lock.json", json.dumps({"revision": index}))
+            sha = self.commit(message)
+            self.assertIn(sha[:7], self.promotion_error())
+
+    def test_breaking_declarations_on_other_commit_types_remain_blocking(self):
+        for index, message in enumerate(
+            (
+                "chore(deps)!: Refresh security tooling",
+                "chore(deps): Refresh tooling\n\nBREAKING CHANGE: Update local setup.",
+                "build: Refresh tooling\n\nBREAKING-CHANGE: Update local setup.",
+            )
+        ):
+            self.write("package-lock.json", json.dumps({"revision": index}))
+            sha = self.commit(message)
+            self.assertIn(sha[:7], self.promotion_error())
+
+    def test_performance_product_changes_remain_blocking(self):
+        self.write("custom_components/f1_sensor/sensor.py", "VALUE = 9\n")
+        sha = self.commit("perf(integration): Reduce sensor processing cost")
+        self.assertIn(sha[:7], self.promotion_error())
+
+    def test_added_deleted_or_renamed_inputs_remain_blocking(self):
+        self.git("mv", "package-lock.json", "unreviewed-lock.json")
+        sha = self.commit("fix: Refresh dependency lockfile")
+        self.assertIn(sha[:7], self.promotion_error())
+        self.write("package-lock.json", '{"lockfileVersion": 3}')
+        added = self.commit("fix: Restore dependency lockfile")
+        self.assertIn(added[:7], self.promotion_error())
+        (self.repository / "requirements-dev.txt").unlink()
+        deleted = self.commit("fix: Remove vulnerable tooling dependencies")
+        self.assertIn(deleted[:7], self.promotion_error())
+
+    def test_dependency_file_mode_and_symlink_changes_remain_blocking(self):
+        path = self.repository / "requirements-dev.txt"
+        path.chmod(0o755)
+        mode_change = self.commit("fix: Refresh tooling requirements")
+        self.assertFalse(dependency_maintenance_commit(mode_change))
+        path.unlink()
+        path.symlink_to("requirements/ha-current.txt")
+        symlink_change = self.commit("fix: Refresh tooling requirements")
+        self.assertFalse(dependency_maintenance_commit(symlink_change))
+
+    def test_empty_and_malformed_dependency_commits_remain_blocking(self):
+        empty = self.commit("fix: Refresh security tooling")
+        self.assertIn(empty[:7], self.promotion_error())
+        self.write("package-lock.json", "invalid json")
+        malformed = self.commit("fix: Refresh dependency lockfile")
+        self.assertIn(malformed[:7], self.promotion_error())
+
+    def test_unreadable_history_never_allows_promotion(self):
+        event = pull("main", "beta")
+        event["pull_request"]["base"]["sha"] = "f" * 40
+        self.assertIn("Could not verify", main_promotion_release_error(event))
+
+    def test_dependency_inspection_failure_never_grants_permission(self):
+        for result in (Mock(returncode=1), OSError("unreadable repository")):
+            with (
+                self.subTest(result=result),
+                patch("scripts.ci_policy.subprocess.run") as run,
+            ):
+                if isinstance(result, OSError):
+                    run.side_effect = result
+                else:
+                    run.return_value = result
+                with self.assertRaises(RuntimeError):
+                    dependency_maintenance_commit("a" * 40)
+
+    def test_merge_commit_is_not_exempted_as_dependency_maintenance(self):
+        self.git("switch", "-c", "dependency-repair")
+        self.write("package-lock.json", '{"lockfileVersion": 3, "version": "2"}')
+        self.commit("chore: Refresh tooling lockfile")
+        self.git("switch", "main")
+        self.git(
+            "merge", "--no-ff", "dependency-repair", "-m", "fix: Merge security repair"
+        )
+        self.assertIn("fix: Merge security repair", self.promotion_error())
 
 
 class PolicyTests(unittest.TestCase):
@@ -94,9 +299,12 @@ class PolicyTests(unittest.TestCase):
                     ("b" * 40, "fix: Correct an unintended stable behavior"),
                 ],
             ),
+            patch(
+                "scripts.ci_policy.dependency_maintenance_commit", return_value=False
+            ),
         ):
             error = main_promotion_release_error(event)
-        self.assertIn("2 unreleased feat/fix", error)
+        self.assertIn("2 unreleased release-relevant", error)
         self.assertIn("v5.7.3", error)
         self.assertIn("aaaaaaa", error)
 
@@ -108,6 +316,40 @@ class PolicyTests(unittest.TestCase):
         ):
             self.assertEqual(main_promotion_release_error(event), "")
         self.assertEqual(main_promotion_release_error(pull("beta", "dev")), "")
+
+    def test_release_boundary_uses_semantic_release_exclusions(self):
+        output = (
+            "\0".join(
+                [
+                    f"{'a' * 40}\x00fix(compatibility): Verify release tags from GitHub directly",
+                    f"{'b' * 40}\x00fix(compatibility): tolerate delayed release assets",
+                    f"{'c' * 40}\x00fix(ci): wait for promotion verification registration",
+                    f"{'d' * 40}\x00fix: Correct an unintended stable behavior\n\nA multiline explanation.\n",
+                    f"{'e' * 40}\x00chore: Explain tooling usage\n\nExample:\nfix: This is body text.\n",
+                ]
+            )
+            + "\0"
+        )
+        with patch(
+            "scripts.ci_policy.subprocess.run",
+            return_value=Mock(returncode=0, stdout=output),
+        ):
+            self.assertEqual(
+                release_triggering_commits("v6.0.0..main"),
+                [("d" * 40, "fix: Correct an unintended stable behavior")],
+            )
+
+    def test_release_history_with_malformed_record_boundaries_is_rejected(self):
+        for output in ("missing delimiters", f"{'a' * 40}\0fix: Missing terminator"):
+            with (
+                self.subTest(output=output),
+                patch(
+                    "scripts.ci_policy.subprocess.run",
+                    return_value=Mock(returncode=0, stdout=output),
+                ),
+                self.assertRaises(RuntimeError),
+            ):
+                release_triggering_commits("v1.0.0..main")
 
     def test_owner_prs_can_target_maintenance_branches_without_routing_warnings(self):
         event = pull("main", "maintenance/dependency-ci-recovery")
@@ -180,20 +422,20 @@ class PolicyTests(unittest.TestCase):
         selected = select_jobs(
             ["docs/help.md"], pull("content", "fix", True), "pull_request", ""
         )
-        self.assertEqual(
-            {k for k, v in selected.items() if v}, {"automation", "documentation"}
-        )
+        self.assertEqual({k for k, v in selected.items() if v}, {"documentation"})
 
     def test_unknown_change_and_workflow_change_run_everything(self):
         for files in [
             None,
             ["unknown.config"],
             [".github/workflows/ci.yml"],
+            [".github/workflows/unknown.yml"],
+            [".github/actions/unknown/action.yml"],
             ["package-lock.json"],
         ]:
             self.assertEqual(
                 select_jobs(files, {}, "push", "dev"),
-                {job: job not in ("blueprints", "audit") for job in JOBS},
+                {job: job != "blueprints" for job in JOBS},
             )
 
     def test_runtime_and_blueprints(self):
@@ -206,18 +448,192 @@ class PolicyTests(unittest.TestCase):
         self.assertTrue(selected["blueprints"])
         self.assertFalse(selected["backend"])
 
-    def test_promotions_skip_audit_but_release_commits_keep_all_checks(self):
+    def test_promotions_use_the_same_impact_contract_as_development(self):
         for base, head in [("beta", "dev"), ("main", "beta")]:
             self.assertEqual(
                 select_jobs(["docs/help.md"], pull(base, head), "pull_request", ""),
-                {job: job not in ("blueprints", "audit") for job in JOBS},
+                {job: job == "documentation" for job in JOBS},
             )
             self.assertEqual(
                 select_jobs(["docs/help.md"], {}, "push", base),
-                {job: job != "blueprints" for job in JOBS},
+                {job: job == "documentation" for job in JOBS},
             )
+            runtime = select_jobs(
+                ["custom_components/f1_sensor/coordinator.py"],
+                pull(base, head),
+                "pull_request",
+                "",
+            )
+            self.assertEqual(
+                {job for job, enabled in runtime.items() if enabled},
+                {
+                    "lint",
+                    "backend",
+                    "frontend",
+                    "translations",
+                    "validation",
+                    "package",
+                },
+            )
+            self.assertFalse(runtime["documentation"])
+            self.assertFalse(runtime["audit"])
 
-    def test_audit_is_maintenance_only_for_prs_and_development_pushes(self):
+    def test_issue_metadata_changes_do_not_run_product_browsers_or_security(self):
+        for path in (
+            ".github/scripts/issue-automation.cjs",
+            ".github/workflows/issue-version-check.yml",
+            ".github/ISSUE_TEMPLATE/bug_report.yml",
+            "ci_tests/issues.test.cjs",
+        ):
+            for branch in ("dev", "beta", "main"):
+                with self.subTest(path=path, branch=branch):
+                    selected = select_jobs([path], {}, "push", branch)
+                    self.assertEqual(
+                        {job for job, enabled in selected.items() if enabled},
+                        {"automation"},
+                    )
+
+    def test_audit_evaluator_changes_keep_full_security_enforcement(self):
+        for path in (
+            "scripts/npm_audit_semver.cjs",
+            ".github/workflows/security-health.yml",
+            ".github/workflows/security-snapshot.yml",
+        ):
+            with self.subTest(path=path):
+                files = [path]
+                selected = select_jobs(files, pull("beta", "dev"), "pull_request", "")
+                self.assertTrue(selected["audit"])
+                self.assertTrue(selected["automation"])
+                self.assertEqual(
+                    audit_context(pull("beta", "dev"), "pull_request", "", files),
+                    ("gate", ""),
+                )
+
+    def test_only_release_executions_may_delegate_docs_and_full_security(self):
+        selected = select_jobs(None, {}, "workflow_dispatch", "beta")
+        product = release_product_checks(
+            selected, separate_delivery=True, event_name="push", branch="beta"
+        )
+        self.assertFalse(product["documentation"])
+        self.assertFalse(product["audit"])
+        for job in ("backend", "frontend", "validation", "package"):
+            self.assertTrue(product[job])
+        self.assertTrue(selected["documentation"])
+        self.assertTrue(selected["audit"])
+        for event, branch in (("pull_request", "beta"), ("push", "dev")):
+            with (
+                self.subTest(event=event, branch=branch),
+                self.assertRaises(ValueError),
+            ):
+                release_product_checks(
+                    selected, separate_delivery=True, event_name=event, branch=branch
+                )
+
+    def test_dev_verification_only_is_limited_to_an_explicit_manual_dry_run(self):
+        selected = select_jobs(None, {}, "workflow_dispatch", "dev")
+        product = release_product_checks(
+            selected,
+            separate_delivery=True,
+            event_name="workflow_dispatch",
+            branch="dev",
+            verification_only=True,
+        )
+        self.assertFalse(product["documentation"])
+        self.assertFalse(product["audit"])
+        for job in ("backend", "frontend", "validation", "package"):
+            self.assertTrue(product[job])
+        self.assertTrue(selected["documentation"])
+        self.assertTrue(selected["audit"])
+        for event, branch, verification_only in (
+            ("push", "dev", True),
+            ("pull_request", "dev", True),
+            ("workflow_dispatch", "content", True),
+            ("workflow_dispatch", "dev", False),
+            ("workflow_dispatch", "dev", "false"),
+        ):
+            with (
+                self.subTest(event=event, branch=branch, flag=verification_only),
+                self.assertRaises(ValueError),
+            ):
+                release_product_checks(
+                    selected,
+                    separate_delivery=True,
+                    event_name=event,
+                    branch=branch,
+                    verification_only=verification_only,
+                )
+
+    def test_plan_accepts_explicit_false_and_keeps_immutable_delivery_inputs(self):
+        for release in (False, "false"):
+            with (
+                self.subTest(release=release),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                event = Path(directory) / "event.json"
+                output = Path(directory) / "output.txt"
+                event.write_text(json.dumps({"inputs": {"release": release}}))
+                with (
+                    patch.dict(
+                        os.environ,
+                        {
+                            "GITHUB_EVENT_PATH": str(event),
+                            "GITHUB_OUTPUT": str(output),
+                            "GITHUB_EVENT_NAME": "workflow_dispatch",
+                            "GITHUB_REF_NAME": "dev",
+                            "CI_SEPARATE_DELIVERY": "true",
+                        },
+                    ),
+                    patch.object(sys, "argv", ["ci_policy.py", "plan"]),
+                    patch("scripts.ci_policy.changed_files", return_value=None),
+                    patch(
+                        "scripts.ci_policy.subprocess.check_output",
+                        side_effect=["a" * 40, "b" * 40],
+                    ),
+                ):
+                    self.assertEqual(main(), 0)
+                values = dict(
+                    line.split("=", 1) for line in output.read_text().splitlines()
+                )
+                self.assertEqual(values["tested_sha"], "a" * 40)
+                self.assertEqual(values["tested_tree"], "b" * 40)
+                self.assertEqual(values["audit_mode"], "gate")
+                self.assertEqual(values["deploy"], "false")
+                selected = json.loads(values["selected"])
+                self.assertFalse(selected["documentation"])
+                self.assertFalse(selected["audit"])
+
+    def test_dev_plan_rejects_missing_default_true_and_other_release_input_values(self):
+        for inputs in (
+            {},
+            {"release": True},
+            {"release": "true"},
+            {"release": 0},
+            {"release": None},
+            {"release": "False"},
+        ):
+            with (
+                self.subTest(inputs=inputs),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                event = Path(directory) / "event.json"
+                event.write_text(json.dumps({"inputs": inputs}))
+                with (
+                    patch.dict(
+                        os.environ,
+                        {
+                            "GITHUB_EVENT_PATH": str(event),
+                            "GITHUB_EVENT_NAME": "workflow_dispatch",
+                            "GITHUB_REF_NAME": "dev",
+                            "CI_SEPARATE_DELIVERY": "true",
+                        },
+                    ),
+                    patch.object(sys, "argv", ["ci_policy.py", "plan"]),
+                    patch("scripts.ci_policy.changed_files", return_value=None),
+                    self.assertRaises(ValueError),
+                ):
+                    main()
+
+    def test_dependency_changes_are_audited_before_and_after_merge(self):
         for base in ("dev", "content", "beta", "main"):
             for fork in (False, True):
                 event = pull(base, "change", fork)
@@ -226,11 +642,76 @@ class PolicyTests(unittest.TestCase):
                         with self.subTest(
                             base=base, fork=fork, files=files, trigger=trigger
                         ):
-                            self.assertFalse(
+                            self.assertTrue(
                                 select_jobs(files, event, trigger, base)["audit"]
                             )
         for branch in ("dev", "content"):
-            self.assertFalse(select_jobs(None, {}, "push", branch)["audit"])
+            self.assertTrue(select_jobs(None, {}, "push", branch)["audit"])
+
+    def test_valid_target_catalog_changes_use_only_translation_contract(self):
+        files = [
+            "custom_components/f1_sensor/translations/sv.json",
+            "custom_components/f1_sensor/www/f1-sensor-live-data-card/localization/locales/pt-BR.json",
+        ]
+        for event_name in ("push", "pull_request"):
+            selected = select_jobs(files, {}, event_name, "dev")
+            self.assertEqual(
+                {k for k, enabled in selected.items() if enabled}, {"translations"}
+            )
+        for extra in (
+            "custom_components/f1_sensor/translations/en.json",
+            "custom_components/f1_sensor/auth.py",
+            "custom_components/f1_sensor/www/f1-sensor-live-data-card/localization/index.js",
+            "custom_components/f1_sensor/translations/invalid_name.json",
+        ):
+            selected = select_jobs([*files, extra], {}, "push", "dev")
+            self.assertTrue(selected["backend"])
+            self.assertTrue(selected["frontend"])
+
+    def test_security_scope_is_identical_for_preflight_and_release_targets(self):
+        self.assertEqual(
+            audit_context(
+                pull("dev", "deps"), "pull_request", "", ["package-lock.json"]
+            ),
+            ("introduced", "a" * 40),
+        )
+        self.assertEqual(
+            audit_context({"before": "c" * 40}, "push", "dev", ["package-lock.json"]),
+            ("introduced", "c" * 40),
+        )
+        for base, head in [("beta", "dev"), ("main", "beta")]:
+            self.assertEqual(
+                audit_context(
+                    pull(base, head), "pull_request", "", ["package-lock.json"]
+                ),
+                ("introduced", "a" * 40),
+            )
+            self.assertEqual(
+                audit_context(
+                    {"before": "c" * 40}, "push", base, ["package-lock.json"]
+                ),
+                ("introduced", "c" * 40),
+            )
+        for event, trigger, branch in (
+            (pull("beta", "dev"), "pull_request", ""),
+            (pull("main", "beta"), "pull_request", ""),
+            ({}, "push", "beta"),
+            ({}, "workflow_dispatch", "dev"),
+            ({"before": "0" * 40}, "push", "dev"),
+        ):
+            self.assertEqual(audit_context(event, trigger, branch), ("gate", ""))
+        self.assertEqual(
+            audit_context(pull("dev", "deps"), "pull_request", "", None), ("gate", "")
+        )
+        self.assertEqual(
+            audit_context(
+                pull("dev", "policy"),
+                "pull_request",
+                "",
+                ["quality/npm-audit-policy.json"],
+            ),
+            ("gate", ""),
+        )
 
     def test_release_and_maintenance_audit_selection_is_preserved(self):
         for trigger, branch in (

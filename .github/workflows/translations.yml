@@ -1,0 +1,36 @@
+name: Translation contracts
+on:
+  workflow_call:
+    inputs:
+      checkout_ref:
+        type: string
+        default: ''
+permissions:
+  contents: read
+jobs:
+  translations:
+    runs-on: ubuntu-latest
+    # Keep slow runner package mirrors from consuming the verification budget.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.checkout_ref || github.sha }}
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version-file: .python-version
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Use the project npm version
+        run: node scripts/install_project_npm.cjs
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Install Chromium and system dependencies
+        timeout-minutes: 15
+        run: npx playwright install --with-deps chromium
+      - name: Verify translation structure, placeholders and fallbacks
+        timeout-minutes: 8
+        run: python3 scripts/run_check.py translations

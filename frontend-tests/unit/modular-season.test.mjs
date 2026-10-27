@@ -69,13 +69,13 @@ test('documents merge the latest item, reject executable links and preserve unsp
 
 test('compound and track graphics retain readable identities independently of color', () => {
   for (const [input, letter] of [['soft', 'S'], ['M', 'M'], ['HARD', 'H'], ['INTER', 'I'], ['FULL WET', 'W']]) {
-    const meta = compoundMeta(input); assert.equal(meta.letter, letter); assert.ok(meta.asset); assert.ok(meta.label.sv);
+    const meta = compoundMeta(input); assert.equal(meta.letter, letter); assert.ok(meta.asset); assert.equal(typeof meta.label, 'string');
   }
   assert.equal(compoundMeta('experimental').asset, null); assert.equal(compoundMeta(null).letter, '?');
   for (const value of ['CLEAR', 'YELLOW', 'RED', 'SC', 'VSC', 'BLUE', 'CHEQUERED']) {
-    const flag = trackSignal(value); assert.ok(flag.symbol); assert.ok(flag.label.sv); assert.ok(contrast(flag.color, flag.ink) >= 4.5);
+    const flag = trackSignal(value); assert.ok(flag.symbol); assert.equal(typeof flag.label, 'string'); assert.ok(contrast(flag.color, flag.ink) >= 4.5);
   }
-  assert.equal(trackSignal('unexpected'), null); assert.notEqual(trackSignal('YELLOW').label.en, 'Recorded time');
+  assert.equal(trackSignal('unexpected'), null); assert.notEqual(trackSignal('YELLOW').label, 'Recorded time');
 });
 
 test('progression retains actual round alignment, zero points and gaps instead of bridging missing results', async () => {

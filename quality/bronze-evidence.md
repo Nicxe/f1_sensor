@@ -10,6 +10,6 @@ This register links the internal quality-scale checklist to executable evidence.
 | Integration-owned polling and unavailable state | coordinator, weather, Jolpica and live-window suites |
 | Reauthentication and repair paths | `tests/test_auth.py`, `tests/test_auth_http.py`, `tests/test_auth_repairs.py` |
 | User-facing translations | `scripts/check_translations.py` plus browser rendering and fallback checks |
-| Frontend actions and accessibility | `frontend-tests/quality.spec.js` across 23 cards, 23 editors and the compatibility alias |
+| Frontend actions and accessibility | `frontend-tests/quality.spec.js` checks every discovered card/editor and independently protects the supported-card baseline |
 
-CI requires at least 95 percent total line coverage of shipped Python code. Test helpers and offline geometry maintenance tools are excluded. Branch coverage is reported without a blocking threshold. Individual modules have no generic percentage gate; authentication, migration, lifecycle, live windows and replay require behavior regressions. This policy does not claim compliance with the Home Assistant Silver rule requiring over 95 percent coverage for each module. Build and automation tools have separate offline tests.
+CI requires strictly more than 95 percent runtime Python line coverage globally. Module and branch percentages are review signals, not independent percentage gates. Test helpers and offline geometry maintenance tools are excluded. Authentication, migration, lifecycle, live windows, replay and thread safety retain blocking behavior regressions; percentages alone do not establish correctness or official Home Assistant certification. Build and automation tools have separate offline tests.

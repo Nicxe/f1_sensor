@@ -5,9 +5,9 @@ const { execFileSync } = require('node:child_process');
 const run = (command, args, options = {}) =>
   execFileSync(command, args, { encoding: 'utf8', ...options });
 
-const releaseTagPattern = /^v\d+\.\d+\.\d+(?:-beta\.\d+)?$/;
+const releaseTagPattern = /^v\d+\.\d+\.\d+(?:-(?:beta|rc)\.\d+)?$/;
 
-function previousReleaseTag(branch, head = 'HEAD', excludeTag) {
+function previousReleaseTag(branch, head = 'HEAD', excludeTag, stage) {
   return run('git', ['tag', '--merged', head, '--sort=-version:refname'])
     .trim()
     .split('\n')
@@ -16,7 +16,7 @@ function previousReleaseTag(branch, head = 'HEAD', excludeTag) {
         tag !== head &&
         tag !== excludeTag &&
         releaseTagPattern.test(tag) &&
-        (branch === 'beta' ? tag.includes('-beta.') : !tag.includes('-beta.'))
+        (branch === 'beta' && stage !== 'rc' ? /-(?:beta|rc)\./.test(tag) : !tag.includes('-'))
     );
 }
 
@@ -37,8 +37,8 @@ function excludedLogin(login) {
   );
 }
 
-function commitHashes(branch, head = 'HEAD', excludeTag) {
-  const previous = previousReleaseTag(branch, head, excludeTag);
+function commitHashes(branch, head = 'HEAD', excludeTag, stage) {
+  const previous = previousReleaseTag(branch, head, excludeTag, stage);
   return run('git', [
     'rev-list',
     '--reverse',
@@ -49,12 +49,12 @@ function commitHashes(branch, head = 'HEAD', excludeTag) {
     .filter(Boolean);
 }
 
-function collectContributors({ branch, head = 'HEAD', excludeTag }) {
+function collectContributors({ branch, head = 'HEAD', excludeTag, stage }) {
   const repository = process.env.GITHUB_REPOSITORY;
   if (!repository) return [];
 
   const logins = new Set();
-  for (const hash of commitHashes(branch, head, excludeTag)) {
+  for (const hash of commitHashes(branch, head, excludeTag, stage)) {
     const output = run('gh', [
       'api',
       `repos/${repository}/commits/${hash}/pulls`,
@@ -70,9 +70,9 @@ function collectContributors({ branch, head = 'HEAD', excludeTag }) {
   return [...logins].sort((a, b) => a.localeCompare(b));
 }
 
-function setReleaseContributors({ branch, head = 'HEAD', excludeTag }) {
+function setReleaseContributors({ branch, head = 'HEAD', excludeTag, stage }) {
   try {
-    const contributors = collectContributors({ branch, head, excludeTag });
+    const contributors = collectContributors({ branch, head, excludeTag, stage });
     process.env.RELEASE_CONTRIBUTORS = JSON.stringify(contributors);
     console.log(
       contributors.length

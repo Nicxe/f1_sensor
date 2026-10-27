@@ -1,3 +1,7 @@
+# Home Assistant environment boundary
+
+F1 Sensor development and testing use HAdev at `hadev.local` (`/Volumes/config`), through the `mcp__homeassistant` toolset. The separate `mcp__homeassistant_native` toolset reaches Niklas's live production Home Assistant and is reserved for work in `/Volumes/config-1`. Never use the live server to develop, test, or debug this integration. Verify the target instance if a tool's identity is uncertain.
+
 # F1 Sensor source parity
 
 A completed F1 Sensor code change must exist in both the local Git checkout and
@@ -14,6 +18,57 @@ tree contains unrelated differences. Before reporting the code change as
 complete, require a byte-for-byte comparison of the complete integration trees
 to return no differences, excluding only runtime-generated cache artifacts such
 as `__pycache__`, `*.pyc`, and `.DS_Store`.
+
+# Local dev CI preflight
+
+Run `npm run setup:ci` to create the isolated Python, Node, npm, browser and
+workflow-validator environment. Versions and dependency inputs are recorded;
+preflight refreshes stale setup rather than trusting an existing directory.
+Before considering a code change ready for commit, run
+`npm run verify:changed`. It uses the same check commands and selection policy
+as GitHub, including the global runtime coverage gate for integration changes. Fix every
+failure before reporting readiness. `--print-plan` and a no-change result are
+not successful verification.
+
+Run `npm run verify:dev` for a complete development snapshot. Before proposing
+a substantial promotion, run `npm run verify:release -- --target beta` or
+`npm run verify:release -- --target main` for its actual destination. These full
+profiles include the security gate. Evidence in `test-results/verification.json`
+is valid only for the recorded source fingerprint, tools and dependencies;
+changes during a run invalidate the result. Never describe local success as
+GitHub success, a published release, or a Home Assistant runtime activation.
+
+Weblate target-language text and the number of supported languages are not
+fixed test contracts. Test catalog structure, placeholders, delivered assets,
+locale selection and per-key fallback against independent fixtures or current
+catalogs. Target-language-only changes use the translations lane; changes to
+English sources, localization code or tooling retain broader verification.
+Obsolete target keys that Weblate has not removed yet are cleanup warnings;
+invalid catalogs and placeholder errors for active keys remain blocking.
+
+CI separates product verification, documentation delivery and release security
+readiness. Route checks by actual impact, including promotions; a metadata-only
+workflow edit does not justify every product test. Keep behavioral regressions,
+HACS/hassfest and package integrity blocking when applicable. Per-file coverage
+percentages, broad pixel diffs and timing benchmarks are review evidence, not
+universal merge requirements. Do not replace product behavior with source-code
+spelling assertions or require a repaired dependency/retired exception to remain.
+
+Run blocking browser tests without assertion retries. Rendering auto-wait is
+expected; a workflow's first attempt is not proof of a test's first-attempt pass.
+Report all selected local failures in one verification attempt. Missing trusted
+remote evidence is not a successful check, and a failed dependency-health or
+publication job must not be described as a product regression.
+
+Publication changes must preserve the normal `dev → beta → main` rollout.
+Beta documentation must work on its first promotion without requiring the new
+publisher on `main`. Test that transition explicitly. Keep Pages failures out
+of product verification and never publish unverified companion-branch content.
+
+HACS and hassfest remain GitHub-only verification gates. Local verification is
+the agent's pre-commit quality gate; passing it does not replace the required
+remote checks after the user pushes with GitHub Desktop. A failed selected job
+cannot be excused as a skipped check or replaced by unrelated green evidence.
 
 If `/Volumes/config` is unavailable or unrelated changes prevent safe
 synchronization, report the limitation and do not call the code change

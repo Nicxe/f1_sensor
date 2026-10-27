@@ -1,0 +1,20 @@
+{
+  "a11y.open_details": "Öffne Details für {title}",
+  "card.calendar.description": "Vollständiger Formel-1-Saisonkalender",
+  "card.calendar.name": "F1 Saison Kalender",
+  "card.driver_laps.description": "Fahrertabelle mit letzter Runde, bester Runde und einstellbarem Rundenverlauf",
+  "card.driver_laps.name": "F1-Rundenzeiten der Fahrer",
+  "card.driver_standings.description": "Fahrermeisterschaftsstand mit eingeblendeter Rennprognose",
+  "card.driver_standings.name": "Formel-1-Fahrerwertung",
+  "card.fia.description": "Rennwochenend-Dokumente mit direkten Links und Veröffentlichungszeiten",
+  "card.fia.name": "F1 FIA Dokumente",
+  "card.investigations.description": "Untersuchungen und Strafen, nach Fahrern gruppiert",
+  "card.investigations.name": "F1 Untersuchungen und Strafen",
+  "card.lap_positions.description": "Rundenpositionsdiagramm für abgeschlossene Rennen",
+  "card.lap_positions.name": "Formel-1-Positionsverlauf pro Runde",
+  "card.live_session.description": "Live-Sitzung, Wetter, Streckenstatus und Rundenfortschritt",
+  "card.live_session.name": "F1-Live-Session-Status",
+  "card.modular.description": "Erstelle deine eigene Formel-1-Ansicht mit anpassbaren Modulen, Farben und barrierefreier Zeitmessung",
+  "card.modular.name": "F1 Sensor",
+  "card.next_race.description": "Countdown zum nächsten Rennen, Zeitplan, Wetter und Rennhistorie"
+}

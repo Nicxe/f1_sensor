@@ -1,6 +1,6 @@
 const version = new URL(import.meta.url).searchParams.get('v');
 const load = path => import(`${path}${version ? `?v=${encodeURIComponent(version)}` : ''}`);
-let chartLoading, mapLoading, telemetryLoading;
+let chartLoading, mapLoading, telemetryLoading, teamRadioLoading;
 const [{ LitElement, html, css, repeat }, { FIELDS, fieldDefinition, moduleFields, moduleFocusKinds, INCIDENT_SIGNALS, label, translatePlural, words }, { formatTime, formatTimingGap, formatDelta, timingStatus, SIGNALS, statusColors, safeImageUrl, compoundMeta, trackSignal, logoDimensions }, { getTeamLogoMeta }] = await Promise.all([
   load('../f1-lit-3.3.2.js'), load('./catalog.js'), load('./semantics.js'), load('../platform/branding.js'),
 ]);
@@ -222,7 +222,7 @@ export class F1ModuleView extends LitElement {
   constructor() { super(); this.expanded = ''; this.timingExpanded = []; this.clearConfirm = false; this.raceQueue = []; }
   disconnectedCallback() { super.disconnectedCallback(); clearTimeout(this.raceTimer); clearTimeout(this.clearTimer); }
   get language() { return this.settings?.language ?? 'en'; }
-  w(en, sv) { return words(this.language, en, sv); }
+  w(source, replacements = {}) { return words(this.language, source, replacements); }
   willUpdate() {
     if (this.seekDraft && this.seekDraft.context !== this.model?.controlContext) this.seekDraft = null;
     if (this.syncDraft && this.syncDraft.context !== this.model?.controlContext) this.syncDraft = null;
@@ -324,6 +324,7 @@ export class F1ModuleView extends LitElement {
       case 'replay': return this.replay();
       case 'archive': return this.archive();
       case 'telemetry': return this.telemetry();
+      case 'team_radio': return this.teamRadio();
       case 'race_control': return this.events();
       default: return this.empty(this.w('modular.this_module_needs_a_newer_card_version_its_settings_are_preserved'));
     }
@@ -362,6 +363,17 @@ export class F1ModuleView extends LitElement {
     this.telemetryNode.model = this.model; this.telemetryNode.module = this.module; this.telemetryNode.settings = this.settings;
     return this.telemetryNode;
   }
+  teamRadio() {
+    if (!this.teamRadioNode) {
+      this.teamRadioNode = document.createElement('f1-team-radio-view');
+      this.teamRadioNode.setAttribute('part', 'team-radio');
+      teamRadioLoading ??= load('./team-radio-view.js').catch(error => { teamRadioLoading = null; throw error; });
+      teamRadioLoading.catch(() => { this.teamRadioError = true; this.requestUpdate(); });
+    }
+    if (this.teamRadioError) return this.empty(this.w('modular.team_radio_view_could_not_be_loaded_reload_the_dashboard'));
+    this.teamRadioNode.model = this.model; this.teamRadioNode.module = this.module; this.teamRadioNode.settings = this.settings;
+    return this.teamRadioNode;
+  }
   archive() {
     const model = this.model, options = this.module.options;
     const picker = (key, title, value, choices) => html`<label class="module-picker"><span>${title}</span><select aria-label=${title} data-focus=${`archive-${key}`} .value=${String(value ?? '')} @change=${event => this.choose(key, key === 'year' ? Number(event.target.value) : event.target.value)}>
@@ -390,14 +402,14 @@ export class F1ModuleView extends LitElement {
   contextLine() {
     const context = this.model.context;
     if (!context) return '';
-    const details = this.module.options?.show_context === false ? [] : [context?.meeting, context?.session ? words(this.language, context.session, context.session) : null, context?.season, context?.round ? `${this.w('modular.round')} ${context.round}` : null].filter(Boolean);
+    const details = this.module.options?.show_context === false ? [] : [context?.meeting, context?.session ? words(this.language, context.session) : null, context?.season, context?.round ? `${this.w('modular.round')} ${context.round}` : null].filter(Boolean);
     const status = this.module.options?.show_status === false ? null : context?.status;
     const rawSource = this.module.options?.show_source ? context?.source : null;
-    const sourceNames = { live_timing_gridpos: ['GridPos', 'GridPos'], live_timing_qualifying: ['Live qualifying', 'Livekval'], live_timing_archive: ['Archive', 'Arkiv'] };
-    const sourceLabel = rawSource ? sourceNames[rawSource] ? this.w(...sourceNames[rawSource]) : String(rawSource).replaceAll('_', ' ') : null;
+    const sourceNames = { live_timing_gridpos: 'GridPos', live_timing_qualifying: 'Live qualifying', live_timing_archive: 'Archive' };
+    const sourceLabel = rawSource ? sourceNames[rawSource] ? this.w(sourceNames[rawSource]) : String(rawSource).replaceAll('_', ' ') : null;
     if (!details.length && !status && !sourceLabel) return '';
     return html`<p class="module-context">${details.join(' · ')}
-      ${status ? html`<span class="provenance">${this.w('modular.grid_status')}: ${this.w(({ confirmed: 'Confirmed', provisional: 'Provisional', completed: 'Completed', unavailable: 'Unavailable', pending: 'Pending' })[status] ?? status, ({ confirmed: 'Bekräftad', provisional: 'Preliminär', completed: 'Avslutad', unavailable: 'Uppgift saknas', pending: 'Inväntas' })[status] ?? status)}</span>` : ''}
+      ${status ? html`<span class="provenance">${this.w('modular.grid_status')}: ${this.w(({ confirmed: 'Confirmed', provisional: 'Provisional', completed: 'Completed', unavailable: 'Unavailable', pending: 'Pending' })[status] ?? status)}</span>` : ''}
       ${sourceLabel ? html`<span class="provenance">${this.w('modular.source')}: ${sourceLabel}</span>` : ''}
     </p>`;
   }
@@ -409,13 +421,14 @@ export class F1ModuleView extends LitElement {
   choose(key, value) { this.dispatchEvent(new CustomEvent('f1-module-choice', { bubbles: true, composed: true, detail: { module: this.module.id, key, value } })); }
   field(id) {
     const field = fieldDefinition(this.module, id);
-    return this.model?.sessionKind === 'sprint_qualifying' && /^q[123]_/.test(id) ? { ...field, label: { en: field.label.en.replace('Q', 'SQ'), sv: field.label.sv.replace('Q', 'SQ') } } : field;
+    if (this.module.type === 'pit_stops' && id === 'status') return { ...field, label: 'modular.current_driver_status' };
+    return this.model?.sessionKind === 'sprint_qualifying' && /^q[123]_/.test(id) ? { ...field, label: field.label.replace('Q', 'SQ') } : field;
   }
   resultCell(row, id) {
     const type = this.field(id)?.type;
     if (id === 'analysis_source') {
-      const names = { f1_live: ['Live timing', 'Livetiming'], f1_replay: ['Recorded replay', 'Inspelad replay'], jolpica: ['Published results', 'Publicerade resultat'], TimingData: ['Timing', 'Timing'], RaceControlMessages: ['Race Control message', 'Race Control-meddelande'], pit_context: ['Pit stop context', 'Depåsammanhang'], pit_state: ['Pit status', 'Depåstatus'], close_gap: ['Small gap', 'Litet avstånd'], consecutive_gap_frames: ['Repeated gap observations', 'Upprepade avståndsobservationer'], penalty_context: ['Penalty context', 'Bestraffningssammanhang'], lap_difference: ['Different laps', 'Olika varv'], track_status: ['Track status', 'Banstatus'], gap_opened: ['Gap increased', 'Avståndet ökade'], SessionStatus: ['Session status', 'Sessionsstatus'], session_finished: ['Session finished', 'Sessionen avslutades'], stint_transition: ['Stint change', 'Stintbyte'], lap_position_before: ['Position before stops', 'Placering före stopp'], lap_position_after: ['Position after stops', 'Placering efter stopp'] };
-      return [row.source_provider, ...(row.source_signals ?? [])].filter(Boolean).map(value => names[value] ? this.w(...names[value]) : value).join(' · ') || '—';
+      const names = { f1_live: 'Live timing', f1_replay: 'Recorded replay', jolpica: 'Published results', TimingData: 'Timing', RaceControlMessages: 'Race Control message', pit_context: 'Pit stop context', pit_state: 'Pit status', close_gap: 'Small gap', consecutive_gap_frames: 'Repeated gap observations', penalty_context: 'Penalty context', lap_difference: 'Different laps', track_status: 'Track status', gap_opened: 'Gap increased', SessionStatus: 'Session status', session_finished: 'Session finished', stint_transition: 'Stint change', lap_position_before: 'Position before stops', lap_position_after: 'Position after stops' };
+      return [row.source_provider, ...(row.source_signals ?? [])].filter(Boolean).map(value => names[value] ? this.w(names[value]) : value).join(' · ') || '—';
     }
     if (type === 'compound_list') return row[id]?.length ? html`<div class="cell-stack">${row[id].map(compound => this.tyreCell(compound))}</div>` : '—';
     if (type === 'driver_paces' || type === 'driver_laps') return row[id]?.length ? html`<ul class="stint-runs">${row[id].map(item => html`<li>${item.driver}: ${type === 'driver_paces' ? formatTime(item.value) : item.value ?? '—'}</li>`)}</ul>` : '—';
@@ -423,13 +436,13 @@ export class F1ModuleView extends LitElement {
     if (type === 'lap_range') return row[id] ? `${row[id].map(value => new Intl.NumberFormat(this.language, { maximumFractionDigits: 1 }).format(value)).join('–')} ${this.w('modular.laps')}` : '—';
     if (id === 'pace_leader' && row.equal_pace) return this.w('modular.equal_median_pace');
     if (type === 'strategy_outcome') {
-      const labels = { order_held: ['Order held', 'Ordningen behölls'], undercut_succeeded: ['Undercut observed', 'Observerad undercut'], overcut_succeeded: ['Overcut observed', 'Observerad overcut'] };
-      return labels[row[id]] ? this.w(...labels[row[id]]) : row[id] ?? '—';
+      const labels = { order_held: 'Order held', undercut_succeeded: 'Undercut observed', overcut_succeeded: 'Overcut observed' };
+      return labels[row[id]] ? this.w(labels[row[id]]) : row[id] ?? '—';
     }
     if (type === 'battle_status') {
-      const states = { active_battle: ['●', 'Active battle estimate', 'Uppskattad pågående närkamp'], battle_started: ['▶', 'Battle started', 'Närkamp började'], battle_ended: ['■', 'Battle ended', 'Närkamp avslutades'], position_exchange: ['↔', 'Position exchange', 'Positionsbyte'], likely_on_track_overtake: ['↑', 'Likely on-track overtake', 'Trolig omkörning på banan'] };
+      const states = { active_battle: ['●', 'Active battle estimate'], battle_started: ['▶', 'Battle started'], battle_ended: ['■', 'Battle ended'], position_exchange: ['↔', 'Position exchange'], likely_on_track_overtake: ['↑', 'Likely on-track overtake'] };
       const signal = states[row[id]];
-      return html`<span class="chip"><span aria-hidden="true">${signal?.[0] ?? '·'}</span><span>${signal ? this.w(signal[1], signal[2]) : row[id] ?? '—'}</span></span>`;
+      return html`<span class="chip"><span aria-hidden="true">${signal?.[0] ?? '·'}</span><span>${signal ? this.w(signal[1]) : row[id] ?? '—'}</span></span>`;
     }
     if (type === 'exchange_positions') return row[id]?.length ? html`<ul class="stint-runs">${row[id].map(item => html`<li>${item.driver}: ${item.before ?? '—'} → ${item.after ?? '—'}</li>`)}</ul>` : '—';
     if (type === 'degradation') return row[id] == null ? '—' : html`<span class="time">${formatDelta(row[id])} ${this.w('modular.s_lap')}</span>`;
@@ -460,15 +473,15 @@ export class F1ModuleView extends LitElement {
     }
     if (id === 'position_change') {
       const change = row[id];
-      return change ? html`<span>${change.symbol} ${Math.abs(change.value)}</span><span class="provenance">${this.w('modular.from_starting_grid')}</span><span class="sr">${this.w(({ gain: 'places gained', loss: 'places lost', equal: 'unchanged' })[change.status], ({ gain: 'vunna platser', loss: 'förlorade platser', equal: 'oförändrat' })[change.status])}</span>` : '—';
+      return change ? html`<span>${change.symbol} ${Math.abs(change.value)}</span><span class="provenance">${this.w('modular.from_starting_grid')}</span><span class="sr">${this.w(({ gain: 'places gained', loss: 'places lost', equal: 'unchanged' })[change.status])}</span>` : '—';
     }
     if (id === 'team' && this.model.teams) return this.driverCell({ ...row, driver: row.team, name: row.team });
     return this.cell(row, id);
   }
-  tableHeader(fields) {
+  tableHeader(fields, labels = {}) {
     const hidden = this.module.show_table_header === false;
     // Keep native column relationships when only the visible labels are hidden.
-    return html`<thead part="table-header" class=${hidden ? 'labels-hidden' : ''}><tr part="table-row">${repeat(fields, id => id, id => html`<th part="table-cell" scope="col"><span class=${hidden ? 'sr' : ''}>${label(this.field(id), this.language)}</span></th>`)}</tr></thead>`;
+    return html`<thead part="table-header" class=${hidden ? 'labels-hidden' : ''}><tr part="table-row">${repeat(fields, id => id, id => html`<th part="table-cell" scope="col"><span class=${hidden ? 'sr' : ''}>${labels[id] ?? label(this.field(id), this.language)}</span></th>`)}</tr></thead>`;
   }
   timingHeader(fields, laps) {
     const hidden = this.module.show_table_header === false;
@@ -480,16 +493,31 @@ export class F1ModuleView extends LitElement {
   results() {
     const rows = this.model.rows ?? [];
     const fields = this.module.fields.filter(id => moduleFields(this.module).includes(id));
+    const countSummary = this.module.type === 'pit_stops' ? this.pitCountSummary() : '';
     const selector = this.module.options.show_selector && this.model.choices?.length ? html`<label class="module-picker"><span>${this.w('modular.round')}</span><select aria-label=${this.w('modular.round')} data-focus="result-round" .value=${this.model.selected} @change=${event => this.choose('round', event.target.value)}>${this.model.choices.map(item => html`<option value=${item.id} .selected=${item.id === this.model.selected}>${item.id} · ${item.name}</option>`)}</select></label>` : '';
+    if (!rows.length && this.model.countRows?.length) return countSummary;
     if (!rows.length) return html`${selector}${this.empty(this.model.filtered ? this.w('modular.no_competitors_match_this_selection') : this.model.emptyMessage ?? this.w('modular.no_data_is_available_for_this_selection_yet'))}`;
     if (!fields.length) return this.empty(this.w('modular.choose_columns_in_the_editor'));
     if (this.module.type === 'results' && this.module.options.presentation === 'grid') return html`${selector}<ol class="result-grid" part="result-grid" aria-label=${this.module.title || this.model.title}>${repeat(rows, row => `${this.model.context?.season}:${this.model.context?.round}:${this.model.context?.session}:${row.id}`, row => html`<li part="result-card" data-driver=${row.id}><dl>${repeat(fields, id => id, id => html`<div><dt>${label(this.field(id), this.language)}</dt><dd>${this.resultCell(row, id)}</dd></div>`)}</dl></li>`)}</ol><p class="muted" style="margin-top:10px">${rows.length} ${this.w('modular.of')} ${this.model.total} ${this.w('modular.competitors')}</p>`;
-    return html`${selector}<div class="table-scroll" part="table-container" tabindex="0" role="region" aria-label=${`${this.module.title || this.model.title} · ${this.w('modular.scroll_horizontally_for_more_columns')}`}><table part="table">
+    return html`${selector}${countSummary}${this.model.countRows?.length ? html`<h3>${this.w('modular.recorded_stop_details')}</h3>` : ''}<div class="table-scroll" part="table-container" tabindex="0" role="region" aria-label=${`${this.module.title || this.model.title} · ${this.w('modular.scroll_horizontally_for_more_columns')}`}><table part="table">
       <caption class="sr">${this.module.title || this.model.title}</caption>${this.tableHeader(fields)}
-      <tbody>${repeat(rows, row => `${this.model.context?.season}:${this.model.context?.round}:${this.model.context?.session}:${row.id}`, row => html`<tr part="table-row" data-driver=${row.id}>${repeat(fields, id => id, id => html`<td part="table-cell">${row.derived && id === fields[0] ? html`<span class="provenance">${this.w('modular.derived_estimate')}</span>` : ''}${this.resultCell(row, id)}</td>`)}</tr>
+      <tbody>${repeat(rows, row => `${this.model.context?.season}:${this.model.context?.round}:${this.model.context?.session}:${row.id}`, row => html`<tr part="table-row" data-driver=${row.id}>${repeat(fields, id => id, id => html`<td part="table-cell">${row.derived && id === fields[0] ? html`<span class="provenance">${this.w('modular.derived_estimate')}</span>` : ''}${this.module.type === 'pit_stops' && row.source === 'PitLaneTimeCollection' && id === fields[0] ? html`<span class="provenance">${this.w('modular.pit_lane_timing_only')}</span>` : ''}${this.resultCell(row, id)}</td>`)}</tr>
       ${this.expanded === row.id ? html`<tr part="table-row"><td part="table-cell" class="details" colspan=${fields.length}><h3>${row.name} · ${row.team ?? '—'}</h3><dl>${fields.filter(id => !['driver', 'team'].includes(id)).map(id => html`<div><dt>${label(this.field(id), this.language)}</dt><dd>${this.resultCell(row, id)}</dd></div>`)}</dl></td></tr>` : ''}`)}</tbody>
     </table></div><div class="section-head" style="margin:10px 0 0"><span class="muted">${rows.length} ${this.w('modular.of')} ${this.model.total} ${this.model.countKind === 'stints' ? this.w('modular.stints') : this.model.countKind === 'stops' ? this.w('modular.stops') : this.model.countKind === 'compounds' ? this.w('modular.compounds') : this.model.countKind === 'comparisons' ? this.w('modular.comparisons') : this.model.countKind === 'events' ? this.w('modular.events') : this.w('modular.competitors')}</span>
       ${this.model.total > this.module.options.rows ? html`<button data-focus="result-count" @click=${() => this.choose('rows', rows.length < this.model.total ? (['pit_stops', 'incidents', 'timeline', 'strategy', 'battles'].includes(this.module.type) ? 500 : 100) : this.module.options.rows)}>${rows.length < this.model.total ? this.w('modular.show_all') : this.w('modular.show_fewer')}</button>` : ''}</div>`;
+  }
+  pitCountSummary() {
+    const rows = this.model.countRows ?? [];
+    if (!rows.length) return '';
+    // These are driver summaries, never synthetic stop events. Keep identity and
+    // the reported count visible even when only timing columns were configured.
+    const fields = ['driver', ...this.module.fields.filter(id => ['team', 'status'].includes(id)), 'pit_count'];
+    const title = this.w('modular.reported_pit_visits');
+    return html`<h3>${title}</h3><div class="table-scroll" part="table-container" tabindex="0" role="region" aria-label=${title}><table part="table" class="pit-count-summary">
+      <caption class="sr">${title}</caption>${this.tableHeader(fields, { pit_count: title })}
+      <tbody>${repeat(rows, row => `${this.model.context?.key}:${row.id}`, row => html`<tr part="table-row" data-count-driver=${row.id}>${repeat(fields, id => id, id => html`<td part="table-cell">${this.resultCell(row, id)}</td>`)}</tr>`)}</tbody>
+    </table></div><div class="section-head" style="margin:10px 0"><span class="muted">${rows.length} ${this.w('modular.of')} ${this.model.countTotal} ${this.w('modular.competitors')}</span>
+      ${this.model.countTotal > this.module.options.rows ? html`<button data-focus="pit-count-expand" @click=${() => this.choose('rows', 500)}>${this.w('modular.show_all')}</button>` : ''}</div>`;
   }
   strategy() {
     const rows = this.model.rows ?? [], presentation = this.module.options.presentation;
@@ -527,7 +555,7 @@ export class F1ModuleView extends LitElement {
       ${this.module.options.show_fia_logo ? html`<strong class="chip">FIA</strong>` : ''}
       ${this.module.options.show_race_context && context ? html`<span>${context}</span>` : ''}
       ${this.module.options.show_latest_badge ? html`<span class="chip">${this.w('modular.latest_first')}</span>` : ''}
-      ${this.module.options.show_count ? html`<span>${this.model.total} ${this.w(this.model.total === 1 ? 'document' : 'documents', this.model.total === 1 ? 'dokument' : 'dokument')}</span>` : ''}
+      ${this.module.options.show_count ? html`<span>${this.model.total} ${this.w(this.model.total === 1 ? 'document' : 'documents')}</span>` : ''}
     </p><div class="documents-scroll" style=${!latest && this.module.options.list_max_height ? `max-height:${this.module.options.list_max_height}px;overflow:auto` : ''}><ol class="documents">${repeat(rows, row => row.id, row => html`<li class=${this.module.options.document_coloring ? `tone-${documentTone(row.document_title)}` : ''}>
       ${this.module.fields.includes('document_number') && row.document_number ? html`<small>${this.w('modular.document')} ${row.document_number}</small>` : ''}
       ${this.module.fields.includes('document_title') ? row.url ? html`<a href=${row.url} target=${newTab ? '_blank' : '_self'} rel=${newTab ? 'noopener noreferrer' : ''}>${this.module.options.show_pdf_icon ? html`<ha-icon icon="mdi:file-pdf-box" aria-hidden="true"></ha-icon>` : ''}${row.document_title}${newTab ? html`<span class="sr"> · ${this.w('modular.opens_in_a_new_tab')}</span>` : ''}</a>` : html`<strong>${row.document_title}</strong><small>${this.w('modular.document_link_unavailable')}</small>` : ''}
@@ -579,38 +607,38 @@ export class F1ModuleView extends LitElement {
     const syncLabel = point => point.kind === 'lap' ? this.w('modular.lap_number_starts', { lap: point.value })
       : point.kind === 'sprint_qualifying_part' ? this.w('modular.sprint_qualifying_part_starts', { part: point.value })
         : this.w('modular.qualifying_part_starts', { part: point.value });
-    const stateNames = { idle: ['No replay loaded', 'Ingen replay laddad'], selected: ['Selected · ready to load', 'Vald · klar att ladda'], loading: ['Loading replay', 'Laddar replay'], ready: ['Loaded · ready to play', 'Laddad · klar att spela'], playing: ['Playing', 'Spelar'], paused: ['Paused', 'Pausad'], seeking: ['Seeking', 'Söker'], unknown: ['Replay status unavailable', 'Replaystatus saknas'] };
+    const stateNames = { idle: 'No replay loaded', selected: 'Selected · ready to load', loading: 'Loading replay', ready: 'Loaded · ready to play', playing: 'Playing', paused: 'Paused', seeking: 'Seeking', unknown: 'Replay status unavailable' };
     const clock = value => value == null ? '—' : `${Math.floor(value / 3600)}:${String(Math.floor(value % 3600 / 60)).padStart(2, '0')}:${String(Math.floor(value % 60)).padStart(2, '0')}`;
     const options = this.module.options, compact = options.display === 'compact';
     const showSecondary = options.secondary_selects && !compact, showStatus = options.status_details && !compact;
-    const selectorFields = [...(showSecondary ? [['year', 'Replay year', 'Replayår']] : []), ['session', 'Recorded session', 'Inspelad session'], ...(showSecondary && options.start_reference ? [['reference', 'Start reference', 'Startreferens']] : [])];
+    const selectorFields = [...(showSecondary ? [['year', 'Replay year']] : []), ['session', 'Recorded session'], ...(showSecondary && options.start_reference ? [['reference', 'Start reference']] : [])];
     const actionSymbol = { refresh: '↻', load: '↓', play: '▶', pause: 'Ⅱ', stop: '■' };
-    const actionLabel = (en, sv) => html`<span class=${options.show_button_labels ? '' : 'sr'}>${this.w(en, sv)}</span>`;
-    const send = (action, en, sv, symbol = actionSymbol[action]) => html`<button class=${options.show_button_labels ? '' : 'icon-only'} data-focus=${`replay-${action}`} aria-label=${this.w(en, sv)} title=${this.w(en, sv)} ?disabled=${disabled || !model.allowed[action]} @click=${() => this.replayAction(action)}><span aria-hidden="true">${symbol}</span>${actionLabel(en, sv)}</button>`;
-    return html`<p><strong>${model.selectedSession ?? this.w('modular.choose_a_recorded_session')}</strong><br><span class="chip">${this.w(...stateNames[model.replayState])}</span></p>
+    const actionLabel = sourceText => html`<span class=${options.show_button_labels ? '' : 'sr'}>${this.w(sourceText)}</span>`;
+    const send = (action, sourceText, symbol = actionSymbol[action]) => html`<button class=${options.show_button_labels ? '' : 'icon-only'} data-focus=${`replay-${action}`} aria-label=${this.w(sourceText)} title=${this.w(sourceText)} ?disabled=${disabled || !model.allowed[action]} @click=${() => this.replayAction(action)}><span aria-hidden="true">${symbol}</span>${actionLabel(sourceText)}</button>`;
+    return html`<p><strong>${model.selectedSession ?? this.w('modular.choose_a_recorded_session')}</strong><br><span class="chip">${this.w(stateNames[model.replayState])}</span></p>
       ${showStatus ? html`<p class="muted replay-scope">${this.w('modular.controls_replay_for_scope_changes_affect_every_dashboard_and_the_integration_s_automation_data', { scope: model.scope })}</p>` : ''}
       ${(fields.includes('replay_transport') || fields.includes('replay_progress')) && model.playerStatus !== 'available' ? html`<p class="muted">${model.playerStatus === 'disabled' ? this.w('modular.enable_the_replay_player_entity_in_f1_sensor_to_use_playback_controls') : this.w('modular.playback_controls_are_unavailable_because_the_replay_player_has_no_usable_state')}</p>` : ''}
       ${model.readonly ? html`<p class="muted">${model.frozen ? this.w('modular.resume_the_view_to_use_replay_controls') : this.w('modular.replay_controls_are_disabled_in_previews')}</p>` : ''}
       ${fields.includes('replay_progress') && model.duration !== null ? html`<div class="replay-progress"><span>${this.w('modular.from_replay_start')}: ${clock(model.position)} / ${clock(model.duration)}</span>
-        ${fields.includes('replay_transport') && options.seek_controls ? html`<label><span class="sr">${this.w('modular.replay_position_in_seconds')}</span><input data-focus="replay-seek" type="range" aria-label=${this.w('modular.replay_position_in_seconds')} min="0" max=${model.duration} step="1" .value=${String(target)} aria-valuetext=${clock(target)} ?disabled=${disabled || !model.allowed.seek} @input=${event => { this.seekDraft = { context: model.controlContext, value: Number(event.target.value) }; }}></label><div class="replay-controls" part="controls"><span>${this.w('modular.go_to')}: ${clock(target)}</span><button class=${options.show_button_labels ? '' : 'icon-only'} data-focus="replay-apply-seek" aria-label=${this.w('modular.go_to_replay_position')} title=${this.w('modular.go_to_replay_position')} ?disabled=${disabled || !model.allowed.seek || !this.seekDraft || target === model.position} @click=${() => { this.replayAction('seek', target); this.seekDraft = null; }}><span aria-hidden="true">↦</span>${actionLabel('Go to replay position', 'Gå till replayposition')}</button></div>` : html`<progress max=${model.duration} value=${model.position} aria-label=${this.w('modular.replay_progress')}></progress>`}
+        ${fields.includes('replay_transport') && options.seek_controls ? html`<label><span class="sr">${this.w('modular.replay_position_in_seconds')}</span><input data-focus="replay-seek" type="range" aria-label=${this.w('modular.replay_position_in_seconds')} min="0" max=${model.duration} step="1" .value=${String(target)} aria-valuetext=${clock(target)} ?disabled=${disabled || !model.allowed.seek} @input=${event => { this.seekDraft = { context: model.controlContext, value: Number(event.target.value) }; }}></label><div class="replay-controls" part="controls"><span>${this.w('modular.go_to')}: ${clock(target)}</span><button class=${options.show_button_labels ? '' : 'icon-only'} data-focus="replay-apply-seek" aria-label=${this.w('modular.go_to_replay_position')} title=${this.w('modular.go_to_replay_position')} ?disabled=${disabled || !model.allowed.seek || !this.seekDraft || target === model.position} @click=${() => { this.replayAction('seek', target); this.seekDraft = null; }}><span aria-hidden="true">↦</span>${actionLabel('Go to replay position')}</button></div>` : html`<progress max=${model.duration} value=${model.position} aria-label=${this.w('modular.replay_progress')}></progress>`}
       </div>` : ''}
       ${model.replayState === 'loading' ? html`<div class="replay-progress"><span>${this.w('modular.download')}: ${model.download !== null && model.download >= 0 && model.download <= 100 ? `${model.download}%` : '—'}</span></div>` : ''}
-      ${fields.includes('replay_transport') ? html`<div class="replay-controls" part="controls">${model.replayState === 'playing' ? send('pause', 'Pause replay', 'Pausa replay', 'Ⅱ') : send('play', 'Play replay', 'Spela replay', '▶')}
-        ${options.seek_controls ? html`<button class=${options.show_button_labels ? '' : 'icon-only'} data-focus="replay-back" aria-label=${this.w('modular.back_30_s')} title=${this.w('modular.back_30_s')} ?disabled=${disabled || !model.allowed.seek || model.position <= 0} @click=${() => this.replayAction('seek', Math.max(0, model.position - 30))}><span aria-hidden="true">−30</span>${actionLabel('Back 30 s', 'Bakåt 30 s')}</button>
-        <button class=${options.show_button_labels ? '' : 'icon-only'} data-focus="replay-forward" aria-label=${this.w('modular.forward_30_s')} title=${this.w('modular.forward_30_s')} ?disabled=${disabled || !model.allowed.seek || model.position >= model.duration} @click=${() => this.replayAction('seek', Math.min(model.duration, model.position + 30))}><span aria-hidden="true">+30</span>${actionLabel('Forward 30 s', 'Framåt 30 s')}</button>` : ''}
-        ${send('stop', 'Stop replay', 'Stoppa replay', '■')}</div>` : ''}
+      ${fields.includes('replay_transport') ? html`<div class="replay-controls" part="controls">${model.replayState === 'playing' ? send('pause', 'Pause replay', 'Ⅱ') : send('play', 'Play replay', '▶')}
+        ${options.seek_controls ? html`<button class=${options.show_button_labels ? '' : 'icon-only'} data-focus="replay-back" aria-label=${this.w('modular.back_30_s')} title=${this.w('modular.back_30_s')} ?disabled=${disabled || !model.allowed.seek || model.position <= 0} @click=${() => this.replayAction('seek', Math.max(0, model.position - 30))}><span aria-hidden="true">−30</span>${actionLabel('Back 30 s')}</button>
+        <button class=${options.show_button_labels ? '' : 'icon-only'} data-focus="replay-forward" aria-label=${this.w('modular.forward_30_s')} title=${this.w('modular.forward_30_s')} ?disabled=${disabled || !model.allowed.seek || model.position >= model.duration} @click=${() => this.replayAction('seek', Math.min(model.duration, model.position + 30))}><span aria-hidden="true">+30</span>${actionLabel('Forward 30 s')}</button>` : ''}
+        ${send('stop', 'Stop replay', '■')}</div>` : ''}
       ${fields.includes('replay_transport') && options.seek_controls && model.syncPoints.length ? html`<div class="replay-picker"><label><span>${this.w('modular.replay_sync_point')}</span><select data-focus="replay-sync" aria-label=${this.w('modular.replay_sync_point')} .value=${syncTarget} ?disabled=${disabled || !model.allowed.sync} @change=${event => { this.syncDraft = { context: model.controlContext, value: event.target.value }; }}>
         ${model.syncPoints.map(point => html`<option value=${point.id}>${syncLabel(point)} · ${clock(point.position)}</option>`)}
       </select></label></div><div class="replay-controls" part="controls"><span class="muted">${this.w('modular.choose_the_matching_lap_or_qualifying_part_when_it_starts_on_your_broadcast')}</span><button data-focus="replay-apply-sync" aria-label=${this.w('modular.sync_replay_to_point')} title=${this.w('modular.sync_replay_to_point')} ?disabled=${disabled || !model.allowed.sync || !syncTarget} @click=${() => { this.replayAction('sync', syncTarget); this.syncDraft = null; }}><span aria-hidden="true">↦</span>${actionLabel('modular.sync_replay_to_point')}</button></div>` : ''}
       ${fields.includes('replay_selection') ? html`<details class="analysis-explanation"><summary>${this.w('modular.choose_replay')}</summary>
         ${!model.canSelect ? html`<p class="muted">${this.w('modular.stop_the_loaded_replay_before_changing_its_year_session_or_start_reference')}</p>` : ''}
-        <div class="replay-picker">${selectorFields.map(([id, en, sv]) => {
+        <div class="replay-picker">${selectorFields.map(([id, sourceText]) => {
           const selected = model.selectors[id];
-          return html`<label><span>${this.w(en, sv)}</span><select data-focus=${`replay-${id}`} aria-label=${this.w(en, sv)} .value=${selected.state ?? ''} ?disabled=${disabled || !model.allowed[id]} @change=${event => this.replayAction(id, event.target.value)}>
+          return html`<label><span>${this.w(sourceText)}</span><select data-focus=${`replay-${id}`} aria-label=${this.w(sourceText)} .value=${selected.state ?? ''} ?disabled=${disabled || !model.allowed[id]} @change=${event => this.replayAction(id, event.target.value)}>
             ${!selected.options.includes(selected.state) ? html`<option value="">${this.w('modular.choose')}</option>` : ''}
             ${selected.options.map(value => html`<option value=${value} .selected=${value === selected.state}>${value}</option>`)}
           </select></label>`;
-        })}</div><div class="replay-controls" part="controls">${options.refresh ? send('refresh', 'Refresh session list', 'Uppdatera sessionslistan') : ''}${send('load', 'Load selected replay', 'Ladda vald replay')}</div>
+        })}</div><div class="replay-controls" part="controls">${options.refresh ? send('refresh', 'Refresh session list') : ''}${send('load', 'Load selected replay')}</div>
       </details>` : ''}
       ${model.downloadError ? html`<p role="alert">${this.w('modular.the_replay_download_failed_try_loading_the_selected_session_again')}</p>` : ''}
       ${model.indexError ? html`<p>${this.w('modular.the_session_list_could_not_be_retrieved_try_refreshing_it')}</p>` : ''}
@@ -631,18 +659,18 @@ export class F1ModuleView extends LitElement {
     if (item.type === 'rain_indicator') return item.value ? this.w('modular.yes_rain_detected') : this.w('modular.no_rain_detected');
     if (item.type === 'weather_condition') {
       const groups = [
-        [[0], 'weather-sunny', 'Clear sky', 'Klar himmel', '#e5a000'], [[1, 2], 'weather-partly-cloudy', 'Partly cloudy', 'Delvis molnigt', '#d59a24'],
-        [[3], 'weather-cloudy', 'Overcast', 'Mulet', '#78909c'], [[45, 48], 'weather-fog', 'Fog', 'Dimma', '#78909c'],
-        [[51, 53, 55], 'weather-rainy', 'Drizzle', 'Duggregn', '#298fcb'], [[61, 63, 65, 80, 81, 82], 'weather-pouring', 'Rain', 'Regn', '#298fcb'],
-        [[56, 57, 66, 67], 'weather-snowy-rainy', 'Freezing precipitation', 'Underkyld nederbörd', '#49a6c7'],
-        [[71, 73, 75, 77, 85, 86], 'weather-snowy', 'Snow', 'Snö', '#49a6c7'], [[95, 96, 99], 'weather-lightning-rainy', 'Thunderstorm', 'Åska', '#9975cf'],
+        [[0], 'weather-sunny', 'Clear sky', '#e5a000'], [[1, 2], 'weather-partly-cloudy', 'Partly cloudy', '#d59a24'],
+        [[3], 'weather-cloudy', 'Overcast', '#78909c'], [[45, 48], 'weather-fog', 'Fog', '#78909c'],
+        [[51, 53, 55], 'weather-rainy', 'Drizzle', '#298fcb'], [[61, 63, 65, 80, 81, 82], 'weather-pouring', 'Rain', '#298fcb'],
+        [[56, 57, 66, 67], 'weather-snowy-rainy', 'Freezing precipitation', '#49a6c7'],
+        [[71, 73, 75, 77, 85, 86], 'weather-snowy', 'Snow', '#49a6c7'], [[95, 96, 99], 'weather-lightning-rainy', 'Thunderstorm', '#9975cf'],
       ];
       const group = groups.find(([codes]) => codes.includes(item.value));
       if (!group) return this.w('modular.unknown_condition');
       const nightIcon = item.night && item.value <= 2;
       const icon = nightIcon ? item.value === 0 ? 'weather-night' : 'weather-night-partly-cloudy' : group[1];
-      const color = this.module.options.colored_icons ? nightIcon ? '#8498cf' : group[4] : 'inherit';
-      return html`<span class="weather-condition">${symbols ? html`<ha-icon class="weather-symbol" aria-hidden="true" icon=${`mdi:${icon}`} style=${`color:${color}`}></ha-icon>` : ''}<span class="weather-condition-text">${this.w(group[2], group[3])}</span></span>`;
+      const color = this.module.options.colored_icons ? nightIcon ? '#8498cf' : group[3] : 'inherit';
+      return html`<span class="weather-condition">${symbols ? html`<ha-icon class="weather-symbol" aria-hidden="true" icon=${`mdi:${icon}`} style=${`color:${color}`}></ha-icon>` : ''}<span class="weather-condition-text">${this.w(group[2])}</span></span>`;
     }
     const value = new Intl.NumberFormat(this.language, { maximumFractionDigits: 1 }).format(item.value);
     return html`${item.type === 'bearing' && symbols ? html`<span class="weather-symbol" aria-hidden="true" style=${`transform:rotate(${item.value}deg)`}>↑</span>` : ''}${value}${item.type === 'bearing' ? '' : ' '}${item.unit ?? ''}`;
@@ -745,6 +773,7 @@ export class F1ModuleView extends LitElement {
   cell(row, id) {
     if (id === 'driver') return this.driverCell(row);
     if (id === 'gap' || id === 'interval') return formatTimingGap(row[id], this.w('modular.lap'));
+    if (this.field(id)?.type === 'seconds_delta') return row[id] == null ? '—' : html`<span class="time">${formatDelta(row[id])}</span>`;
     if (this.field(id)?.type === 'qualifying_duration') return html`<span class="time">${formatTime(row[id]?.time)}</span><span class=${this.module.options.show_time_context !== false ? 'provenance' : 'sr'}>${row[id]?.sprint ? 'SQ' : 'Q'}${row[id]?.part}${row[id]?.eliminated ? this.w('modular.eliminated') : ''}</span>`;
     if (id === 'theoretical_lap') return html`<span class="time">${formatTime(row[id])}</span><span class=${this.module.options.show_time_context !== false ? 'provenance' : 'sr'}>${this.w('modular.sum_of_personal_best_sectors_may_span_laps')}</span>`;
     if (/^minisector_[123]$/.test(id)) return this.minisectorStrip(row[id], Number(id.at(-1)));
@@ -755,10 +784,10 @@ export class F1ModuleView extends LitElement {
     if (FIELDS[id]?.type === 'sector' || FIELDS[id]?.type === 'duration') return this.timeCell(row[id]);
     if (id === 'lap_delta') {
       const delta = row[id];
-      return delta ? html`<span class="time">${delta.symbol} ${formatDelta(delta.value)}<span class="sr"> ${this.w(delta.status, { faster: 'snabbare', slower: 'långsammare', equal: 'oförändrat' }[delta.status])}</span></span><span class=${this.module.options.show_time_context !== false ? 'provenance' : 'sr'}>${this.w('modular.vs_lap')} ${delta.reference_lap}</span>` : '—';
+      return delta ? html`<span class="time">${delta.symbol} ${formatDelta(delta.value)}<span class="sr"> ${this.w(({ faster: 'faster', slower: 'slower', equal: 'unchanged' })[delta.status] ?? delta.status)}</span></span><span class=${this.module.options.show_time_context !== false ? 'provenance' : 'sr'}>${this.w('modular.vs_lap')} ${delta.reference_lap}</span>` : '—';
     }
     if (id === 'tyre') return this.tyreCell(row.tyre, this.module.type !== 'tyres' || !this.model.statistics || this.module.options.show_compound_name);
-    if (id === 'status') return this.w(({ in_pit: 'In pit', pit_out: 'Pit out', retired: 'Retired', stopped: 'Stopped', on_track: 'On track' })[row.status] ?? row.status ?? '—', ({ in_pit: 'I depå', pit_out: 'Ut ur depå', retired: 'Brutit', stopped: 'Stannat', on_track: 'På banan' })[row.status] ?? row.status ?? '—');
+    if (id === 'status') return this.w(({ in_pit: 'In pit', pit_out: 'Pit out', retired: 'Retired', stopped: 'Stopped', on_track: 'On track' })[row.status] ?? row.status ?? '—');
     return row[id] ?? '—';
   }
   timing() {
@@ -802,12 +831,12 @@ export class F1ModuleView extends LitElement {
     if (this.module.type === 'minisectors' && this.module.options.show_legend === false) return '';
     const meanings = {
       overall: ['Fastest in the relevant session or qualifying part.', 'Snabbast i relevant session eller kvaldel.'],
-      personal: ["This driver's best in the relevant comparison.", 'Förarens bästa i den aktuella jämförelsen.'],
-      timed: ['Yellow means recorded, not necessarily slower than the previous lap.', 'Gul betyder registrerad, inte nödvändigtvis långsammare än föregående varv.'],
-      previous: ['A completed or older lap. Read the lap number beside each time.', 'Ett avslutat eller äldre varv. Läs varvnumret vid respektive tid.'],
-      deleted: ['The time has been deleted and cannot be a valid best time.', 'Tiden är raderad och får inte räknas som giltig bästa tid.'],
-      invalid: ['The source marks this time as invalid.', 'Källan markerar tiden som ogiltig.'],
-      unknown: ['No usable time is available. A dash does not mean zero.', 'Ingen användbar tid finns. Ett tankstreck betyder inte noll.'],
+      personal: ["This driver's best in the relevant comparison."],
+      timed: ['Yellow means recorded, not necessarily slower than the previous lap.'],
+      previous: ['A completed or older lap. Read the lap number beside each time.'],
+      deleted: ['The time has been deleted and cannot be a valid best time.'],
+      invalid: ['The source marks this time as invalid.'],
+      unknown: ['No usable time is available. A dash does not mean zero.'],
     };
     return html`<details class="timing-legend"><summary data-focus="timing-legend">${hasMinisectors ? this.w('modular.timing_and_minisector_status_explained') : this.w('modular.timing_explained')}</summary>
       <dl>${Object.entries(meanings).map(([status, explanation]) => html`<div><dt><span aria-hidden="true">${SIGNALS[status].symbol} </span><span>${label(SIGNALS[status], this.language)}</span></dt><dd>${this.w(...explanation)}</dd></div>`)}</dl>

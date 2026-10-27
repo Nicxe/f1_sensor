@@ -14,6 +14,8 @@ It does not ask for your Formula 1 password, does not send the token to a projec
 
 The Token Helper is the recommended way to connect optional [F1TV Auth](/features/f1tv-auth). Manual Bearer token entry is an advanced fallback for users who already know how to inspect their own browser session safely.
 
+A free Formula 1 account is sufficient for Replay Mode when its token is accepted by the archive. Extra live feeds can have different access requirements; archive access does not confirm live permissions or provide F1 TV video replays.
+
 Install the helper from the [Chrome Web Store](https://chromewebstore.google.com/detail/f1tv-token-helper-beta/bbpgdcjohdjcechlffloekhpgdbjoafh) before you start pairing from Home Assistant.
 
 :::info

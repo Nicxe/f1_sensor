@@ -24,7 +24,7 @@ export class F1ViewingControls extends LitElement {
     .confirmation { padding:12px; border:1px solid currentColor; border-radius:8px; }
   `];
   constructor() { super(); this.draft = null; this.draftContext = ''; this.confirmation = ''; }
-  w(en, sv) { return words(this.settings?.language, en, sv); }
+  w(source, replacements = {}) { return words(this.settings?.language, source, replacements); }
   willUpdate(changed) {
     const active = this.shadowRoot?.activeElement, calibration = this.model?.calibration;
     if (!this.focusTarget && !this.request?.pending && active?.dataset?.command === 'calibration-region') this.focusTarget = this.request?.action === 'calibration_reference' ? 'cal-reference' : this.calibrationFocus();

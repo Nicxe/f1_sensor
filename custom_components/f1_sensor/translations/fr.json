@@ -6,19 +6,21 @@
         "data": {
           "sensor_name": "Nom de l'appareil",
           "enabled_sensors": "Capteurs activés",
-          "operation_mode": "Operation mode",
+          "operation_mode": "Mode de fonctionnement",
           "replay_file": "Replay dump path",
           "race_week_start_day": "Premier jour de la semaine de course",
           "live_timing_auth_header": "Manual backup: F1TV authorization value",
           "start_f1tv_pairing": "Recommended: Connect F1TV access with Token Helper",
           "install_dashboard_cards": "Install bundled dashboard cards",
-          "install_legacy_cards": "Installer les anciennes cartes de tableau de bord"
+          "install_legacy_cards": "Installer les anciennes cartes de tableau de bord",
+          "enable_race_control": "Activer l’API F1 en direct (direction de course/piste/session)"
         },
         "data_description": {
           "live_timing_auth_header": "Manual backup if Token Helper pairing does not work. Paste the full Bearer token from the F1TV Token Helper only as an advanced fallback. Leave blank to use public live timing only.",
           "start_f1tv_pairing": "Recommended path. Start a short-lived pairing session and send the token from the browser extension without copying it manually. F1TV access is optional; public live timing continues without it.",
           "install_dashboard_cards": "Registers the bundled F1 Sensor cards in Home Assistant. Disable this if you only use entities and automations. Existing F1 dashboard cards will stop working after you reload the browser.",
-          "install_legacy_cards": "Enregistre aussi les cartes F1 obsolètes. Désactivé pour les nouvelles installations ; les installations existantes conservent leurs cartes. Nécessite l’installation des cartes de tableau de bord. Rechargez le navigateur après modification. La désactivation empêche les anciennes cartes de fonctionner sans migration vers la carte F1 Sensor. Avec plusieurs installations, elles restent disponibles tant qu’une installation active les demande."
+          "install_legacy_cards": "Enregistre aussi les cartes F1 obsolètes. Désactivé pour les nouvelles installations ; les installations existantes conservent leurs cartes. Nécessite l’installation des cartes de tableau de bord. Rechargez le navigateur après modification. La désactivation empêche les anciennes cartes de fonctionner sans migration vers la carte F1 Sensor. Avec plusieurs installations, elles restent disponibles tant qu’une installation active les demande.",
+          "race_week_start_day": "Choisir si la semaine de course débute le Samedi, le Dimanche ou le Lundi."
         }
       },
       "reconfigure": {
@@ -33,14 +35,16 @@
           "clear_live_timing_auth_header": "Clear F1TV authorization value",
           "start_f1tv_pairing": "Recommended: Connect F1TV access with Token Helper",
           "install_dashboard_cards": "Install bundled dashboard cards",
-          "install_legacy_cards": "Installer les anciennes cartes de tableau de bord"
+          "install_legacy_cards": "Installer les anciennes cartes de tableau de bord",
+          "enable_race_control": "Activer l'API F1 en direct"
         },
         "data_description": {
           "live_timing_auth_header": "Manual backup if Token Helper pairing does not work. Paste a new full Bearer token only as an advanced fallback. Leave blank to keep the current value.",
           "clear_live_timing_auth_header": "Remove the saved F1TV authorization value and continue with public live timing only.",
           "start_f1tv_pairing": "Recommended path. Start a short-lived pairing session and send the token from the browser extension without copying it manually. F1TV access is optional; public live timing continues without it.",
           "install_dashboard_cards": "Registers the bundled F1 Sensor cards in Home Assistant. Disable this if you only use entities and automations. Existing F1 dashboard cards will stop working after you reload the browser.",
-          "install_legacy_cards": "Enregistre aussi les cartes F1 obsolètes. Désactivé pour les nouvelles installations ; les installations existantes conservent leurs cartes. Nécessite l’installation des cartes de tableau de bord. Rechargez le navigateur après modification. La désactivation empêche les anciennes cartes de fonctionner sans migration vers la carte F1 Sensor. Avec plusieurs installations, elles restent disponibles tant qu’une installation active les demande."
+          "install_legacy_cards": "Enregistre aussi les cartes F1 obsolètes. Désactivé pour les nouvelles installations ; les installations existantes conservent leurs cartes. Nécessite l’installation des cartes de tableau de bord. Rechargez le navigateur après modification. La désactivation empêche les anciennes cartes de fonctionner sans migration vers la carte F1 Sensor. Avec plusieurs installations, elles restent disponibles tant qu’une installation active les demande.",
+          "race_week_start_day": "Choisir si la semaine de course débute le Samedi, le Dimanche ou le Lundi."
         }
       },
       "reauth_confirm": {
@@ -72,7 +76,8 @@
     },
     "abort": {
       "f1tv_pairing_unavailable": "F1TV pairing is not available in this build.",
-      "f1tv_pairing_failed": "F1TV pairing did not complete. Start a new pairing session and try again."
+      "f1tv_pairing_failed": "F1TV pairing did not complete. Start a new pairing session and try again.",
+      "reconfigure_successful": "Senseur F1 reconfiguré avec succès."
     }
   },
   "entity": {
@@ -138,6 +143,82 @@
       },
       "f1tv_token_expires_at": {
         "name": "F1TV token expires at"
+      },
+      "track_time": {
+        "name": "Heure de la piste"
+      },
+      "track_weather": {
+        "name": "Météo de la piste"
+      },
+      "top_three_p1": {
+        "name": "Top 3 (P1)"
+      },
+      "top_three_p2": {
+        "name": "Top 3 (P2)"
+      },
+      "top_three_p3": {
+        "name": "Top 3 (P3)"
+      },
+      "championship_prediction_drivers": {
+        "name": "Prédictions du championnat (pilotes)"
+      },
+      "championship_prediction_teams": {
+        "name": "Prédictions du championnat (écuries)"
+      },
+      "driver_positions": {
+        "name": "Positions des pilotes"
+      },
+      "favorite_driver": {
+        "name": "Pilote préféré"
+      },
+      "starting_grid": {
+        "name": "Grille de départ"
+      },
+      "straight_mode": {
+        "state": {
+          "normal_grip": "Adhérence normale",
+          "low_grip": "Faible adhérence",
+          "disabled": "Désactivé"
+        }
+      },
+      "track_status": {
+        "name": "Statut de la piste"
+      },
+      "session_status": {
+        "name": "Statut de la session"
+      },
+      "session_time_remaining": {
+        "name": "Temps restant à la session"
+      },
+      "session_time_elapsed": {
+        "name": "Tenps écoulé à la session"
+      },
+      "race_time_to_three_hour_limit": {
+        "name": "Delta à la limite de 3 heures"
+      },
+      "driver_list": {
+        "name": "Liste des pilotes"
+      },
+      "current_tyres": {
+        "name": "Pneus actuels"
+      },
+      "tyre_statistics": {
+        "name": "Statistiques de pneus"
+      },
+      "team_radio": {
+        "name": "Radio d'écurie"
+      },
+      "race_lap_count": {
+        "name": "Nombre de tours de course"
+      },
+      "driver_points_progression": {
+        "name": "Progression des points du pilote"
+      },
+      "constructor_points_progression": {
+        "name": "Progression des points du constructeur"
+      },
+      "replay_status": {
+        "name": "Statut de reprise"
       }
     },
     "media_player": {
@@ -157,6 +238,9 @@
       },
       "replay_start_reference": {
         "name": "Replay start reference"
+      },
+      "favorite_driver": {
+        "name": "Pilote préféré"
       }
     },
     "binary_sensor": {
@@ -177,11 +261,17 @@
       },
       "formation_start": {
         "name": "Formation start"
+      },
+      "overtake_mode": {
+        "name": "Mode de dépassement"
       }
     },
     "switch": {
       "no_spoiler_mode": {
         "name": "Mode sans spoilers"
+      },
+      "delay_calibration": {
+        "name": "Calibration du délai"
       }
     },
     "weather": {
@@ -192,6 +282,43 @@
     "button": {
       "clear_f1tv_access": {
         "name": "Clear F1TV access"
+      },
+      "delay_calibration_match": {
+        "name": "Aligner le délai au direct"
+      },
+      "replay_load": {
+        "name": "Chargement de la session"
+      },
+      "replay_play": {
+        "name": "Lecture"
+      },
+      "replay_pause": {
+        "name": "Pause"
+      },
+      "replay_back_30": {
+        "name": "Retour de 30 secondes"
+      },
+      "replay_forward_30": {
+        "name": "Avance de 30 secondes"
+      },
+      "replay_stop": {
+        "name": "Arrêt"
+      },
+      "replay_refresh": {
+        "name": "Rafraîchir les sessions"
+      },
+      "refresh_f1tv_access": {
+        "name": "Rafraîchir l'accès F1TV"
+      }
+    },
+    "number": {
+      "live_delay": {
+        "name": "Délai en direct"
+      }
+    },
+    "calendar": {
+      "season_calendar": {
+        "name": "Calendrier de la saison"
       }
     }
   },
@@ -211,21 +338,67 @@
             },
             "description": "The saved F1TV token for {name} needs attention. Public live timing continues to work, but F1TV live data will not be used until the token is replaced.",
             "title": "Update F1TV live timing token"
+          },
+          "f1tv_pairing": {
+            "title": "Connecter l'accès F1TV"
           }
         }
       }
+    },
+    "stale_live_data_card_resources": {
+      "title": "Ancienne carte de données de F1 en direct détectée"
     }
   },
   "options": {
     "step": {
       "init": {
         "data": {
-          "install_legacy_cards": "Installer les anciennes cartes de tableau de bord"
+          "install_legacy_cards": "Installer les anciennes cartes de tableau de bord",
+          "enabled_sensors": "Senseurs activé",
+          "enable_race_control": "Activer l'API F1 en direct",
+          "race_week_start_day": "Premier jour de la semaine de course",
+          "operation_mode": "Mode d'opération"
         },
         "data_description": {
-          "install_legacy_cards": "Enregistre aussi les cartes F1 obsolètes. Désactivé pour les nouvelles installations ; les installations existantes conservent leurs cartes. Nécessite l’installation des cartes de tableau de bord. Rechargez le navigateur après modification. La désactivation empêche les anciennes cartes de fonctionner sans migration vers la carte F1 Sensor. Avec plusieurs installations, elles restent disponibles tant qu’une installation active les demande."
-        }
+          "install_legacy_cards": "Enregistre aussi les cartes F1 obsolètes. Désactivé pour les nouvelles installations ; les installations existantes conservent leurs cartes. Nécessite l’installation des cartes de tableau de bord. Rechargez le navigateur après modification. La désactivation empêche les anciennes cartes de fonctionner sans migration vers la carte F1 Sensor. Avec plusieurs installations, elles restent disponibles tant qu’une installation active les demande.",
+          "enable_race_control": "Connecter au chronométrage F1 en direct seulement quand les fonctions en direct sont activées.",
+          "race_week_start_day": "Choisir si la semaine de course débute le Samedi, le Dimanche ou le Lundi.",
+          "operation_mode": "Choisir le mode de développement en direct ou en relecture locale."
+        },
+        "title": "Configure les fonctions de Senseur F1"
       }
+    }
+  },
+  "device_automation": {
+    "trigger_type": {
+      "safety_car_deployed": "Voiture de sécurité déployée",
+      "possible_on_track_incident_detected": "Possible incident détecté sur la piste",
+      "possible_on_track_incident_cleared": "Possible incident résolu sur la piste",
+      "safety_car_cleared": "Voiture de sécurité terminée",
+      "on_track_incident_detected": "Incident détecté sur la piste",
+      "on_track_incident_cleared": "Incident résolu sur la piste",
+      "formation_start_ready": "Départ de formation prêt",
+      "overtake_mode_enabled": "Mode de dépassement activé",
+      "overtake_mode_disabled": "Mode de dépassement désactivé",
+      "session_live": "La session à démarrée",
+      "track_status_clear": "Statut de la piste : dégagée",
+      "track_status_yellow": "Statut de la piste : drapeau jaune",
+      "track_status_safety_car": "Statut de la piste : Voiture de sécurité",
+      "track_status_vsc": "Statut de la piste : Voiture de sécurité virtuelle",
+      "track_status_red_flag": "Statut de la piste : Drapeau rouge",
+      "new_fia_document": "Nouveau document publié par la FIA",
+      "investigation_changed": "Statut d'investigation modifié",
+      "new_team_radio": "Nouveau message radio d'écurie",
+      "favorite_driver_position_gained": "Pilote favori a gagné une position",
+      "favorite_driver_position_lost": "Pilote favori a perdu une position",
+      "favorite_driver_entered_pits": "Pilote favori est entré aux puits",
+      "favorite_driver_exited_pits": "Pilote favori est sorti des puits",
+      "favorite_driver_retired": "Pilote favori a abandonné",
+      "race_week_started": "La semaine de course a débutée",
+      "race_week_ended": "La semaine de course est terminée",
+      "live_timing_online": "Chronométrage en direct en ligne",
+      "live_timing_offline": "Chonométrqge en direct hors ligne",
+      "new_race_control_message": "Nouveau message de la direction de course"
     }
   }
 }

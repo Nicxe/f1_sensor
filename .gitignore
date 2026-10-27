@@ -29,6 +29,8 @@ f1_sensor.zip.sha256
 f1_sensor.zip.spdx.json
 playwright-report/
 test-results/
+.venv-ci/
+.tools-ci/
 /F1 Live Timing API - Dumps/
 releasenote.md
 custom_components/f1_sensor/v3-ReleaseNote.MD

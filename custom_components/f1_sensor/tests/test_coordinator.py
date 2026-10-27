@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -23,6 +24,10 @@ from custom_components.f1_sensor.const import (
 )
 from custom_components.f1_sensor.jolpica import JolpicaRouteNotFoundError
 from custom_components.f1_sensor.jolpica_pagination import JolpicaPaginationError
+from custom_components.f1_sensor.schedule_laps import (
+    add_scheduled_laps,
+    validate_session_page,
+)
 
 
 class _TimeoutSession:
@@ -67,6 +72,187 @@ def _future_race_payload() -> dict:
             }
         }
     }
+
+
+def test_scheduled_laps_match_round_and_session_type() -> None:
+    schedule = _future_race_payload()
+    race = schedule["MRData"]["RaceTable"]["Races"][0]
+    race["Sprint"] = {"date": race["date"], "time": "03:00:00Z"}
+    page = {
+        "metadata": {"total_pages": 1},
+        "data": [
+            {"round": {"number": 1}, "type": "R", "scheduled_laps": 58},
+            {"round": {"number": 1}, "type": "SR", "scheduled_laps": 19},
+            {"round": {"number": 2}, "type": "R", "scheduled_laps": 70},
+        ],
+    }
+    validate_session_page(page)
+    enriched = add_scheduled_laps(schedule, [page])
+    enriched_race = enriched["MRData"]["RaceTable"]["Races"][0]
+    assert enriched_race["scheduled_laps"] == 58
+    assert enriched_race["Sprint"]["scheduled_laps"] == 19
+    assert "scheduled_laps" not in race
+    assert "scheduled_laps" not in race["Sprint"]
+
+
+@pytest.mark.parametrize(
+    ("page", "message"),
+    [
+        (None, "Invalid session response"),
+        ({"metadata": None, "data": []}, "Invalid session response"),
+        (
+            {"metadata": {"total_pages": 1}, "data": None},
+            "Invalid session response",
+        ),
+        (
+            {"metadata": {"total_pages": 2}, "data": []},
+            "Incomplete session response",
+        ),
+        ({"metadata": {}, "data": []}, "Incomplete session response"),
+    ],
+)
+def test_scheduled_laps_reject_invalid_or_incomplete_pages(page, message) -> None:
+    with pytest.raises(ValueError, match=message):
+        validate_session_page(page)
+
+
+@pytest.mark.parametrize("schedule", [{}, {"MRData": {"RaceTable": {"Races": {}}}}])
+def test_scheduled_laps_preserve_schedule_without_race_list(schedule) -> None:
+    original = deepcopy(schedule)
+
+    assert add_scheduled_laps(schedule, []) is schedule
+    assert schedule == original
+
+
+@pytest.mark.parametrize(
+    "invalid_session",
+    [
+        None,
+        {
+            "round": {"number": 1},
+            "type": "R",
+            "scheduled_laps": 99,
+            "is_cancelled": True,
+        },
+        {"round": None, "type": "R", "scheduled_laps": 99},
+        {"round": {}, "type": "R", "scheduled_laps": 99},
+        {"round": {"number": "unknown"}, "type": "R", "scheduled_laps": 99},
+        {"round": {"number": 1}, "type": "R", "scheduled_laps": None},
+        {"round": {"number": 1}, "type": "R", "scheduled_laps": "unknown"},
+        {"round": {"number": 1}, "type": "R", "scheduled_laps": 0},
+        {"round": {"number": 1}, "type": "Q", "scheduled_laps": 99},
+    ],
+)
+def test_scheduled_laps_ignore_unusable_sessions(invalid_session) -> None:
+    schedule = _future_race_payload()
+    page = {
+        "metadata": {"total_pages": 1},
+        "data": [
+            {"round": {"number": 1}, "type": "R", "scheduled_laps": 58},
+            invalid_session,
+        ],
+    }
+    original_schedule = deepcopy(schedule)
+    original_page = deepcopy(page)
+
+    enriched = add_scheduled_laps(schedule, [page])
+
+    assert enriched["MRData"]["RaceTable"]["Races"][0]["scheduled_laps"] == 58
+    assert schedule == original_schedule
+    assert page == original_page
+
+
+@pytest.mark.parametrize(
+    "invalid_race", [None, {}, {"round": None}, {"round": "unknown"}]
+)
+def test_scheduled_laps_preserve_unmatched_race_records(invalid_race) -> None:
+    schedule = _future_race_payload()
+    schedule["MRData"]["RaceTable"]["Races"].insert(0, invalid_race)
+    original_schedule = deepcopy(schedule)
+    page = {
+        "metadata": {"total_pages": 1},
+        "data": [{"round": {"number": 1}, "type": "R", "scheduled_laps": 58}],
+    }
+
+    enriched = add_scheduled_laps(schedule, [page])
+
+    races = enriched["MRData"]["RaceTable"]["Races"]
+    assert races[0] == invalid_race
+    assert races[1]["scheduled_laps"] == 58
+    assert schedule == original_schedule
+
+
+@pytest.mark.asyncio
+async def test_race_schedule_keeps_base_data_when_alpha_is_unavailable(hass) -> None:
+    with patch.object(DataUpdateCoordinator, "__init__", _fake_init):
+        coordinator = F1DataCoordinator(
+            hass,
+            API_URL,
+            "Test Coordinator",
+            session=MagicMock(),
+            user_agent="ua",
+            cache={},
+            inflight={},
+            persist_map={},
+        )
+
+    schedule = _future_race_payload()
+
+    async def fetch(_hass, _session, url, **_kwargs):
+        if "alpha" in url:
+            raise TimeoutError
+        return schedule
+
+    with patch("custom_components.f1_sensor.__init__.fetch_json", side_effect=fetch):
+        result = await coordinator._async_update_data()
+
+    assert result == schedule
+
+
+@pytest.mark.asyncio
+async def test_race_schedule_adds_alpha_laps_for_race_and_sprint(hass) -> None:
+    with patch.object(DataUpdateCoordinator, "__init__", _fake_init):
+        coordinator = F1DataCoordinator(
+            hass,
+            API_URL,
+            "Test Coordinator",
+            session=MagicMock(),
+            user_agent="ua",
+            cache={},
+            inflight={},
+            persist_map={},
+        )
+
+    schedule = _future_race_payload()
+    schedule["MRData"]["RaceTable"]["Races"][0]["Sprint"] = {
+        "date": "2026-03-14",
+        "time": "03:00:00Z",
+    }
+
+    async def fetch(_hass, _session, url, **_kwargs):
+        if "session_type=R" in url:
+            kind, count = "R", 58
+        elif "session_type=SR" in url:
+            kind, count = "SR", 19
+        else:
+            return schedule
+        return {
+            "metadata": {"total_pages": 1},
+            "data": [
+                {
+                    "round": {"number": 1},
+                    "type": kind,
+                    "scheduled_laps": count,
+                }
+            ],
+        }
+
+    with patch("custom_components.f1_sensor.__init__.fetch_json", side_effect=fetch):
+        result = await coordinator._async_update_data()
+
+    race = result["MRData"]["RaceTable"]["Races"][0]
+    assert race["scheduled_laps"] == 58
+    assert race["Sprint"]["scheduled_laps"] == 19
 
 
 def _lap_position_result(driver_id: str, code: str, position: int, grid: int) -> dict:

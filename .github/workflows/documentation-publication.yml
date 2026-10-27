@@ -1,0 +1,92 @@
+name: Documentation publication
+run-name: Documentation publication · ${{ github.ref_name }} · ${{ github.sha }}
+on:
+  push:
+    branches: [beta, main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: documentation-publication-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  source:
+    name: Wait for exact-commit product and documentation verification
+    if: >-
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/beta')
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    outputs:
+      publish: ${{ steps.source.outputs.publish }}
+      tested_sha: ${{ steps.source.outputs.tested_sha }}
+      tested_tree: ${{ steps.source.outputs.tested_tree }}
+      target_branch: ${{ steps.source.outputs.target_branch }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        id: source
+        with:
+          script: |
+            const {waitForPublicationSource} = require('./.github/scripts/documentation-source.cjs');
+            const source = await waitForPublicationSource({github, context, core});
+            core.setOutput('publish', String(Boolean(source)));
+            if (!source) {
+              await core.summary.addHeading('Documentation delivery')
+                .addRaw('No publication: the source was superseded or its product/documentation checks did not pass. Release security readiness remains separate.').write();
+              return;
+            }
+            for (const [key, value] of Object.entries(source)) core.setOutput(key, value);
+            await core.summary.addHeading('Documentation delivery')
+              .addLink('Verified product and documentation source', `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${source.source_run_id}`)
+              .addRaw(`\n\nTarget: ${source.target_branch}\n\nTested commit: ${source.tested_sha}\n\nTested tree: ${source.tested_tree}\n`).write();
+  deploy:
+    needs: source
+    if: needs.source.outputs.publish == 'true'
+    permissions:
+      contents: read
+      actions: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/deploy.yml
+    with:
+      tested_sha: ${{ needs.source.outputs.tested_sha }}
+      tested_tree: ${{ needs.source.outputs.tested_tree }}
+      target_branch: ${{ needs.source.outputs.target_branch }}
+  context7:
+    needs: [source, deploy]
+    if: >-
+      !cancelled() && needs.deploy.result == 'success' && needs.deploy.outputs.published == 'true' &&
+      needs.source.outputs.target_branch == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Trigger Context7 re-index
+        env:
+          CONTEXT7_API_KEY: ${{ secrets.CONTEXT7_API_KEY }}
+        run: |
+          for i in 1 2 3; do
+            response=$(curl --connect-timeout 10 --max-time 30 -s -w "\n%{http_code}" -X POST https://context7.com/api/v1/refresh \
+              -H "Authorization: Bearer $CONTEXT7_API_KEY" \
+              -H "Content-Type: application/json" \
+              -d '{"libraryName": "/websites/nicxe_github_io_f1_sensor"}')
+            http_code=$(echo "$response" | tail -1)
+            body=$(echo "$response" | sed '$d')
+            if [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]; then
+              echo "Success: $body"
+              exit 0
+            fi
+            if echo "$body" | grep -q "user-has-active-task"; then
+              echo "Another indexing job is running, retrying in 30s... (attempt $i/3)"
+              sleep 30
+              continue
+            fi
+            echo "Request failed ($http_code): $body"
+            exit 1
+          done
+          echo "Context7 is already processing an indexing job; no new refresh is needed."
+          exit 0

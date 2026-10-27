@@ -3,11 +3,13 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime, timedelta
 import json
+import logging
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 from homeassistant import config_entries
+from homeassistant.helpers.entity_component import EntityComponent
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -19,6 +21,7 @@ from custom_components.f1_sensor import (
     SessionClockCoordinator,
     SessionInfoCoordinator,
     SessionStatusCoordinator,
+    TeamRadioCoordinator,
     TrackStatusCoordinator,
     WeatherDataCoordinator,
     _build_replay_reset_callbacks,
@@ -44,6 +47,9 @@ from custom_components.f1_sensor.replay_mode import (
     ReplaySessionManager,
     ReplayState,
 )
+from custom_components.f1_sensor.sensor import F1TeamRadioSensor
+from custom_components.f1_sensor.team_radio_common import team_radio_clip_id
+from custom_components.f1_sensor.team_radio_media import _find_capture
 from custom_components.f1_sensor.track_map import (
     TRACK_MAP_POSITION_STREAM,
     TrackMapPosition,
@@ -73,6 +79,9 @@ class FakeLiveBus:
 
     def set_heartbeat_expectation(self, enabled: bool) -> None:
         self._expect_heartbeat = enabled
+
+    def last_stream_activity_age(self) -> float | None:
+        return 0.0 if self.injected else None
 
     def subscribe(self, stream: str, callback):
         self._subs.setdefault(stream, []).append(callback)
@@ -570,6 +579,65 @@ async def test_replay_seek_forward_replays_intermediate_state_changes(
     assert live_mode.data["overtake_enabled"] is True
 
     await controller.async_stop()
+
+
+@pytest.mark.asyncio
+async def test_radio_history_follows_forward_and_backward_seek_checkpoints(
+    hass, tmp_path: Path, cleanup_test_entity_components
+) -> None:
+    entry = _make_config_entry(hass)
+    radio = TeamRadioCoordinator(hass, object(), config_entry=entry)
+    radio.available = True
+    captures = [
+        {
+            "Utc": f"2026-10-04T07:00:{second:02d}Z",
+            "RacingNumber": "16",
+            "Path": f"TeamRadio/LEC_16_{second}.mp3",
+        }
+        for second in (0, 20, 30)
+    ]
+    payloads = [{"Captures": [capture]} for capture in captures]
+    controller, index, bus, live_state = await _setup_controller(
+        hass,
+        tmp_path,
+        initial_state={"TeamRadio": payloads[0]},
+        frames=[
+            (0, "TeamRadio", payloads[0]),
+            (20_000, "TeamRadio", payloads[1]),
+            (90_000, "TeamRadio", payloads[2]),
+            (180_000, "TrackStatus", {"Status": "1"}),
+        ],
+        coordinators=(radio,),
+    )
+    index.seek_checkpoints = [
+        {"t": 0, "state": {"TeamRadio": payloads[0]}},
+        {"t": 90_000, "state": {"TeamRadio": payloads[2]}},
+    ]
+    hass.data[DOMAIN][ENTRY_ID]["live_state"] = live_state
+    hass.data[DOMAIN][ENTRY_ID]["live_bus"] = bus
+    bus.subscribe("TeamRadio", radio._on_bus_message)
+    sensor = F1TeamRadioSensor(radio, "radio-seek", ENTRY_ID, "F1")
+    component = EntityComponent(logging.getLogger(__name__), "sensor", hass)
+    hass.data.setdefault("_f1_sensor_test_entity_components", []).append(component)
+    await component.async_add_entities([sensor])
+    try:
+        await controller.async_play()
+        await controller.async_seek_to_position(25)
+        await asyncio.sleep(0)
+        assert len(sensor.extra_state_attributes["history"]) == 2
+
+        for target, capture in ((120, captures[2]), (10, captures[0])):
+            await controller.async_seek_to_position(target)
+            await asyncio.sleep(0)
+            state = hass.states.get(sensor.entity_id)
+            assert state is not None
+            assert [item["path"] for item in state.attributes["history"]] == [
+                capture["Path"]
+            ]
+            assert _find_capture(radio, team_radio_clip_id(capture)) is not None
+    finally:
+        await controller.async_stop()
+        await radio.async_close()
 
 
 @pytest.mark.asyncio

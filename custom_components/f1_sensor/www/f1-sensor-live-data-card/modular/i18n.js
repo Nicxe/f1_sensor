@@ -5,22 +5,21 @@ const {
   LOCALES,
   languageCode,
   translate,
-  translateLegacy,
+  translateSourceText,
   translatePlural,
 } = localization;
 
 export { languageCode, translate, translatePlural };
 
-// Catalog entries still pass their source label and Swedish compatibility
-// value. All keyed UI messages use the same function during the migration.
-export const words = (language, keyOrEnglish, replacementsOrSwedish = keyOrEnglish) => {
+// Keyed UI text and catalog source text share one Weblate-backed path.
+export const words = (language, keyOrEnglish, replacements = {}) => {
   if (LOCALES.en[keyOrEnglish] !== undefined) {
-    const replacements = replacementsOrSwedish
-      && typeof replacementsOrSwedish === 'object'
-      && !Array.isArray(replacementsOrSwedish)
-      ? replacementsOrSwedish
+    const values = replacements
+      && typeof replacements === 'object'
+      && !Array.isArray(replacements)
+      ? replacements
       : {};
-    return translate(language, keyOrEnglish, replacements);
+    return translate(language, keyOrEnglish, values);
   }
-  return translateLegacy(language, keyOrEnglish, replacementsOrSwedish);
+  return translateSourceText(language, keyOrEnglish);
 };

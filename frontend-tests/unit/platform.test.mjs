@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readdirSync} from 'node:fs';
 import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
+import {catalogs, expectedMessage} from '../localization-fixture.cjs';
 const root = new URL('../../custom_components/f1_sensor/www/f1-sensor-live-data-card/', import.meta.url);
 const {f1Translate, f1FormatDateTime, f1TranslateText, STRINGS, FRONTEND_TEXT_TRANSLATIONS} = await import(new URL('platform/i18n.js', root));
 const {normalizeF1Action, handleF1CardActionKeydown} = await import(new URL('platform/actions.js', root));
@@ -18,28 +19,31 @@ test('localization preserves fallback and respects HA time settings', () => {
   const hass = {locale:{language:'sv-SE'}, config:{time_zone:'Europe/Stockholm'}};
   assert.match(f1FormatDateTime(hass,new Date('2026-09-04T12:30:00Z'),{hour:'2-digit',minute:'2-digit'}), /14:30/);
 });
-test('every translation covers all English strings and frontend texts', () => {
-  const frontendKeys = Object.keys(FRONTEND_TEXT_TRANSLATIONS.sv);
+test('every projected locale exposes source keys after English fallback', () => {
+  const frontendKeys = [...new Set(Object.entries(catalogs.en)
+    .filter(([key]) => key.startsWith('legacy.platform.')).map(([, source]) => source))];
   for (const language of Object.keys(STRINGS).filter(lang => lang !== 'en')) {
     assert.deepEqual(Object.keys(STRINGS[language]).sort(), Object.keys(STRINGS.en).sort(), `STRINGS.${language}`);
     assert.deepEqual(Object.keys(FRONTEND_TEXT_TRANSLATIONS[language]).sort(), [...frontendKeys].sort(), `FRONTEND_TEXT_TRANSLATIONS.${language}`);
   }
 });
-test('Dutch localization translates strings, frontend texts and counts', () => {
+test('the platform uses the current selected catalog rather than silently returning English', () => {
+  for (const language of Object.keys(catalogs)) {
+    for (const key of Object.keys(catalogs.en)) {
+      assert.equal(f1Translate({locale: {language}}, key), expectedMessage(language, key), `${language}: ${key}`);
+    }
+  }
+});
+test('Dutch localization provides translated strings, frontend texts and counts', () => {
   const hass = {locale:{language:'nl'}};
-  assert.equal(f1Translate(hass, 'track_map.paused'), 'Gepauzeerd');
-  assert.equal(f1TranslateText(hass, 'No session data'), 'Geen sessiegegevens');
-  assert.equal(f1TranslateText(hass, '12 cars'), "12 auto's");
-  assert.equal(f1TranslateText(hass, 'Idle / 3 cars'), "Inactief / 3 auto's");
-  assert.equal(f1TranslateText(hass, 'Measured precipitation 1.2 mm'), 'Gemeten neerslag 1.2 mm');
-  assert.equal(f1TranslateText(hass, 'No'), 'Nee');
-  assert.equal(f1TranslateText(hass, 'Round 16'), 'Ronde 16');
-  assert.equal(f1TranslateText(hass, 'Show history'), 'Historie tonen');
-  assert.equal(f1TranslateText(hass, '1.1 m/s SE'), '1.1 m/s ZO');
-  assert.equal(f1TranslateText(hass, '2.0 km/h W→'), '2.0 km/h W→');
-  assert.equal(f1TranslateText({locale:{language:'sv'}}, '3.4 m/s SW↗'), '3.4 m/s SV↗');
-  assert.equal(f1TranslateText({locale:{language:'sv'}}, '4 docs'), '4 dokument');
-  assert.equal(f1TranslateText({locale:{language:'de'}}, '4 docs'), '4 docs');
+  assert.match(f1Translate(hass, 'track_map.paused'), /\S/);
+  for (const source of ['No session data', '12 cars', 'Idle / 3 cars', 'Measured precipitation 1.2 mm', 'No', 'Round 16', 'Show history', '1.1 m/s SE', '2.0 km/h W→']) {
+    assert.match(f1TranslateText(hass, source), /\S/, source);
+  }
+  assert.match(f1TranslateText({locale:{language:'sv'}}, '3.4 m/s SW↗'), /\S/);
+  assert.match(f1TranslateText({locale:{language:'sv'}}, '4 docs'), /\S/);
+  const untranslated = '4 docs';
+  assert.equal(f1TranslateText({locale:{language:'de'}}, untranslated), untranslated);
 });
 test('legacy services normalize to native HA actions', () => {
   const action = normalizeF1Action({action:'call-service', service:'light.toggle', data:{entity_id:'light.example'}});

@@ -55,9 +55,10 @@
           "install_dashboard_cards": "Registers the bundled F1 Sensor cards in Home Assistant. Disable this if you only use entities and automations. Existing F1 dashboard cards will stop working after you reload the browser.",
           "race_week_start_day": "Choose whether Race week starts on Saturday, Sunday, or Monday.",
           "live_timing_auth_header": "Manual backup if Token Helper pairing does not work. Paste the full Bearer token from the F1TV Token Helper only as an advanced fallback. Leave blank to use public live timing without Replay Mode or archive media.",
-          "start_f1tv_pairing": "Recommended path. Connect an active paid F1TV subscription for Replay Mode, archive media, and additional live data. Public live timing continues without it.",
+          "start_f1tv_pairing": "Recommended path. Connect your Formula 1 account for Replay Mode and archive data. A free account is sufficient for replay; additional live data depends on account permissions and session availability. Public live timing continues without it.",
           "install_legacy_cards": "Also register the deprecated F1 cards. New installations leave this off; existing installations keep their previous cards. Requires dashboard card installation. Reload the browser after changing this option. Disabling it stops existing legacy cards from working unless you migrate them to the F1 Sensor card. If several F1 Sensor installations exist, legacy cards stay available while any enabled installation requests them."
-        }
+        },
+        "description": "The F1 Sensor card gets its data automatically. Enabled sensors only controls entities exposed in Home Assistant. Keep sensors used by older cards, templates or automations. Live timing and F1TV access follow their own settings."
       },
       "reconfigure": {
         "title": "Reconfigure F1 Sensor",
@@ -82,9 +83,10 @@
           "race_week_start_day": "Choose whether Race week starts on Saturday, Sunday, or Monday.",
           "live_timing_auth_header": "Manual backup if Token Helper pairing does not work. Paste a new full Bearer token only as an advanced fallback. Leave blank to keep the current value.",
           "clear_live_timing_auth_header": "Remove the saved F1TV authorization value and continue with public live timing. Replay Mode and archive media will be unavailable.",
-          "start_f1tv_pairing": "Recommended path. Connect an active paid F1TV subscription for Replay Mode, archive media, and additional live data. Public live timing continues without it.",
+          "start_f1tv_pairing": "Recommended path. Connect your Formula 1 account for Replay Mode and archive data. A free account is sufficient for replay; additional live data depends on account permissions and session availability. Public live timing continues without it.",
           "install_legacy_cards": "Also register the deprecated F1 cards. New installations leave this off; existing installations keep their previous cards. Requires dashboard card installation. Reload the browser after changing this option. Disabling it stops existing legacy cards from working unless you migrate them to the F1 Sensor card. If several F1 Sensor installations exist, legacy cards stay available while any enabled installation requests them."
-        }
+        },
+        "description": "The F1 Sensor card gets its data automatically. Enabled sensors only controls entities exposed in Home Assistant. Keep sensors used by older cards, templates or automations. Live timing and F1TV access follow their own settings."
       },
       "reauth_confirm": {
         "title": "Update F1TV live timing authorization",
@@ -96,12 +98,19 @@
         "data_description": {
           "live_timing_auth_header": "Manual backup if Token Helper pairing does not work. Paste a new full Bearer token only as an advanced fallback.",
           "clear_live_timing_auth_header": "Remove the saved F1TV authorization value and continue with public live timing. Replay Mode and archive media will be unavailable.",
-          "start_f1tv_pairing": "Recommended path. Connect an active paid F1TV subscription for Replay Mode, archive media, and additional live data. Public live timing continues without it."
+          "start_f1tv_pairing": "Recommended path. Connect your Formula 1 account for Replay Mode and archive data. A free account is sufficient for replay; additional live data depends on account permissions and session availability. Public live timing continues without it."
         }
       },
       "f1tv_pairing": {
         "title": "Connect F1TV access",
-        "description": "Use the F1TV Token Helper to connect an active paid subscription. Public live timing remains optional-auth, but Replay Mode and archive media require F1TV access. This pairing expires at {expires_at}."
+        "description": "Use the F1TV Token Helper to connect your Formula 1 account. A free account is sufficient for Replay Mode; additional live data depends on account permissions and session availability. Public live timing continues without a token. This pairing expires at {expires_at}."
+      },
+      "sensor_review": {
+        "title": "Review sensor changes",
+        "description": "Sensors removed from your previous selection: {removed_sensors}. Older cards, templates and automations using these entities may stop working. Normal disabling in Home Assistant preserves registry metadata. Removing sensors through this integration selection may remove their registry entries; recreating them later may change custom names and entity IDs. Your other settings and stored data are preserved.",
+        "data": {
+          "confirm": "Confirm sensor changes"
+        }
       }
     },
     "abort": {
@@ -116,7 +125,9 @@
       "invalid_auth_header": "Enter a valid Bearer token value.",
       "auth_token_missing_exp": "The token does not include an expiry time.",
       "auth_token_expired": "The token has expired.",
-      "auth_token_expiring_soon": "The token expires too soon. Generate a new token and try again."
+      "auth_token_expiring_soon": "The token expires too soon. Generate a new token and try again.",
+      "invalid_choice": "Choose a valid configuration.",
+      "confirmation_required": "Confirm the reviewed choices before saving."
     }
   },
   "options": {
@@ -139,12 +150,22 @@
           "operation_mode": "Choose Live or local replay Development mode.",
           "replay_file": "Absolute path to a replay dump used only in Development mode.",
           "install_legacy_cards": "Also register the deprecated F1 cards. New installations leave this off; existing installations keep their previous cards. Requires dashboard card installation. Reload the browser after changing this option. Disabling it stops existing legacy cards from working unless you migrate them to the F1 Sensor card. If several F1 Sensor installations exist, legacy cards stay available while any enabled installation requests them."
+        },
+        "description": "The F1 Sensor card gets its data automatically. Enabled sensors only controls entities exposed in Home Assistant. Keep sensors used by older cards, templates or automations. Live timing and F1TV access follow their own settings."
+      },
+      "sensor_review": {
+        "title": "Review sensor changes",
+        "description": "Sensors removed from your previous selection: {removed_sensors}. Older cards, templates and automations using these entities may stop working. Normal disabling in Home Assistant preserves registry metadata. Removing sensors through this integration selection may remove their registry entries; recreating them later may change custom names and entity IDs. Your other settings and stored data are preserved.",
+        "data": {
+          "confirm": "Confirm sensor changes"
         }
       }
     },
     "error": {
       "replay_required": "Select a replay dump file when Development mode is enabled.",
-      "replay_missing": "Replay dump file not found or unreadable."
+      "replay_missing": "Replay dump file not found or unreadable.",
+      "invalid_choice": "Choose a valid configuration.",
+      "confirmation_required": "Confirm the reviewed choices before saving."
     }
   },
   "issues": {
@@ -171,7 +192,7 @@
           },
           "f1tv_pairing": {
             "title": "Connect F1TV access",
-            "description": "Use the F1TV Token Helper to connect an active paid subscription. Public live timing remains optional-auth, but Replay Mode and archive media require F1TV access. This pairing expires at {expires_at}."
+            "description": "Use the F1TV Token Helper to connect your Formula 1 account. A free account is sufficient for Replay Mode; additional live data depends on account permissions and session availability. Public live timing continues without a token. This pairing expires at {expires_at}."
           }
         }
       },
@@ -421,6 +442,31 @@
     "calendar": {
       "season_calendar": {
         "name": "Season calendar"
+      }
+    }
+  },
+  "selector": {},
+  "exceptions": {
+    "card_data_notification_title": {
+      "message": "F1 Sensor: automatic card data"
+    },
+    "card_data_notification": {
+      "message": "{name} now provides data automatically to the F1 Sensor card. Your existing sensors, settings and automations continue working. You can optionally reduce the sensors exposed in Home Assistant under [F1 Sensor settings]({integration_url}) → Configure. Keep sensors used by older cards, templates or automations. No configuration is required. You can dismiss this message; it will not return after restart or reload."
+    }
+  },
+  "services": {
+    "clear_race_control_log": {
+      "name": "Clear race control log",
+      "description": "Clear saved Race control messages for one F1 Sensor installation. Supply either a sensor entity or a configuration entry.",
+      "fields": {
+        "entity_id": {
+          "name": "Race control entity",
+          "description": "Race control sensor for this installation. Omit when using entry_id."
+        },
+        "entry_id": {
+          "name": "F1 Sensor configuration entry",
+          "description": "Use this instead of entity_id when no Race control sensor is exposed. Supply one address."
+        }
       }
     }
   }

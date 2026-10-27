@@ -9,20 +9,16 @@ const {
   translateLegacyText,
 } = localization;
 
-export const STRINGS = Object.freeze({
-  en: Object.freeze(cardStrings('en')),
-  sv: Object.freeze(cardStrings('sv')),
-  nl: Object.freeze(cardStrings('nl')),
-});
+export const STRINGS = Object.freeze(Object.fromEntries(
+  Object.keys(LOCALES).map(language => [language, Object.freeze(cardStrings(language))]),
+));
 
-export const FRONTEND_TEXT_TRANSLATIONS = Object.freeze({
-  sv: Object.freeze(legacyTextTranslations('sv')),
-  nl: Object.freeze(legacyTextTranslations('nl')),
-});
+export const FRONTEND_TEXT_TRANSLATIONS = Object.freeze(Object.fromEntries(
+  Object.keys(LOCALES).filter(language => language !== 'en')
+    .map(language => [language, Object.freeze(legacyTextTranslations(language))]),
+));
 
-const languageFor = hass => String(hass?.locale?.language || hass?.language || 'en')
-  .toLowerCase()
-  .split('-', 1)[0];
+const languageFor = hass => localization.languageCode(hass?.locale?.language || hass?.language || 'en');
 
 const interpolate = (template, replacements) => Object.entries(replacements).reduce(
   (text, [name, value]) => text.replaceAll(`{${name}}`, String(value)),

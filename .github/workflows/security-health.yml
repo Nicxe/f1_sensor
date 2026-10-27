@@ -1,0 +1,14 @@
+name: Daily dependency security health
+on:
+  schedule:
+    - cron: '11 5 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  security-health:
+    # Use the reviewed immutable CI evaluator and its matching trusted tools.
+    # Only its evaluator runs; branch dependency snapshots are never installed.
+    uses: Nicxe/f1_sensor/.github/workflows/security-snapshot.yml@5184cedf1ca388135df0597a631d92478f212074
+    with:
+      tools_ref: '5184cedf1ca388135df0597a631d92478f212074'

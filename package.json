@@ -17,6 +17,11 @@
     "test:audit": "python3 scripts/run_npm_audit.py",
     "test:release": "python3 scripts/check_release_build.py",
     "test:quality": "python3 scripts/check_translations.py custom_components/f1_sensor/translations && npm run test:automation && npm run test:release && npm run test:frontend:unit && npm run test:frontend",
+    "setup:ci": "python3 scripts/setup_ci_environment.py",
+    "verify:changed": "python3 scripts/verify_dev.py changed",
+    "verify:dev": "python3 scripts/verify_dev.py full",
+    "verify:release": "python3 scripts/verify_dev.py release",
+    "verify:dev:plan": "python3 scripts/verify_dev.py changed --print-plan",
     "write-translations": "docusaurus write-translations",
     "write-heading-ids": "docusaurus write-heading-ids",
     "test:docs:build": "node --test docs-tests/build.test.cjs",
@@ -26,7 +31,8 @@
     "test:automation": "python3 -m unittest discover -s ci_tests && node --test ci_tests/*.test.cjs ci_tests/*.test.mjs",
     "test:field-catalog": "node scripts/build_modular_field_catalog.mjs",
     "build:field-catalog": "node scripts/build_modular_field_catalog.mjs --write",
-    "test:frontend:unit": "node --experimental-vm-modules --test frontend-tests/unit/*.test.mjs"
+    "test:frontend:unit": "node --experimental-vm-modules --test frontend-tests/unit/*.test.mjs",
+    "test:translations": "python3 scripts/check_localization.py && node --experimental-vm-modules --test frontend-tests/unit/localization.test.mjs && playwright test frontend-tests/translations.spec.js"
   },
   "dependencies": {
     "@docusaurus/core": "^3.10.2",
@@ -46,7 +52,7 @@
     "@docusaurus/faster": "3.10.2",
     "@docusaurus/module-type-aliases": "3.10.2",
     "@docusaurus/types": "3.10.2",
-    "@nicxe/semantic-release-config": "^1.5.1",
+    "@nicxe/semantic-release-config": "^1.5.2",
     "@playwright/test": "^1.63.0",
     "@semantic-release/commit-analyzer": "^13.0.1",
     "@semantic-release/exec": "^7.1.0",
@@ -79,26 +85,29 @@
     "minimatch": "^3.1.4",
     "serialize-javascript": ">=7.0.5",
     "picomatch": ">=4.0.4",
-    "ip-address": "^10.3.1",
-    "qs": "^6.15.2",
+    "ip-address": "^10.7.1",
+    "postcss-selector-parser": "^7.1.6",
+    "tinypool": "^2.1.2",
+    "body-parser": "^1.20.9",
+    "qs": "^6.16.1",
     "uuid": "^11.1.1",
     "@babel/core": "7.29.6",
     "joi": "^17.13.6",
     "js-yaml": "^4.3.2",
     "@semantic-release/github": {
-      "undici": "^7.29.0"
+      "undici": "^7.30.1"
     },
-    "npm": "12.2.0",
+    "npm": "12.2.1",
     "websocket-driver": "^0.7.5",
     "cheerio": {
-      "undici": "^7.29.0"
+      "undici": "^7.30.1"
     },
     "webpack-dev-server": {
       "http-proxy-middleware": "3.0.7",
       "ws": "^8.20.1"
     },
     "@actions/http-client": {
-      "undici": "^6.28.1"
+      "undici": "^6.29.1"
     },
     "colord": "^2.10.0",
     "svgo": "^3.3.5",

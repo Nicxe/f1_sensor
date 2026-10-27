@@ -19,7 +19,7 @@ function parseVersion(value) {
 function versionState(reported, latest) {
   const a = parseVersion(reported), b = parseVersion(latest);
   if (!a) return 'unknown';
-  if (a.prerelease) return /(?:^|[.-])beta(?:[.-]|$)/i.test(a.prerelease) ? 'beta' : 'unknown';
+  if (a.prerelease) return /(?:^|[.-])(?:beta|rc)(?:[.-]|$)/i.test(a.prerelease) ? 'beta' : 'unknown';
   if (!b || b.prerelease) return 'unknown';
   for (let i = 0; i < 3; i++) {
     if (a.numbers[i] < b.numbers[i]) return 'outdated-version';
@@ -36,6 +36,13 @@ function componentLabels(body) {
     ['blueprint', value.includes('blueprint')],
     ['documentation', value.includes('documentation') || value.includes('docs')],
   ].filter(([, enabled]) => enabled).map(([name]) => name);
+}
+
+function dashboardCardVersion(body) {
+  const value = (extractField(body, 'Dashboard Card Version') || extractField(body, 'Component')).toLowerCase();
+  if (value.includes('deprecated') || value.includes('legacy')) return 'legacy';
+  if (value.includes('modular')) return 'modular';
+  return 'unknown';
 }
 
 function releaseIssues(body, repository) {
@@ -59,4 +66,4 @@ function releaseIssues(body, repository) {
   return [...result];
 }
 
-module.exports = {extractField, parseVersion, versionState, componentLabels, releaseIssues};
+module.exports = {extractField, parseVersion, versionState, componentLabels, dashboardCardVersion, releaseIssues};

@@ -3,7 +3,8 @@ run-name: >-
   ${{ github.event_name == 'pull_request' && format('PR #{0} · {1}', github.event.pull_request.number, github.event.pull_request.title) || format('Manual verification · {0}', github.ref_name) }}
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review, edited]
+    # Retargeting is verified by PR metadata; title/body edits need no code tests.
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
     inputs:
       pull_request:
@@ -38,7 +39,8 @@ jobs:
         run: echo 'Use Release verification to create or recover a release draft.'; exit 1
       - env:
           RESULT: ${{ needs.checks.result }}
-        run: test "$RESULT" = success
+          PRODUCT_RESULT: ${{ needs.checks.outputs.product_result }}
+        run: test "$RESULT" = success && test "$PRODUCT_RESULT" = success
   report-pr:
     name: Report explicitly verified PR
     needs: [checks, required]

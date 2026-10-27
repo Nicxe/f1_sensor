@@ -1,11 +1,28 @@
-const config = require("@nicxe/semantic-release-config")({
+const {nonReleaseRules} = require("./semantic-release-policy.json");
+const {configuredStage} = require("./.github/scripts/release-stage.cjs");
+const path = require("node:path");
+
+const sharedOptions = {
   componentDir: "custom_components/f1_sensor",
   manifestPath: "custom_components/f1_sensor/manifest.json",
   projectName: "F1 Sensor",
   repoSlug: "Nicxe/f1_sensor",
   f1Theme: true,
+  templatePath: path.join(__dirname, ".release/release-notes.hbs"),
   notifyIssues: false
-});
+};
+const createSharedConfig = () => require("@nicxe/semantic-release-config")(sharedOptions);
+const config = createSharedConfig();
+config.branches = ["main", {name: "beta", channel: "beta", prerelease: configuredStage() === "rc" ? "rc" : "beta"}];
+
+const notesIndex = config.plugins.findIndex(
+  plugin => Array.isArray(plugin) && plugin[0] === "@semantic-release/release-notes-generator"
+);
+config.plugins[notesIndex] = ["./.github/scripts/release-notes.cjs", {
+  createOptions: () => createSharedConfig().plugins.find(
+    plugin => Array.isArray(plugin) && plugin[0] === "@semantic-release/release-notes-generator"
+  )[1]
+}];
 
 const analyzerPlugin = config.plugins.find(
   (plugin) => Array.isArray(plugin) && plugin[0] === "@semantic-release/commit-analyzer"
@@ -14,18 +31,7 @@ const analyzerPlugin = config.plugins.find(
 if (analyzerPlugin?.[1]) {
   analyzerPlugin[1].releaseRules = [
     ...(analyzerPlugin[1].releaseRules || []),
-    {
-      type: "fix",
-      scope: "compatibility",
-      subject: "Verify release tags from GitHub directly",
-      release: false
-    },
-    {
-      type: "fix",
-      scope: "compatibility",
-      subject: "tolerate delayed release assets",
-      release: false
-    }
+    ...nonReleaseRules
   ];
 }
 
@@ -34,6 +40,7 @@ const githubPlugin = config.plugins.find(
 );
 
 if (githubPlugin?.[1]) {
+  githubPlugin[1].draftRelease = true;
   githubPlugin[1].successCommentCondition = false;
   githubPlugin[1].assets = [
     { path: "f1_sensor.zip", label: "F1 Sensor" },

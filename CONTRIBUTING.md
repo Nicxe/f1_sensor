@@ -107,19 +107,22 @@ complete.
 
 Changes to English source text and translation keys follow the code path and
 target `dev`. Weblate translation pull requests also target `dev`, use `chore:`
-commit messages, and must pass the normal integration checks. Merge Weblate
+commit messages, and must pass the applicable translation checks. Merge Weblate
 commits without squashing so its repository stays synchronized with upstream.
 
 Before submitting source-string or translation changes, run:
 
 ```bash
-python3 scripts/check_translations.py custom_components/f1_sensor/translations
+python3 scripts/check_localization.py
+npm run test:translations
 ```
 
-The integration validator accepts missing target-language values, but rejects
-unknown keys, blank values, invalid nested values, and changed placeholders.
-The card localization tests apply the same source-key and fallback rules to its
-flat JSON locale files.
+The shared validator accepts missing target-language values. Obsolete unused
+keys awaiting Weblate cleanup produce warnings. Duplicate keys, invalid value
+types, blank active values and changed active placeholder names still fail.
+Both integration and card catalogs are checked. Tests verify actual
+catalog delivery, language selection, regional fallback, English fallback, and
+actions without freezing translated wording or the number of languages.
 
 ## How to submit a pull request
 
@@ -137,40 +140,53 @@ If you are unsure whether a change fits the project direction, open an issue bef
 
 `CI required` summarizes all applicable checks. Code PRs run on the proposed merge result with read-only permissions and without secrets, including PRs from forks. Metadata workflows read trusted default-branch scripts and use the GitHub API; they never install or execute contributor code. A first-time contributor may still need the maintainer to start GitHub's restricted workflow run.
 
-Standalone content runs documentation checks and, for blueprints, HA blueprint tests. Integration changes run Python, frontend, lint, HACS/hassfest and package checks. Dependency or workflow changes and code promotions run the complete set. Npm audit runs for dependency changes, releases and weekly maintenance; an unavailable registry is reported separately from a vulnerability.
+Standalone content runs documentation checks and, for blueprints, HA blueprint tests. Target-language-only changes run focused catalog, loader and browser checks. English source, localization implementation and other integration changes retain broader Python, frontend, lint, HACS/hassfest and package checks. Promotions use the same impact routing: an issue-automation edit runs automation contracts, while shared environment or check-policy changes select the full safety profile. Missing or invalid change information selects the full checks rather than silently passing.
+
+Ordinary dependency changes and promotions compare current advisories against both exact lockfiles and block newly introduced high/critical exposure. Security-policy changes, release security readiness and daily health checks inspect all current high/critical findings, including development dependencies. Lower-severity findings remain visible warnings. Registry failures have a separate diagnostic, not fabricated vulnerabilities. Exceptions remain narrow and expiring; an active expired exception still blocks full release security readiness. Removing a repaired dependency or retired exception is valid and must not break security regressions.
 
 The maintainer can push directly to `dev`. Promotions use `dev → beta → main` and merge commits. No additional reviewer is required. Release drafts are created only after checks pass on the same final commit. Publishing a draft remains a manual maintainer action. A published stable release may synchronize its exact history to `content`; beta releases are not synchronized back to `dev` automatically because beta is promoted from `dev`. Normal pushes, PR verification runs and schedules do not start branch synchronization.
 
 For a release retry, run **Actions → Release verification → Run workflow**, choose `beta` or `main`, enable the release option. CI verifies that branch head again. An existing published tag is left untouched; an interrupted draft can be recovered without changing its version. Bot-created synchronization PRs use the PR-number input to explicitly check the proposed merge when `GITHUB_TOKEN` does not trigger PR workflows.
 
-Use Python 3.14 with `requirements/ha-current.txt` for the complete HA suite, or Python 3.12 with `requirements/ha-minimum.txt` for the supported minimum. From the checkout root:
+To start final release-candidate testing, run **Actions → Release verification → Run workflow**, choose the `beta` branch, keep release draft creation enabled, and enable **Skapa RC**. The workflow verifies the current branch head and creates an `rc.1` draft, including when that commit already has a published beta. RC creation on other branches is rejected. Review the draft, its complete release notes and verified assets before publishing it manually.
+
+The `beta` branch stays in RC mode for the current release cycle. Further release-relevant corrections produce `rc.2`, `rc.3`, and later candidates without enabling **Skapa RC** again. Every RC regenerates its complete user-facing change list from the previous stable version. Keep new features on `dev` during this phase. Promote the validated candidate through the usual `beta → main` merge and publish the stable release manually.
+
+After publishing stable, merge `main` back into `dev` with a merge commit that preserves its history. The next normal `dev → beta` promotion then includes the stable tag and starts a new numbered-beta cycle. Complete this synchronization before starting the next cycle; a completed RC series stays blocked until the stable release is part of the branch history. No additional release branch or automatic branch synchronization is introduced.
+
+From the checkout root, use the isolated local preflight. It installs the repository-pinned Python environment, Node, npm, Chromium and workflow validator without changing global Node or npm:
 
 ```bash
-python -m pip install -r requirements/ha-current.txt
-python scripts/run_ci_tests.py
-python scripts/test_installed_release.py
-npm ci
-npm run test:automation
-npm run test:frontend:unit
-npx playwright install chromium
-npm run test:frontend
-npm run test:docs
+npm run setup:ci
+npm run verify:changed
+npm run verify:dev
+npm run verify:release -- --target beta
 ```
 
-The Node unit suite loads complete delivered card modules and simulates the browser/Lit boundary. Playwright renders the real components in Chromium. Run both after changing dashboard behavior; passing unit tests alone does not verify layout or accessibility.
+`verify:changed` includes committed, staged, unstaged and untracked source changes relative to `origin/dev` by default; use `--base <ref>` and `--target <branch>` for another comparison. An invalid base or an empty comparison is not a passing test run. Full development and release profiles run all locally reproducible checks, including full security health. Preflight finishes all selected checks, reports every failed group and stores named command outcomes in `test-results/verification.json`. Stale dependencies trigger a clean setup. Source/tool/dependency drift invalidates the receipt. HACS/hassfest and GitHub's proposed merge result still require remote confirmation after pushing.
 
-Python line coverage must remain strictly above 95 percent globally and in every production module; branch coverage is informational. Tests should protect user behavior, lifecycle and external boundaries rather than specific source formatting. The weekly maintenance workflow checks latest stable HA compatibility on `dev`, WebKit smoke flows, timing budgets, npm audit and review dates. Review-date checks document overdue manual review; they do not verify a remote service's security.
+The Node unit suite loads complete delivered card modules and simulates the browser/Lit boundary. Playwright renders the real components in Chromium. Both are included when dashboard behavior changes; passing unit tests alone does not verify layout or accessibility. The current full HA profile uses Python 3.14; the supported minimum profile uses Python 3.12 with `requirements/ha-minimum.txt` in GitHub.
+
+Python line coverage must remain strictly above 95 percent globally. Per-module and branch percentages are review signals, not independent gates. Tests protect user behavior, lifecycle and external boundaries, not specific source spelling. Browser assertions run with zero test retries; rendering auto-wait is still expected. Functional layout, accessibility and shared-resource cleanup remain blocking. Broad pixel diffs are opt-in with `F1_VISUAL_REVIEW=1 npm run test:frontend`; timing benchmarks use `F1_MAINTENANCE=1 npm run test:frontend` and scheduled maintenance.
+
+Weekly maintenance checks latest stable HA compatibility on `dev`, WebKit smoke flows, timing budgets and review dates. Daily security health assesses `dev`, `beta` and `main` with trusted tools without installing or running the scanned branch. Its launcher must exist on `main`; a schedule added only to dev/beta is not active. Review-date checks document overdue manual review, not a remote service's actual security.
 
 ## Avoiding duplicate verification
 
-Development checks run on pushes to `dev` and `content`. When an existing PR verification run covers that exact branch head, it owns the tests; API errors or unconfirmed runs fall back to normal push checks. PR verification provides the sole required `CI required` result. Metadata-only edits do not restart code tests; changing the target branch explicitly starts fresh verification.
+Development pushes to `dev` and `content` always run their own applicable checks; a queued PR does not count as verified push evidence. PR verification provides the sole required `CI required` result. Metadata-only edits do not restart code tests; changing the target branch explicitly starts fresh verification.
 
-PRs can reuse successful checks from a development push completed within the last two hours only when the complete Git tree is identical. This includes all sources, test profiles, workflows and dependency locks. The source must be a successful push in this repository on `dev` or `content`, and all jobs in each reused profile must have succeeded. CI revalidates the source run and its attempt before passing the gate. The run summary links the evidence. Registry audits and external HACS/hassfest validation always run when applicable. Release verification never reuses results and still tests the final commit before creating a draft. GitHub may continue to display earlier push checks attached to the PR head.
+PRs can select successful development-push evidence at most two hours old only when the complete Git tree is identical, including source, profiles, workflows and locks. The source must be a successful same-repository `dev`/`content` push with every reused profile passed. Final verification checks the immutable run, attempt, tree and results again, without a second age limit expiring while other jobs run. The summary links the evidence. HACS/hassfest can reuse this remote proof; local checks never replace it. Registry audits always run when applicable. Beta/main release product checks run fresh. GitHub may display earlier push checks attached to the PR head.
+
+Release verification exposes separate product, documentation and full security-readiness results. A release draft requires successful product and security verification. A documentation presentation failure does not redefine product correctness, while documentation changes still require their own PR checks. Publishing release drafts remains manual.
+
+Documentation publication starts directly on beta/main pushes and requires successful product and documentation jobs from the exact trusted commit/run/attempt for both channels. An unrelated security-readiness or draft failure does not prevent verified documentation delivery; missing or failed product/documentation evidence never authorizes publication. Beta documentation works on its first promotion without waiting for the new publisher on main. After repairing failed proof or a waiting timeout, rerun **Documentation publication**; no extra code promotion or release publication is needed.
 
 The repository allows Actions to create synchronization PRs. This GitHub setting also technically permits review approval; these workflows never submit approval reviews, and branch rules require zero approvals. Automatic synchronization is limited to published stable releases into `content`.
 
 ## Security updates and branch synchronization
 
 Dependabot security updates target `main`. Dependency-only PRs from Dependabot may run full CI there; automatic merging additionally requires verified Dependabot commits and a matching open security advisory. Ordinary patch/minor Dependabot updates continue to target `dev`. Both paths use merge commits and require strict, GitHub Actions-bound `CI required` protection.
+
+Previously verified dependency fixes on `main` can accompany the next `beta → main` promotion without a separate release. The promotion check inspects each earlier release-relevant commit: only changes to existing build and test dependency inputs qualify, and npm package settings outside dependency declarations must stay unchanged. Product changes, mixed dependency and product changes, and declared breaking changes still require release-history review. Reverting a product change does not hide its earlier commit from this check. Normal CI and dependency security checks remain required.
 
 Branch synchronization is deliberately narrow. Published stable releases may create a `main → content` synchronization PR. Published beta releases do not create a `beta → dev` PR automatically because beta is promoted from dev and active development should not be interrupted by history-only synchronization PRs. If a beta-only hotfix ever needs to be brought back to `dev`, the supported `beta → dev` manual synchronization remains available; conflicts require normal manual resolution. Release publication remains manual.

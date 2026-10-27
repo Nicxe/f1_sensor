@@ -17,6 +17,7 @@ Find the exact entity, state, or attribute you need for a dashboard or automatio
 | Live Delay helper values and calibration | [Live Delay controls](/reference/live-delay-controls) |
 | Replay selectors, buttons, and media player actions | [Replay controls](/reference/replay-controls) |
 | Token, replay, or connection health | [Diagnostics](/entities/diagnostics) |
+| Direct card data without sensor entities | [Card data protocol](/reference/card-data-api) |
 | A working automation example | [Automation recipes](/automation#yaml-examples) |
 
 :::info[Use your existing entity IDs]

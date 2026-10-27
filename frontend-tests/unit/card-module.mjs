@@ -1,9 +1,13 @@
 /** Load complete delivered modules; only the browser/Lit boundary is simulated. */
-import {readFile} from 'node:fs/promises';
+import {readFile, readdir} from 'node:fs/promises';
 import {createContext, SourceTextModule, SyntheticModule} from 'node:vm';
 const root = new URL('../../custom_components/f1_sensor/www/f1-sensor-live-data-card/', import.meta.url);
+const localeLanguages = (await readdir(new URL('localization/locales/', root)))
+  .filter(filename => filename.endsWith('.json'))
+  .map(filename => filename.slice(0, -5))
+  .sort();
 const locales = Object.fromEntries(await Promise.all(
-  ['en', 'sv', 'nl'].map(async language => [
+  localeLanguages.map(async language => [
     language,
     JSON.parse(await readFile(new URL(`localization/locales/${language}.json`, root), 'utf8')),
   ]),
@@ -40,4 +44,12 @@ export function card(type, config={}) {
   const Class=registry.get(type);if(!Class)throw new Error(`Unregistered card ${type}`);
   const result=new Class();result.config=config;result.hass={states:{},locale:{language:'en-GB',time_format:'24',time_zone:'UTC'},config:{time_zone:'UTC'}};
   return result;
+}
+export async function moduleView() {
+  await load(new URL('modular/view.js', root));
+  return card('f1-module-view');
+}
+export async function trackMapView() {
+  await load(new URL('modular/map-view.js', root));
+  return card('f1-track-map-view');
 }

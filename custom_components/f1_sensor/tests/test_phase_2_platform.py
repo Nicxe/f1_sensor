@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-import re
+from importlib import import_module
+from unittest.mock import Mock
 
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -14,6 +15,7 @@ from custom_components.f1_sensor.const import (
     CONF_OPERATION_MODE,
     DOMAIN,
     OPERATION_MODE_LIVE,
+    SUPPORTED_SENSOR_KEYS,
 )
 from custom_components.f1_sensor.entity import entry_runtime_registry
 from custom_components.f1_sensor.feature_plan import build_feature_plan
@@ -27,34 +29,21 @@ from custom_components.f1_sensor.runtime import (
     StaticRuntime,
 )
 from custom_components.f1_sensor.track_map import TrackMapRuntimeData, TrackMapStore
+from custom_components.f1_sensor.weather import F1RaceWeatherCoordinator
 
-EXPECTED_CARD_TYPES = {
-    "f1-weekend-hub-card",
-    "f1-sensor-live-data-card",
-    "f1-pitstop-overview-card",
-    "f1-driver-lap-times-card",
-    "f1-championship-prediction-drivers-card",
-    "f1-championship-prediction-teams-card",
-    "f1-season-progression-card",
-    "f1-last-race-results-card",
-    "f1-lap-position-progression-card",
-    "f1-replay-control-card",
-    "f1-track-map-card",
-    "f1-investigations-card",
-    "f1-track-limits-card",
-    "f1-next-race-card",
-    "f1-weather-card",
-    "f1-season-calendar-card",
-    "f1-live-session-card",
-    "f1-race-control-card",
-    "f1-fia-documents-card",
-    "f1-qualifying-timing-card",
-    "f1-practice-timing-card",
-    "f1-race-lap-card",
-    "f1-starting-grid-card",
-}
 
-DEPRECATED_CARD_TYPES = {"f1-session-archive-card"}
+def _typed_runtime(entry_id, registry):
+    return F1RuntimeData(
+        static=StaticRuntime(),
+        live=None,
+        replay=None,
+        track_map=TrackMapRuntimeData(TrackMapStore(entry_id)),
+        cache=CacheRuntime(object(), {}, {}, {}),
+        providers=ProviderRuntime(ProviderRegistry()),
+        history=HistoryRuntime(service=object()),
+        capabilities=CapabilityState(frozenset(), frozenset(), frozenset()),
+        legacy=registry,
+    )
 
 
 def test_feature_plan_static_only_has_zero_live_demand() -> None:
@@ -65,6 +54,16 @@ def test_feature_plan_static_only_has_zero_live_demand() -> None:
     assert plan.coordinators == frozenset()
     assert plan.requested_streams == frozenset()
     assert plan.stream_reasons == {}
+
+
+@pytest.mark.parametrize("feature", ["driver_positions", "pitstops"])
+def test_session_scoped_features_request_identity_without_session_sensor(
+    feature,
+) -> None:
+    plan = build_feature_plan({feature}, live_enabled=True)
+
+    assert "SessionInfo" in plan.public_streams
+    assert plan.stream_reasons["SessionInfo"] == (feature,)
 
 
 def test_feature_plan_declares_exact_streams_and_reasons() -> None:
@@ -88,6 +87,17 @@ def test_feature_plan_declares_exact_streams_and_reasons() -> None:
         "SessionStatus": ("formation_start",),
         "TrackStatus": ("track_status",),
     }
+
+
+def test_team_radio_feature_plan_includes_driver_identity_stream() -> None:
+    plan = build_feature_plan({"team_radio"}, live_enabled=True)
+
+    assert plan.coordinators == frozenset({"team_radio", "session_info"})
+    assert plan.requested_streams == frozenset(
+        {"DriverList", "Heartbeat", "TeamRadio", "SessionInfo"}
+    )
+    assert plan.stream_reasons["DriverList"] == ("team_radio",)
+    assert plan.stream_reasons["TeamRadio"] == ("team_radio",)
 
 
 def test_provider_sources_share_one_golden_record_contract() -> None:
@@ -149,38 +159,73 @@ def test_platform_runtime_prefers_typed_config_entry_data(hass) -> None:
     entry = MockConfigEntry(domain=DOMAIN, data={"sensor_name": "F1"})
     entry.add_to_hass(hass)
     typed_registry = {"source": "typed"}
-    entry.runtime_data = F1RuntimeData(
-        static=StaticRuntime(),
-        live=None,
-        replay=None,
-        track_map=TrackMapRuntimeData(TrackMapStore(entry.entry_id)),
-        cache=CacheRuntime(object(), {}, {}, {}),
-        providers=ProviderRuntime(ProviderRegistry()),
-        history=HistoryRuntime(service=object()),
-        capabilities=CapabilityState(frozenset(), frozenset(), frozenset()),
-        legacy=typed_registry,
-    )
+    entry.runtime_data = _typed_runtime(entry.entry_id, typed_registry)
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {"source": "legacy"}
 
     assert entry_runtime_registry(hass, entry.entry_id) is typed_registry
 
 
-def test_platform_modules_do_not_read_entry_runtime_directly() -> None:
-    component_dir = Path(__file__).resolve().parents[1]
-    for filename in (
-        "sensor.py",
-        "binary_sensor.py",
-        "media_player.py",
-        "button.py",
-        "number.py",
-        "select.py",
-        "calendar.py",
-        "weather.py",
-    ):
-        source = (component_dir / filename).read_text(encoding="utf-8")
-        assert "entry_runtime_registry" in source
-        assert "hass.data[DOMAIN][entry.entry_id]" not in source
-        assert ".get(entry.entry_id" not in source
+@pytest.mark.parametrize(
+    ("platform", "entity_suffix"),
+    (
+        ("sensor", "next_race"),
+        ("binary_sensor", "race_week"),
+        ("media_player", "replay_player"),
+        ("button", "delay_calibration_match"),
+        ("number", "live_delay_number"),
+        ("select", "live_delay_reference"),
+        ("calendar", "f1_season_calendar"),
+        ("weather", "weather_entity"),
+    ),
+)
+@pytest.mark.asyncio
+async def test_platform_setup_uses_typed_runtime_even_with_stale_legacy_data(
+    hass, platform, entity_suffix
+) -> None:
+    """Refactoring lookup syntax is safe; ignoring the typed owner is not."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={"sensor_name": "F1"},
+        options={
+            "disabled_sensors": sorted(
+                SUPPORTED_SENSOR_KEYS - {"next_race", "race_week", "calendar"}
+            )
+        },
+    )
+    entry.add_to_hass(hass)
+    coordinator = Mock(spec=DataUpdateCoordinator, data={}, last_update_success=True)
+    registry = dict.fromkeys(
+        (
+            "driver_coordinator",
+            "constructor_coordinator",
+            "last_race_coordinator",
+            "season_results_coordinator",
+            "sprint_results_coordinator",
+        )
+    )
+    registry["race_coordinator"] = coordinator
+    if platform == "media_player":
+        registry["replay_controller"] = object()
+    elif platform == "button":
+        registry["calibration_manager"] = object()
+    elif platform == "number":
+        registry["live_delay_controller"] = Mock(current=15)
+    elif platform == "select":
+        registry["delay_reference_controller"] = Mock(current="session_live")
+    elif platform == "weather":
+        registry["race_weather_coordinator"] = Mock(
+            spec=F1RaceWeatherCoordinator, data={}, last_update_success=True
+        )
+    entry.runtime_data = _typed_runtime(entry.entry_id, registry)
+    # An old mapping may still exist during migration. Using it loses entities.
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {}
+    entities = []
+    await import_module(f"custom_components.f1_sensor.{platform}").async_setup_entry(
+        hass, entry, lambda added, *_: entities.extend(added)
+    )
+    assert f"{entry.entry_id}_{entity_suffix}" in {
+        entity.unique_id for entity in entities
+    }
 
 
 @pytest.mark.asyncio
@@ -206,7 +251,7 @@ async def test_options_migration_preserves_identity_and_connection_data(hass) ->
     assert await async_migrate_entry(hass, entry)
 
     assert entry.version == 4
-    assert entry.minor_version == 2
+    assert entry.minor_version == 4
     assert entry.entry_id == original_entry_id
     assert entry.unique_id == DOMAIN
     assert entry.data == {
@@ -221,78 +266,16 @@ async def test_options_migration_preserves_identity_and_connection_data(hass) ->
     assert entry.options[CONF_OPERATION_MODE] == OPERATION_MODE_LIVE
 
 
-def test_frontend_loader_preserves_all_card_tags_and_eagerly_loads_bundle(
-    bundled_card_path: Path,
+@pytest.mark.parametrize("live_enabled", [True, False])
+def test_team_radio_only_plan_supplies_session_path_resource_when_live_enabled(
+    live_enabled,
 ) -> None:
-    root = bundled_card_path.parent
-    main_source = bundled_card_path.read_text(encoding="utf-8")
-    loader_source = (root / "register.js").read_text(encoding="utf-8")
-    registry_source = (root / "platform" / "card-registry.js").read_text(
-        encoding="utf-8"
-    )
-
-    registered_cards = set(
-        re.findall(r"customElements\.define\('([^']+)'", main_source)
-    )
-    metadata_cards = set(re.findall(r"\['(f1-[^']+-card)'\s*,", registry_source))
-    assert metadata_cards == EXPECTED_CARD_TYPES | {"f1-sensor-card"}
-    assert EXPECTED_CARD_TYPES <= registered_cards
-    assert {f"{card}-editor" for card in EXPECTED_CARD_TYPES} <= registered_cards
-    assert DEPRECATED_CARD_TYPES <= registered_cards
-    assert {f"{card}-editor" for card in DEPRECATED_CARD_TYPES}.isdisjoint(
-        registered_cards
-    )
-    assert (
-        "await import(`./f1-sensor-live-data-card.js${cacheSuffix}`)" in loader_source
-    )
-    assert "await import(`./platform/card-registry.js${cacheSuffix}`)" in loader_source
-    for filename, tag in (
-        ("card", "f1-sensor-card"),
-        ("editor", "f1-sensor-card-editor"),
-    ):
-        assert (
-            f"await import(`./modular/{filename}.js${{cacheSuffix}}`);" in loader_source
-        )
-        module_source = (root / "modular" / f"{filename}.js").read_text(
-            encoding="utf-8"
-        )
-        assert f"customElements.define('{tag}'" in module_source
-    assert "MutationObserver" not in loader_source
-    assert "import './f1-sensor-live-data-card.js'" not in loader_source
-    assert "const LitElement = F1BaseElement;" in main_source
-    for module in ("base-card", "actions", "accessibility", "i18n"):
-        assert (root / "platform" / f"{module}.js").is_file()
-
-
-def test_frontend_cache_key_reaches_nested_modules_and_local_assets(
-    bundled_card_path: Path,
-) -> None:
-    """Ensure a new managed resource version cannot reuse stale child assets."""
-    root = bundled_card_path.parent
-    main_source = bundled_card_path.read_text(encoding="utf-8")
-    accessibility_source = (root / "platform" / "accessibility.js").read_text(
-        encoding="utf-8"
-    )
-    base_source = (root / "platform" / "base-card.js").read_text(encoding="utf-8")
-    registry_source = (root / "platform" / "card-registry.js").read_text(
-        encoding="utf-8"
-    )
-
-    for source in (main_source, accessibility_source, base_source, registry_source):
-        assert "new URL(import.meta.url).searchParams.get('v')" in source
-        assert "cacheSuffix" in source
-
-    assert "from './platform/" not in main_source
-    assert "from '../f1-lit-3.3.2.js'" not in accessibility_source
-    assert "from './actions.js'" not in accessibility_source
-    assert "from './i18n.js'" not in accessibility_source
-    assert "from '../f1-lit-3.3.2.js'" not in base_source
-    assert "from './i18n.js'" not in registry_source
-    for filename in (
-        "hard_tyre.png",
-        "soft_tyre.png",
-        "medium_tyre.png",
-        "intermediate_tyre.png",
-        "wet_tyre.png",
-    ):
-        assert f"cacheBustedAssetUrl('./{filename}')" in main_source
+    plan = build_feature_plan({"team_radio"}, live_enabled=live_enabled)
+    if not live_enabled:
+        assert plan.requested_streams == frozenset()
+        assert plan.coordinators == frozenset()
+        return
+    assert "SessionInfo" in plan.public_streams
+    assert plan.stream_reasons["SessionInfo"] == ("team_radio",)
+    assert plan.needs("session_info")
+    assert plan.needs("team_radio")

@@ -1,0 +1,4 @@
+[     584ms] [LOG] {hash: 00bb3e40e5d7bd753fe390ddf456ccb235e37c1f81b15beaebfbe61558c43285, nonce: 1077} @ https://hosted.weblate.org/.within.website/x/cmd/anubis/static/js/main.mjs?cacheBuster=v1.27.0:30
+[    1685ms] [LOG] %c%s color: red; font-weight: bold; font-size: 50px; font-family: sans-serif; -webkit-text-stroke: 1px black; Stopp! @ https://hosted.weblate.org/static/loader-bootstrap.73d81af24d55.js:3018
+[    1685ms] [LOG] %c%s font-size: 20px; font-family: sans-serif Detta är en webbläsarfunktion som är avsedd för utvecklare. Om någon har sagt åt dig att kopiera och klistra in något här försöker de troligen äventyra ditt Weblate-konto. @ https://hosted.weblate.org/static/loader-bootstrap.73d81af24d55.js:3023
+[    1685ms] [LOG] %c%s font-size: 20px; font-family: sans-serif Se https://en.wikipedia.org/wiki/Self-XSS för mer information. @ https://hosted.weblate.org/static/loader-bootstrap.73d81af24d55.js:3030

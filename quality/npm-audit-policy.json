@@ -1,0 +1,5 @@
+{
+  "version": 1,
+  "blocking_severities": ["high", "critical"],
+  "exception_warning_days": 14
+}

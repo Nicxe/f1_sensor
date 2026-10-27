@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
 from datetime import datetime
 from types import SimpleNamespace
@@ -15,7 +16,9 @@ from custom_components.f1_sensor.__init__ import (
     PITSTOP_MAX_TEXT_CHARS,
     LiveDriversCoordinator,
     PitStopCoordinator,
+    _reset_replay_sensitive_coordinator_state,
 )
+from custom_components.f1_sensor.signalr import LiveBus
 
 
 class DummyDriversCoordinator:
@@ -47,6 +50,132 @@ def _make_live_drivers_coord(hass) -> LiveDriversCoordinator:
         delay_controller=None,
         live_state=None,
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("delay", [0, 1])
+async def test_new_live_session_discards_previous_race_pit_counts(hass, delay) -> None:
+    """FP1 must not add new visits to Singapore's retained race counts."""
+    bus = LiveBus(hass, MagicMock(), auth_header="Bearer test-token")
+    send = bus.inject_message
+    index = DummyDriversCoordinator({"Meetings": [{"Key": 1297}]})
+    entry = MagicMock()
+    entry.state = config_entries.ConfigEntryState.SETUP_IN_PROGRESS
+    drivers = LiveDriversCoordinator(
+        hass, index, bus=bus, config_entry=entry, delay_seconds=delay
+    )
+    pitstops = PitStopCoordinator(
+        hass,
+        index,
+        bus=bus,
+        drivers_coordinator=drivers,
+        config_entry=entry,
+        delay_seconds=delay,
+    )
+    await drivers.async_config_entry_first_refresh()
+    await pitstops.async_config_entry_first_refresh()
+    try:
+        previous_counts = {
+            "3": 1,
+            "16": 2,
+            "44": 1,
+            "12": 2,
+            "1": 1,
+            "81": 2,
+            "10": 1,
+            "30": 1,
+            "41": 1,
+            "27": 1,
+            "87": 1,
+            "31": 1,
+            "55": 1,
+            "23": 2,
+            "11": 2,
+            "77": 1,
+            "63": 1,
+            "14": 1,
+            "18": 1,
+            "6": 1,
+        }
+        send("SessionInfo", {"Key": 11388, "Type": "Race"})
+        send(
+            "DriverRaceInfo",
+            {rn: {"PitStops": count} for rn, count in previous_counts.items()},
+        )
+        send(
+            "PitStopSeries",
+            {
+                "PitTimes": {
+                    "1": [
+                        {
+                            "Timestamp": "2026-10-11T12:22:00Z",
+                            "PitStop": {
+                                "RacingNumber": "1",
+                                "Lap": 10,
+                                "PitStopTime": 2.5,
+                            },
+                        }
+                    ]
+                }
+            },
+        )
+        send("SessionInfo", {"Key": "11388", "ArchiveStatus": {"Status": "Complete"}})
+        send("SessionInfo", {"ArchiveStatus": {"Status": "Complete"}})
+        await asyncio.sleep(delay + 0.01)
+        await hass.async_block_till_done()
+        assert pitstops.data["total_stops"] == 25
+        assert len(pitstops.data["cars"]["1"]["stops"]) == 1
+
+        bus._process_payload(
+            {
+                "R": {
+                    "SessionStatus": {"Status": "Started"},
+                    "TimingData": {
+                        "Lines": {
+                            rn: {"InPit": True, "PitOut": False}
+                            for rn in previous_counts
+                        },
+                        "_kf": True,
+                    },
+                    "DriverList": {"1": {"Tla": "NOR"}},
+                    "SessionInfo": {"Key": 11389, "Type": "Practice", "Number": 1},
+                },
+            }
+        )
+        await asyncio.sleep(delay + 0.01)
+        await hass.async_block_till_done()
+        assert pitstops.data["total_stops"] == 0
+        assert not pitstops._by_car
+        assert not pitstops._dedup
+        assert set(drivers.data["drivers"]) == set(previous_counts)
+        assert drivers.data["session_status"] == {"Status": "Started"}
+        assert drivers.data["drivers"]["1"]["identity"]["tla"] == "NOR"
+        assert all(
+            "pit_stops" not in car["timing"] for car in drivers.data["drivers"].values()
+        )
+
+        for rn in ("43", "5", "25"):
+            send("TimingData", {"Lines": {rn: {"NumberOfPitStops": 1, "InPit": True}}})
+        send("SessionInfo", {"Key": 11389, "SessionStatus": "Started"})
+        send("SessionInfo", {"ArchiveStatus": {"Status": "Generating"}})
+        send("TimingData", {"Lines": {"43": {"InPit": False}}})
+        await asyncio.sleep(delay + 0.01)
+        await hass.async_block_till_done()
+        assert pitstops.data["total_stops"] == 3
+        assert set(pitstops.data["cars"]) == {"43", "5", "25"}
+        assert all(car["stops"] == [] for car in pitstops.data["cars"].values())
+
+        drivers._replay_mode = True
+        pitstops._replay_mode = True
+        _reset_replay_sensitive_coordinator_state(drivers)
+        _reset_replay_sensitive_coordinator_state(pitstops)
+        send("DriverRaceInfo", {"1": {"PitStops": 2}})
+        send("SessionInfo", {"Key": 11390, "Type": "Practice", "Number": 2})
+        await hass.async_block_till_done()
+        assert pitstops.data["total_stops"] == 2
+    finally:
+        await pitstops.async_close()
+        await drivers.async_close()
 
 
 @pytest.mark.asyncio
@@ -490,7 +619,12 @@ async def test_pitstop_first_refresh_wires_sources_and_seeds_delivery(hass) -> N
 
     await coordinator.async_config_entry_first_refresh()
 
-    assert set(subscriptions) == {"DriverList", "PitStopSeries"}
+    assert set(subscriptions) == {
+        "SessionInfo",
+        "DriverList",
+        "PitStopSeries",
+        "PitLaneTimeCollection",
+    }
     assert coordinator._session_fingerprint is not None
     assert coordinator._drivers_unsub is not None
     assert coordinator._driver_pit_counts == {"44": 1}

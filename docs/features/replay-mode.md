@@ -35,7 +35,9 @@ If you cannot watch a session live, turn on [No Spoiler Mode](/features/no-spoil
 
 Replay Mode downloads completed session data from Formula 1's authenticated archive and plays it back through your Home Assistant entities. By starting playback at the same moment the session begins on your TV, your dashboard and automations can follow the broadcast closely.
 
-You do not need a local replay dump or a developer build. You do need [F1TV Auth](/features/f1tv-auth) connected from an account with an active paid subscription. Replay Mode provides its own selectors, load controls, media player, pause, and seek support.
+You do not need a local replay dump, a developer build, or a paid F1 TV subscription. Connect a Formula 1 account, including a free account, through [F1TV Auth](/features/f1tv-auth) so the integration has a valid token for the timing archive. Replay Mode provides its own selectors, load controls, media player, pause, and seek support.
+
+Replay Mode follows archived timing data in Home Assistant; it does not provide video replay access. Live feed permissions are separate from archive access and depend on the account and session.
 
 :::info[Standard entity IDs]
 This page uses the standard Replay Mode entity IDs for new installations, such as `select.f1_replay_year` and `media_player.f1_replay_player`.
@@ -49,10 +51,10 @@ If you upgraded from an older release and already have different registry IDs, k
 
 ### Step 1 - Select a session
 
-1. Use `select.f1_replay_year` to choose the season
-2. Use `select.f1_replay_session` to pick a session from that year
+1. To use the preselected year, press `button.f1_replay_refresh` to load its sessions. To use a different year, choose it with `select.f1_replay_year`; this loads that year's sessions.
+2. Use `select.f1_replay_session` to pick a session from that year.
 
-The session list shows all completed sessions from the selected year, with the most recent first.
+The list is loaded on demand to avoid unnecessary archive requests. After loading, it shows completed sessions from the selected year, with the most recent first.
 :::info[Data availability]
 Archive publication is controlled by Formula 1. A completed session may not be available immediately; refresh the session list later if it is missing.
 :::
@@ -193,6 +195,8 @@ Testing the integration with a dump supplied or captured for development? Use [D
 Public live timing works without a token. [F1TV Auth](/features/f1tv-auth) is used both for additional live features during a real live session and for downloading Replay Mode data after the session has completed.
 
 This means Replay Mode can sometimes show data that public live timing did not show during the live session. For example, Pit Stops, Team Radio, Championship Prediction, Track Map, and incident location context can work in replay when the archive contains the needed data.
+
+Pit counts and detailed stop records are separate. The saved Singapore and United States race archives contain stationary and pit-lane times that were absent from the sampled United States live `PitStopSeries` delivery. This does not guarantee every archive or immediate publication after a session. A post-session download failure alone does not prove that the account lacks live access. Replay uses archived detailed stop records; the live pit-lane-time fallback does not fill a missing replay archive. See [Pit Stops](/entities/pit-stops) for the meaning of counts and nullable time fields.
 
 ## What Replay Mode can replay
 

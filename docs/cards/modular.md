@@ -5,6 +5,11 @@ description: Build one Formula 1 view from presets, configurable modules and acc
 toc_max_heading_level: 2
 ---
 
+:::info[Automatic card data]
+Add the modules you want to the F1 Sensor card. Its [data is available automatically](/features/card-data-and-sensors), independently of the sensors exposed in Home Assistant. Existing installations keep their sensor choices and start normally after updating; see [Upgrading to automatic card data](/getting-started/required-data-choice).
+:::
+
+
 Build a compact weekend overview or a detailed session view with the **F1 Sensor** card. Choose your content first, then adjust its appearance in the visual editor.
 
 New cards start with the empty **Build your own** template. The template chooser is open so you can select a preset or add your first module. Existing saved cards keep their modules.
@@ -54,7 +59,7 @@ Use **Add module** to add content, then select the module to edit it. Select fie
 | Content | Available modules |
 | --- | --- |
 | Planning | Overview, Schedule and Weather. |
-| Session | Timing, Minisectors, Race Control, Tyres, Pit stops and Incidents. |
+| Session | Timing, Minisectors, Race Control, Team Radio (experimental), Tyres, Pit stops and Incidents. |
 | Results | Results, Championship, Season progression and Historical archive. |
 | Analysis | Lap history chart, Session timeline, Strategy analysis, Battles and position changes, and Track map. |
 | Watching later | Replay and Replay telemetry. |
@@ -63,6 +68,97 @@ Use **Add module** to add content, then select the module to edit it. Select fie
 Data availability depends on the source and session. Adding a module does not create missing observations, enable integration features or guarantee access to every live stream. See [F1TV access and data coverage](/features/f1tv-auth), [historical results](/features/historical-results) and [weekend analysis](/features/weekend-analysis).
 
 Timing can follow a session profile or use your selected columns. Choosing your own timing columns keeps them as a custom selection. A module pinned to a driver keeps that driver when you change the card's general focus.
+
+### Show Pit stops
+
+Add **Pit stops** to follow reported pit visits and any timed stop records available for the current session. The module distinguishes counts from details: an available count does not establish the lap or duration of an individual stop.
+
+When a driver has a reported count but no detailed stop records, **Reported pit visits** shows the driver, current status and count separately. In a session with mixed coverage, this summary appears alongside genuine detailed stop rows. **All stops** and **Latest stop** apply to the detailed records; summary rows do not become invented stop events.
+
+Select **Stationary time** for the stationary part of a stop, **Pit lane time** for the full passage through the pit lane and **Estimated lap loss** for a lap-time estimate. Unknown times remain unavailable. A driver's **Current status** describes their present state, not their state at an earlier stop. Driver and team selections still filter the module's data.
+
+An observed live pit-lane duration can provide a detail row with a lap and lane time while stationary time and event time remain unknown. The card explains this partial timing coverage. It does not present a lane duration as a stationary service time.
+
+Live counts can arrive while times are missing, and the module explains this partial coverage. The same selected session, live delay and No Spoiler rules apply to counts and details. Connecting access or loading an archive does not guarantee every field. See [Pit Stops](/entities/pit-stops) for field definitions and [F1TV access and data coverage](/features/f1tv-auth) for the tested account differences.
+
+### Compare practice lap times
+
+In a **Timing** module, add **Gap to fastest lap** (`best_lap_gap`) to your
+selected columns. During practice it shows each driver's best lap relative to
+the fastest valid best lap of the session, for example `+0.412`. The fastest
+time shows `0.000`; drivers without a valid best time show `—`.
+
+The card prefers the gap supplied by live timing. When it is unavailable, it
+calculates the difference from the timing source's current valid best times.
+Selecting one driver or team still compares against the whole session. Deleted
+or corrected best times update the comparison; old observed laps are not used
+to restore a removed time.
+
+This optional column is available for practice in live timing and replay. It
+does not replace race gaps or the current-part qualifying gap. Existing timing
+profiles and saved columns stay unchanged.
+
+### Show Team Radio (experimental)
+
+:::warning Experimental feature
+
+The Team Radio module, audio playback and AI-generated transcript display are
+experimental. Their behavior and saved options may change while the feature is
+tested in beta. AI transcripts can contain errors, and speaker separation only
+distinguishes different voices, not the driver or race engineer.
+
+:::
+
+The module shows the latest Team Radio clip published by Formula 1, or a recent
+list of up to ten clips. Each message can include the racing number, driver,
+team, team accent, team logo, message time, audio controls and transcript. The
+card never starts audio or AI transcription automatically.
+
+To set it up:
+
+1. Enable [F1TV access](/features/f1tv-auth) for live Team Radio, or load a replay
+   that contains radio clips.
+2. Confirm that `sensor.f1_team_radio` is enabled and has a `clip_url` attribute.
+3. Edit an **F1 Sensor** card and choose **Add module** >
+   **Team Radio (experimental)**.
+4. Select **Latest matching message** or **Recent messages**, then choose the
+   fields and module options you want.
+5. To show transcripts, follow the experimental Gemini setup in
+   [Team Radio](/entities/team-radio), then select that **AI Task entity for
+   transcription** under the module options.
+
+For the latest untranscribed clip, the module shows a small **Transcribe** button
+beside **Play**. Pressing it manually runs `f1_sensor.transcribe_team_radio` with
+the selected AI Task entity and never requests a forced retranscription. The
+button is disabled in previews and frozen views. It is not shown for older
+history items because the action accepts only the latest published clip. You can
+hide the button in the module options.
+
+The audio button uses F1 Sensor's signed local media URL. The Formula 1 access
+token is not exposed to the browser. A signed URL can expire; reload the
+dashboard after the integration refreshes the clip if playback no longer works.
+
+Choose a driver or team in the card focus controls to show only matching clips.
+You can also give the module its own driver or team selection under **Module
+options**. **Recent messages** uses the sensor's rolling history, so it can only
+show clips that remain in that history.
+
+When a genuinely new clip arrives, **Mark new messages** adds a **New Team
+Radio** indicator. Adding or correcting a transcript for the same clip does not
+mark it as new. The indicator belongs to the current card instance and clears
+when the clip is played; reloading the dashboard starts with the latest clip as
+the baseline.
+
+Transcribed turns alternate between the left and right sides of the card to
+separate the two anonymous voices without adding visible speaker labels. If the
+provider returns a full transcript without usable speaker turns, the card shows
+the text as one full-width passage. Driver and team details are taken from the
+radio message and can fall back to the Driver List sensor when the clip only
+contains a racing number. The module only displays transcript data already
+stored on the Team Radio sensor; it never calls the AI provider by itself. You
+supply the Gemini API key and are responsible for provider usage and charges.
+See [Team Radio](/entities/team-radio) for the complete setup, action YAML,
+status attributes and troubleshooting.
 
 ### Show minisectors
 

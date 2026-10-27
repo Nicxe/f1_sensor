@@ -14,6 +14,19 @@ const contentTypes = {
 
 http.createServer((request, response) => {
   const pathname = decodeURIComponent(new URL(request.url, 'http://127.0.0.1').pathname);
+  if (pathname === '/custom_components/f1_sensor/www/f1-sensor-live-data-card/localization/available-locales.json') {
+    const localeDirectory = path.join(root, 'custom_components/f1_sensor/www/f1-sensor-live-data-card/localization/locales');
+    const languages = fs.readdirSync(localeDirectory)
+      .filter(filename => filename.endsWith('.json'))
+      .map(filename => filename.slice(0, -5))
+      .sort();
+    response.writeHead(200, {
+      'Cache-Control': 'no-store',
+      'Content-Type': contentTypes['.json'],
+    });
+    response.end(`${JSON.stringify(languages)}\n`);
+    return;
+  }
   const relative = pathname === '/' ? 'frontend-tests/fixture.html' : pathname.replace(/^\/+/, '');
   const file = path.resolve(root, relative);
   if (!file.startsWith(`${root}${path.sep}`)) {

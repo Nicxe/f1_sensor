@@ -1,0 +1,96 @@
+{
+  "session_key": "11396",
+  "messages": [
+    {
+      "Utc": "2026-10-25T20:11:34",
+      "Lap": 5,
+      "Category": "Other",
+      "Message": "FIA STEWARDS: TURN 13 INCIDENT INVOLVING CAR 63 (RUS) UNDER INVESTIGATION - LEAVING THE TRACK AND GAINING AN ADVANTAGE (15:04:59)",
+      "id": 50
+    },
+    {
+      "Utc": "2026-10-25T20:13:17",
+      "Lap": 6,
+      "Category": "Other",
+      "Message": "TURN 11 INCIDENT INVOLVING CAR 5 (BOR) NOTED - LEAVING THE TRACK AND GAINING AN ADVANTAGE (15:06:39)",
+      "id": 51
+    },
+    {
+      "Utc": "2026-10-25T20:14:47",
+      "Lap": 7,
+      "Category": "Other",
+      "Message": "INCIDENT INVOLVING CARS 41 (LIN) AND 55 (SAI) NOTED (15:03:49)",
+      "id": 52
+    },
+    {
+      "Utc": "2026-10-25T20:16:35",
+      "Lap": 8,
+      "Category": "Other",
+      "Message": "TURN 13 INCIDENT INVOLVING CARS 87 (BEA) AND 10 (GAS) NOTED - CAUSING A COLLISION (15:06:57)",
+      "id": 53
+    },
+    {
+      "Utc": "2026-10-25T20:17:36",
+      "Lap": 9,
+      "Category": "Other",
+      "Message": "FIA STEWARDS: 5 SECOND TIME PENALTY FOR CAR 63 (RUS) - LEAVING THE TRACK AND GAINING AN ADVANTAGE (15:04:59)",
+      "id": 55
+    },
+    {
+      "Utc": "2026-10-25T20:21:17",
+      "Lap": 11,
+      "Category": "Other",
+      "Message": "FIA STEWARDS: TURN 11 INCIDENT INVOLVING CAR 5 (BOR) UNDER INVESTIGATION - LEAVING THE TRACK AND GAINING AN ADVANTAGE (15:06:39)",
+      "id": 61
+    },
+    {
+      "Utc": "2026-10-25T20:25:12",
+      "Lap": 13,
+      "Category": "Other",
+      "Message": "FIA STEWARDS: TURN 11 INCIDENT INVOLVING CAR 5 (BOR) NO FURTHER ACTION - LEAVING THE TRACK AND GAINING AN ADVANTAGE (15:06:39)",
+      "id": 63
+    },
+    {
+      "Utc": "2026-10-25T20:28:06",
+      "Lap": 15,
+      "Category": "Other",
+      "Message": "FIA STEWARDS: INCIDENT INVOLVING CARS 41 (LIN) AND 55 (SAI) REVIEWED NO FURTHER INVESTIGATION (15:03:49)",
+      "id": 65
+    },
+    {
+      "Utc": "2026-10-25T20:35:25",
+      "Lap": 19,
+      "Category": "Other",
+      "Message": "FIA STEWARDS: 10 SECOND TIME PENALTY FOR CAR 87 (BEA) - CAUSING A COLLISION (15:06:57)",
+      "id": 69
+    },
+    {
+      "Utc": "2026-10-25T20:43:16",
+      "Lap": 24,
+      "Category": "Other",
+      "Message": "FIA STEWARDS: PENALTY SERVED - 5 SECOND TIME PENALTY FOR CAR 63 (RUS) - LEAVING THE TRACK AND GAINING AN ADVANTAGE (15:04:59)",
+      "id": 72
+    },
+    {
+      "Utc": "2026-10-25T20:45:16",
+      "Lap": 25,
+      "Category": "Other",
+      "Message": "FIA STEWARDS: PENALTY SERVED - 10 SECOND TIME PENALTY FOR CAR 87 (BEA) - CAUSING A COLLISION (15:06:57)",
+      "id": 73
+    },
+    {
+      "Utc": "2026-10-25T20:49:09",
+      "Lap": 27,
+      "Category": "Other",
+      "Message": "TURN 1 INCIDENT INVOLVING CARS 43 (COL) AND 41 (LIN) NOTED (15:45:42)",
+      "id": 78
+    },
+    {
+      "Utc": "2026-10-25T20:53:58",
+      "Lap": 30,
+      "Category": "Other",
+      "Message": "FIA STEWARDS: TURN 1 INCIDENT INVOLVING CARS 43 (COL) AND 41 (LIN) REVIEWED NO FURTHER INVESTIGATION (15:45:42)",
+      "id": 85
+    }
+  ]
+}

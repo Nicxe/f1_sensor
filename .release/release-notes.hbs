@@ -1,0 +1,48 @@
+{{#if repoSlug}}
+⭐ Enjoying **{{projectName}}**? [Star the project](https://github.com/{{repoSlug}}) to help others find it. [GitHub Sponsors](https://github.com/sponsors/Nicxe) is the primary way to support its continued development, with both one-time and monthly contributions. Prefer a quick thank-you? [Buy me a coffee](https://buymeacoffee.com/niklasv).
+
+{{/if}}
+{{#if f1Theme}}
+🏎️ 🏁 🏎️ 🏁 🏎️ 🏁 🏎️ 🏁 🏎️ 🏁
+
+---
+
+{{/if}}
+{{#if releaseCandidate}}
+⚠️ This is a **release candidate** intended for final testing before the stable release.
+
+This list includes all changes since the previous stable release.
+
+{{else}}
+{{#if prerelease}}
+⚠️ This is a **beta release** intended for testing.
+
+{{/if}}
+{{/if}}
+<!-- release-editorial:start -->
+<!-- Optional editorial summary: explain this release's main story, testing focus, or acknowledge external contributors. Remove this comment if unused. -->
+<!-- release-editorial:end -->
+
+{{#if contributors}}
+### Authors & contributors
+
+Thanks to {{contributorsText}} for contributing to this release.
+
+{{/if}}
+
+{{#each commitGroups}}
+### {{title}}
+
+{{#each commits}}
+- **{{subject}}**
+{{#if bodyIndented}}
+{{bodyIndented}}
+{{/if}}
+{{/each}}
+{{/each}}
+
+[![GitHub Sponsors](https://img.shields.io/badge/GitHub_Sponsors-30363d?style=for-the-badge&logo=github&logoColor=white)](https://github.com/sponsors/Nicxe) [![Buy Me A Coffee](https://img.shields.io/badge/Buy_Me_a_Coffee-fdd734?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://www.buymeacoffee.com/NiklasV)
+
+{{#if repoSlug}}
+![GitHub Downloads (all assets, specific tag)](https://img.shields.io/github/downloads/{{repoSlug}}/v{{version}}/total)
+{{/if}}

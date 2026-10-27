@@ -6,7 +6,9 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.event import async_call_later
 
 from .const import (
     CONF_INSTALL_DASHBOARD_CARDS,
@@ -16,6 +18,7 @@ from .const import (
     CONF_RACE_WEEK_START_DAY,
     CONF_REPLAY_FILE,
     CONF_REPLAY_START_REFERENCE,
+    SUPPORTED_SENSOR_KEYS,
 )
 from .providers import ProviderRegistry
 from .track_map import TrackMapRuntimeData
@@ -23,6 +26,8 @@ from .track_map import TrackMapRuntimeData
 OPTION_KEYS = frozenset(
     {
         "disabled_sensors",
+        "card_data_features",
+        "exposed_sensor_keys",
         "enable_race_control",
         CONF_INSTALL_DASHBOARD_CARDS,
         CONF_INSTALL_LEGACY_CARDS,
@@ -123,6 +128,7 @@ class F1RuntimeData:
     capabilities: CapabilityState
     legacy: dict[str, Any]
     analysis: AnalysisRuntime | None = None
+    card_data: Any | None = None
 
     @property
     def track_map_store(self) -> Any:
@@ -136,6 +142,10 @@ class F1RuntimeData:
 
 def entry_value(entry: ConfigEntry, key: str, default: Any = None) -> Any:
     """Return an option value with a backward-compatible data fallback."""
+    if key == "disabled_sensors":
+        selected = entry.options.get("exposed_sensor_keys")
+        if isinstance(selected, (list, tuple)):
+            return sorted(SUPPORTED_SENSOR_KEYS - set(selected))
     if key in entry.options:
         return entry.options[key]
     return entry.data.get(key, default)
@@ -145,6 +155,10 @@ def effective_entry_settings(entry: ConfigEntry) -> dict[str, Any]:
     """Return immutable config data overlaid with user-editable options."""
     settings = dict(entry.data)
     settings.update(entry.options)
+    if isinstance(settings.get("exposed_sensor_keys"), (list, tuple)):
+        settings["disabled_sensors"] = sorted(
+            SUPPORTED_SENSOR_KEYS - set(settings["exposed_sensor_keys"])
+        )
     return settings
 
 
@@ -159,3 +173,60 @@ def runtime_from_hass(
 
 
 type F1ConfigEntry = ConfigEntry[F1RuntimeData]
+
+
+def active_sensor_demand(
+    hass: HomeAssistant, entry: ConfigEntry, selected: set[str]
+) -> set[str]:
+    """Registered disabled entities alone do not request expensive collection."""
+    grouped: dict[str, list] = {}
+    for entity in er.async_entries_for_config_entry(er.async_get(hass), entry.entry_id):
+        suffix = entity.unique_id.removeprefix(f"{entry.entry_id}_")
+        key = (
+            "top_three"
+            if suffix.startswith("top_three_p")
+            else "championship_prediction"
+            if suffix.startswith("championship_prediction_")
+            else suffix
+        )
+        if key in selected:
+            grouped.setdefault(key, []).append(entity)
+    return {
+        key
+        for key in selected
+        if key not in grouped
+        or any(entity.disabled_by is None for entity in grouped[key])
+    }
+
+
+def track_sensor_demand(hass: HomeAssistant, entry: ConfigEntry):
+    """Replan once when HA entity disabling changes collection demand."""
+    cancel = None
+
+    @callback
+    def reload_entry(_now):
+        nonlocal cancel
+        cancel = None
+        hass.async_create_task(hass.config_entries.async_reload(entry.entry_id))
+
+    @callback
+    def changed(event):
+        nonlocal cancel
+        if "disabled_by" not in event.data.get("changes", {}):
+            return
+        entity = er.async_get(hass).async_get(event.data.get("entity_id"))
+        if entity is None or entity.config_entry_id != entry.entry_id:
+            return
+        if cancel is not None:
+            cancel()
+        cancel = async_call_later(hass, 1, reload_entry)
+
+    unsubscribe = hass.bus.async_listen(er.EVENT_ENTITY_REGISTRY_UPDATED, changed)
+
+    @callback
+    def close():
+        unsubscribe()
+        if cancel is not None:
+            cancel()
+
+    return close

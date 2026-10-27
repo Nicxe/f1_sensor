@@ -895,13 +895,6 @@ variables:
     {% else %}
       {{ '' }}
     {% endif %}
-  clear_restore_scene_available: "{{ clear_restore_scene_entity | string | trim | length > 0 }}"
-  defer_wled_clear_restore: >-
-    {{
-      track_state == 'CLEAR'
-      and (clear_restore_scene_available | bool)
-      and clear_behavior_mode_input in ['restore_immediately', 'restore_after_delay']
-    }}
 
   session_left_active: >
     {% if trigger.id != 'session_leave_active' %}
@@ -1069,10 +1062,14 @@ actions:
               - condition: template
                 value_template: "{{ end_action_mode == 'restore_pre_race' and snapshot_pre_race_enabled }}"
             sequence:
-              - continue_on_error: true
-                action: scene.turn_on
-                data:
-                  entity_id: "{{ 'scene.' ~ pre_race_scene_id }}"
+              - if:
+                  - condition: template
+                    value_template: "{{ ('scene.' ~ pre_race_scene_id) in (states.scene | map(attribute='entity_id') | list) }}"
+                then:
+                  - continue_on_error: true
+                    action: scene.turn_on
+                    data:
+                      entity_id: "{{ 'scene.' ~ pre_race_scene_id }}"
 
       - if:
           - condition: template
@@ -1094,14 +1091,22 @@ actions:
           - condition: template
             value_template: "{{ cleanup_scenes_after_end }}"
         then:
-          - continue_on_error: true
-            action: scene.delete
-            data:
-              entity_id: "{{ 'scene.' ~ pre_race_scene_id }}"
-          - continue_on_error: true
-            action: scene.delete
-            data:
-              entity_id: "{{ 'scene.' ~ pre_alert_scene_id }}"
+          - if:
+              - condition: template
+                value_template: "{{ ('scene.' ~ pre_race_scene_id) in (states.scene | map(attribute='entity_id') | list) }}"
+            then:
+              - continue_on_error: true
+                action: scene.delete
+                data:
+                  entity_id: "{{ 'scene.' ~ pre_race_scene_id }}"
+          - if:
+              - condition: template
+                value_template: "{{ ('scene.' ~ pre_alert_scene_id) in (states.scene | map(attribute='entity_id') | list) }}"
+            then:
+              - continue_on_error: true
+                action: scene.delete
+                data:
+                  entity_id: "{{ 'scene.' ~ pre_alert_scene_id }}"
 
   - choose:
       - conditions:
@@ -1137,6 +1142,16 @@ actions:
                     during session phase {{ session_phase }}.
               - sequence: !input notification_actions
 
+          # Evaluate after snapshot creation so session-start scenes are included.
+          - variables:
+              clear_restore_scene_available: >-
+                {{ (clear_restore_scene_entity | string | trim) in (states.scene | map(attribute='entity_id') | list) }}
+              defer_wled_clear_restore: >-
+                {{
+                  track_state == 'CLEAR'
+                  and (clear_restore_scene_available | bool)
+                  and clear_behavior_mode_input in ['restore_immediately', 'restore_after_delay']
+                }}
           - choose:
               - conditions:
                   - condition: template
@@ -1190,10 +1205,14 @@ actions:
                               - condition: template
                                 value_template: "{{ clear_behavior_mode_input == 'restore_immediately' and (clear_restore_scene_available | bool) }}"
                             sequence:
-                              - continue_on_error: true
-                                action: scene.turn_on
-                                data:
-                                  entity_id: "{{ clear_restore_scene_entity | string | trim }}"
+                              - if:
+                                  - condition: template
+                                    value_template: "{{ (clear_restore_scene_entity | string | trim) in (states.scene | map(attribute='entity_id') | list) }}"
+                                then:
+                                  - continue_on_error: true
+                                    action: scene.turn_on
+                                    data:
+                                      entity_id: "{{ clear_restore_scene_entity | string | trim }}"
 
                           - conditions:
                               - condition: template
@@ -1241,10 +1260,14 @@ actions:
                                   seconds: !input clear_restore_delay_s
                               - condition: template
                                 value_template: "{{ states(track_status_entity) | upper == 'CLEAR' }}"
-                              - continue_on_error: true
-                                action: scene.turn_on
-                                data:
-                                  entity_id: "{{ clear_restore_scene_entity | string | trim }}"
+                              - if:
+                                  - condition: template
+                                    value_template: "{{ (clear_restore_scene_entity | string | trim) in (states.scene | map(attribute='entity_id') | list) }}"
+                                then:
+                                  - continue_on_error: true
+                                    action: scene.turn_on
+                                    data:
+                                      entity_id: "{{ clear_restore_scene_entity | string | trim }}"
 
                   - conditions:
                       - condition: template
@@ -1313,10 +1336,13 @@ actions:
 
                               - condition: template
                                 value_template: "{{ states(track_status_entity) | upper == 'YELLOW' }}"
+                              - variables:
+                                  pre_alert_scene_available: >-
+                                    {{ ('scene.' ~ pre_alert_scene_id) in (states.scene | map(attribute='entity_id') | list) }}
                               - choose:
                                   - conditions:
                                       - condition: template
-                                        value_template: "{{ yellow_red_after_flash_input == 'restore_previous' and snapshot_before_alert_enabled }}"
+                                        value_template: "{{ yellow_red_after_flash_input == 'restore_previous' and snapshot_before_alert_enabled and (pre_alert_scene_available | bool) }}"
                                     sequence:
                                       - continue_on_error: true
                                         action: scene.turn_on
@@ -1324,7 +1350,7 @@ actions:
                                           entity_id: "{{ 'scene.' ~ pre_alert_scene_id }}"
                                   - conditions:
                                       - condition: template
-                                        value_template: "{{ yellow_red_after_flash_input == 'steady' or (yellow_red_after_flash_input == 'restore_previous' and not snapshot_before_alert_enabled) }}"
+                                        value_template: "{{ yellow_red_after_flash_input == 'steady' or (yellow_red_after_flash_input == 'restore_previous' and not (snapshot_before_alert_enabled and (pre_alert_scene_available | bool))) }}"
                                     sequence:
                                       - action: "{{ light_turn_on_service }}"
                                         target:
@@ -1401,10 +1427,13 @@ actions:
 
                               - condition: template
                                 value_template: "{{ states(track_status_entity) | upper == 'RED' }}"
+                              - variables:
+                                  pre_alert_scene_available: >-
+                                    {{ ('scene.' ~ pre_alert_scene_id) in (states.scene | map(attribute='entity_id') | list) }}
                               - choose:
                                   - conditions:
                                       - condition: template
-                                        value_template: "{{ yellow_red_after_flash_input == 'restore_previous' and snapshot_before_alert_enabled }}"
+                                        value_template: "{{ yellow_red_after_flash_input == 'restore_previous' and snapshot_before_alert_enabled and (pre_alert_scene_available | bool) }}"
                                     sequence:
                                       - continue_on_error: true
                                         action: scene.turn_on
@@ -1412,7 +1441,7 @@ actions:
                                           entity_id: "{{ 'scene.' ~ pre_alert_scene_id }}"
                                   - conditions:
                                       - condition: template
-                                        value_template: "{{ yellow_red_after_flash_input == 'steady' or (yellow_red_after_flash_input == 'restore_previous' and not snapshot_before_alert_enabled) }}"
+                                        value_template: "{{ yellow_red_after_flash_input == 'steady' or (yellow_red_after_flash_input == 'restore_previous' and not (snapshot_before_alert_enabled and (pre_alert_scene_available | bool))) }}"
                                     sequence:
                                       - action: "{{ light_turn_on_service }}"
                                         target:
@@ -1489,10 +1518,13 @@ actions:
 
                               - condition: template
                                 value_template: "{{ states(track_status_entity) | upper == 'SC' }}"
+                              - variables:
+                                  pre_alert_scene_available: >-
+                                    {{ ('scene.' ~ pre_alert_scene_id) in (states.scene | map(attribute='entity_id') | list) }}
                               - choose:
                                   - conditions:
                                       - condition: template
-                                        value_template: "{{ sc_vsc_after_flash_input == 'restore_previous' and snapshot_before_alert_enabled }}"
+                                        value_template: "{{ sc_vsc_after_flash_input == 'restore_previous' and snapshot_before_alert_enabled and (pre_alert_scene_available | bool) }}"
                                     sequence:
                                       - continue_on_error: true
                                         action: scene.turn_on
@@ -1500,7 +1532,7 @@ actions:
                                           entity_id: "{{ 'scene.' ~ pre_alert_scene_id }}"
                                   - conditions:
                                       - condition: template
-                                        value_template: "{{ sc_vsc_after_flash_input == 'steady' or (sc_vsc_after_flash_input == 'restore_previous' and not snapshot_before_alert_enabled) }}"
+                                        value_template: "{{ sc_vsc_after_flash_input == 'steady' or (sc_vsc_after_flash_input == 'restore_previous' and not (snapshot_before_alert_enabled and (pre_alert_scene_available | bool))) }}"
                                     sequence:
                                       - action: "{{ light_turn_on_service }}"
                                         target:
@@ -1577,10 +1609,13 @@ actions:
 
                               - condition: template
                                 value_template: "{{ states(track_status_entity) | upper == 'VSC' }}"
+                              - variables:
+                                  pre_alert_scene_available: >-
+                                    {{ ('scene.' ~ pre_alert_scene_id) in (states.scene | map(attribute='entity_id') | list) }}
                               - choose:
                                   - conditions:
                                       - condition: template
-                                        value_template: "{{ sc_vsc_after_flash_input == 'restore_previous' and snapshot_before_alert_enabled }}"
+                                        value_template: "{{ sc_vsc_after_flash_input == 'restore_previous' and snapshot_before_alert_enabled and (pre_alert_scene_available | bool) }}"
                                     sequence:
                                       - continue_on_error: true
                                         action: scene.turn_on
@@ -1588,7 +1623,7 @@ actions:
                                           entity_id: "{{ 'scene.' ~ pre_alert_scene_id }}"
                                   - conditions:
                                       - condition: template
-                                        value_template: "{{ sc_vsc_after_flash_input == 'steady' or (sc_vsc_after_flash_input == 'restore_previous' and not snapshot_before_alert_enabled) }}"
+                                        value_template: "{{ sc_vsc_after_flash_input == 'steady' or (sc_vsc_after_flash_input == 'restore_previous' and not (snapshot_before_alert_enabled and (pre_alert_scene_available | bool))) }}"
                                     sequence:
                                       - action: "{{ light_turn_on_service }}"
                                         target:

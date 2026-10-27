@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reuse fresh, trusted push checks; never trust artifacts or PR-supplied claims."""
+"""Reuse fresh exact-tree checks; never trust artifacts or PR-supplied claims."""
 
 from datetime import UTC, datetime, timedelta
 import json
@@ -16,7 +16,9 @@ REUSABLE = {
     "backend": ["checks / backend / HA current"],
     "frontend": ["checks / frontend / frontend"],
     "documentation": ["checks / documentation / documentation"],
+    "validation": ["checks / validation / validate"],
     "package": ["checks / package / package"],
+    "translations": ["checks / translations / translations"],
     "automation": ["checks / automation / automation"],
 }
 
@@ -49,10 +51,13 @@ class GitHub:
 def eligible_run(run, now):
     try:
         age = now - datetime.fromisoformat(run["updated_at"].replace("Z", "+00:00"))
-        return (
+        development_push = (
             run["event"] == "push"
             and run["path"] == ".github/workflows/development.yml"
             and run["head_branch"] in ("dev", "content")
+        )
+        return (
+            development_push
             and re.fullmatch(r"[0-9a-f]{40}", run["head_sha"]) is not None
             and run["status"] == "completed"
             and run["conclusion"] == "success"
@@ -88,6 +93,8 @@ def evidence_checks(api, run, tree, now):
 
 
 def find_evidence(api, selected, tree, now):
+    # A push run checks out its immutable head_sha. PR run head_sha identifies
+    # the contributor head, not the merge result that its jobs actually tested.
     runs = api.get(
         "actions/workflows/development.yml/runs?"
         + urlencode(
@@ -107,6 +114,8 @@ def find_evidence(api, selected, tree, now):
                 "run_id": run["id"],
                 "attempt": run["run_attempt"],
                 "head_sha": run["head_sha"],
+                "tree_sha": tree,
+                "selected_at": now.isoformat(),
                 "checks": checks,
             }
     return {}
@@ -117,13 +126,45 @@ def verify_evidence(api, evidence, tree, now):
         return
     run = api.get(f"actions/runs/{int(evidence['run_id'])}")
     checks = set(evidence["checks"])
+    try:
+        selected_at = datetime.fromisoformat(evidence["selected_at"])
+        if selected_at.tzinfo is None or selected_at > now:
+            raise ValueError("Invalid reuse selection time")
+    except (KeyError, TypeError, ValueError) as error:
+        raise ValueError("Missing or invalid reuse selection time") from error
     if (
-        run["head_sha"] != evidence["head_sha"]
+        evidence.get("tree_sha") != tree
+        or run["head_sha"] != evidence["head_sha"]
         or run["run_attempt"] != evidence["attempt"]
         or not checks
-        or not checks <= evidence_checks(api, run, tree, now)
+        # Freshness is checked when selecting evidence. A slow, unrelated job
+        # must not invalidate an immutable run merely by crossing the TTL.
+        or not checks <= evidence_checks(api, run, tree, selected_at)
     ):
-        raise ValueError("Reused check evidence changed or expired; rerun CI")
+        raise ValueError(
+            "Reused check evidence changed or cannot be verified; rerun CI"
+        )
+    current = api.get(f"actions/runs/{int(evidence['run_id'])}")
+    if any(
+        current.get(key) != run.get(key)
+        for key in (
+            "head_sha",
+            "run_attempt",
+            "status",
+            "conclusion",
+            "path",
+            "head_branch",
+            "event",
+        )
+    ):
+        raise ValueError(
+            "Reused check source changed while verifying its jobs; rerun CI"
+        )
+
+
+def reuse_allowed(event_name: str, branch: str, enabled: bool) -> bool:
+    """Only PRs may reuse evidence; releases and development pushes run fresh."""
+    return enabled and event_name == "pull_request"
 
 
 def main():
@@ -137,10 +178,13 @@ def main():
         return
     selected = json.loads(os.environ["CI_SELECTED"])
     evidence = {}
-    # Release, maintenance, forks' dispatches and manual retries run their own checks.
-    if (
-        os.environ.get("CI_ALLOW_REUSE") == "true"
-        and os.environ["GITHUB_EVENT_NAME"] == "pull_request"
+    event_name = os.environ["GITHUB_EVENT_NAME"]
+    branch = os.environ.get("GITHUB_REF_NAME", "")
+    # Publication has its own build; only pure verification results are reused.
+    if reuse_allowed(
+        event_name,
+        branch,
+        os.environ.get("CI_ALLOW_REUSE") == "true",
     ):
         try:
             evidence = find_evidence(api, selected, tree, now)

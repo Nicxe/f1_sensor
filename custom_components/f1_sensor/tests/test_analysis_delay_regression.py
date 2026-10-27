@@ -146,7 +146,7 @@ async def test_new_websocket_during_delay_gets_only_delivered_analysis(
     entry = MockConfigEntry(
         domain=DOMAIN,
         version=4,
-        data={"sensor_name": "F1"},
+        data={"sensor_name": "F1", "data_choice_version": 1},
         options={
             "operation_mode": "live",
             "enable_race_control": True,

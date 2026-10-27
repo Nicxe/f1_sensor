@@ -56,6 +56,7 @@ AUTH_GATED_LIVE_STREAMS = (
     "ChampionshipPrediction",
     "TeamRadio",
     "PitStopSeries",
+    "PitLaneTimeCollection",
 )
 
 REPLAY_ONLY_STREAMS: tuple[str, ...] = ("LapHistory",)
@@ -785,7 +786,11 @@ class LiveBus:
                 meaningful = True
         result = payload.get("R")
         if isinstance(result, dict):
-            for stream, data in result.items():
+            # Establish an initial snapshot's session before applying its data.
+            # The provider can place SessionInfo after status or driver streams.
+            for stream, data in sorted(
+                result.items(), key=lambda item: item[0] != "SessionInfo"
+            ):
                 if not isinstance(stream, str) or data is None:
                     continue
                 self._dispatch(stream, data)

@@ -5,6 +5,11 @@ description: Convert a deprecated F1 dashboard card, review every change and kee
 toc_max_heading_level: 2
 ---
 
+:::info[Automatic card data]
+Add the modules you want to the F1 Sensor card. Its [data is available automatically](/features/card-data-and-sensors), independently of the sensors exposed in Home Assistant. Existing installations keep their sensor choices and start normally after updating; see [Upgrading to automatic card data](/getting-started/required-data-choice).
+:::
+
+
 The earlier single-purpose F1 dashboard cards are deprecated. Move each dashboard configuration to `custom:f1-sensor-card`, which replaces them with configurable modules in one visual editor.
 
 :::warning[Deprecated cards]

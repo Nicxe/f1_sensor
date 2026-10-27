@@ -38,10 +38,12 @@ test('Swedish module names distinguish automatic weather from the race forecast'
   await page.waitForFunction(() => window.modularReady);
   await page.evaluate(() => window.mountModular({ editor: true, preset: 'weather', language: 'sv' }));
   const editor = page.locator('f1-sensor-card-editor');
-  await expect(editor.getByRole('button', { name: '1. Automatiskt aktuellt väder', exact: true })).toBeVisible();
-  await expect(editor.getByRole('button', { name: '2. Prognos inför racestart', exact: true })).toBeVisible();
-  await editor.getByRole('button', { name: 'Flytta upp Prognos inför racestart', exact: true }).click();
-  await expect(editor.getByRole('button', { name: '1. Prognos inför racestart', exact: true })).toBeVisible();
+  const moduleRows = editor.locator('.module-row');
+  await expect(moduleRows).toHaveCount(2);
+  const moduleNames = await moduleRows.locator('.select-module').evaluateAll(buttons => buttons.map(button => button.getAttribute('aria-label')));
+  expect(moduleNames[0]).not.toEqual(moduleNames[1]);
+  await moduleRows.nth(1).locator('button').nth(1).click();
+  await expect(moduleRows.nth(0).locator('.select-module')).toHaveAttribute('data-module', 'weather-2');
   expect(await page.evaluate(() => window.savedConfig.modules.map(m => m.options.content))).toEqual(['race_forecast', 'automatic_conditions']);
 });
 

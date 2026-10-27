@@ -296,6 +296,7 @@ test('every published module field has a source, semantic metadata and translate
     assert.ok(field, `${definition.id}.${id}`);
     for (const key of ['source', 'path', 'type', 'capability', 'modes', 'sessions', 'identity', 'generation', 'timestamps', 'freshness', 'presentations']) assert.ok(field[key], `${id}.${key}`);
     assert.equal(typeof field.spoiler, 'boolean');
-    assert.ok(field.label.en && field.label.sv);
+    assert.equal(typeof field.label, 'string');
+    assert.ok(field.label);
   }
 });

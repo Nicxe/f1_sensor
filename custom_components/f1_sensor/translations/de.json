@@ -6,19 +6,25 @@
         "data": {
           "sensor_name": "Gerätename",
           "enabled_sensors": "Aktivierte Sensoren",
-          "operation_mode": "Operation mode",
-          "replay_file": "Replay dump path",
+          "operation_mode": "Betriebsmodus",
+          "replay_file": "Pfad zur Replay-Aufzeichnungsdatei",
           "race_week_start_day": "Erster Tag der Rennwoche",
-          "live_timing_auth_header": "Manual backup: F1TV authorization value",
-          "start_f1tv_pairing": "Recommended: Connect F1TV access with Token Helper",
-          "install_dashboard_cards": "Install bundled dashboard cards",
-          "install_legacy_cards": "Ältere Dashboard-Karten installieren"
+          "live_timing_auth_header": "Manuelle Ausweichlösung: F1TV-Autorisierungswert",
+          "start_f1tv_pairing": "Empfohlen: F1TV-Zugang über den Token Helper verbinden",
+          "install_dashboard_cards": "Mitgelieferte Dashboard-Karten installieren",
+          "install_legacy_cards": "Ältere Dashboard-Karten installieren",
+          "enable_race_control": "Live-F1-API aktivieren (Rennleitung/Strecke/Session)",
+          "clear_live_timing_auth_header": "F1TV-Autorisierungswert löschen"
         },
         "data_description": {
-          "live_timing_auth_header": "Manual backup if Token Helper pairing does not work. Paste the full Bearer token from the F1TV Token Helper only as an advanced fallback. Leave blank to use public live timing only.",
-          "start_f1tv_pairing": "Recommended path. Start a short-lived pairing session and send the token from the browser extension without copying it manually. F1TV access is optional; public live timing continues without it.",
-          "install_dashboard_cards": "Registers the bundled F1 Sensor cards in Home Assistant. Disable this if you only use entities and automations. Existing F1 dashboard cards will stop working after you reload the browser.",
-          "install_legacy_cards": "Registriert auch die veralteten F1-Karten. Bei neuen Installationen deaktiviert; bestehende Installationen behalten ihre Karten. Erfordert die Installation der Dashboard-Karten. Nach Änderungen den Browser neu laden. Bei Deaktivierung funktionieren ältere Karten erst nach der Migration zur F1 Sensor-Karte wieder. Bei mehreren Installationen bleiben ältere Karten verfügbar, solange eine aktive Installation sie anfordert."
+          "live_timing_auth_header": "Manuelle Ausweichlösung, falls die Kopplung mit dem F1TV Token Helper nicht funktioniert. Füge den vollständigen Bearer-Token aus dem F1TV Token Helper nur als erweiterte Ausweichlösung ein. Lasse das Feld leer, um das öffentliche Live-Timing ohne Replay-Modus oder Archivmedien zu nutzen.",
+          "start_f1tv_pairing": "Empfohlener Weg: Verbinde ein aktives, kostenpflichtiges F1TV-Abonnement, um den Replay-Modus, Archivmedien und zusätzliche Live-Daten zu nutzen. Das öffentliche Live-Timing funktioniert auch ohne Abonnement weiterhin.",
+          "install_dashboard_cards": "Registriert die mitgelieferten F1-Sensorkarten in Home Assistant. Deaktiviere diese Option, wenn du ausschließlich Entitäten und Automatisierungen verwendest. Bereits vorhandene F1-Dashboard-Karten funktionieren nach dem Neuladen des Browsers nicht mehr.",
+          "install_legacy_cards": "Registriert auch die veralteten F1-Karten. Bei neuen Installationen deaktiviert; bestehende Installationen behalten ihre Karten. Erfordert die Installation der Dashboard-Karten. Nach Änderungen den Browser neu laden. Bei Deaktivierung funktionieren ältere Karten erst nach der Migration zur F1 Sensor-Karte wieder. Bei mehreren Installationen bleiben ältere Karten verfügbar, solange eine aktive Installation sie anfordert.",
+          "operation_mode": "Wähle „Live“, um eine Verbindung zu Formula 1 SignalR herzustellen, oder „Entwicklung“, um eine gespeicherte Aufzeichnung lokal wiederzugeben.",
+          "replay_file": "Absoluter Pfad zu einer aufgezeichneten SignalR-Dumpdatei. Nur im Entwicklungsmodus erforderlich.",
+          "enable_race_control": "Stellt über SignalR eine Verbindung zum Formel-1-Live-Timing her, um Live-Updates zu empfangen. Wenn deaktiviert, werden diese Live-Sensoren nicht erstellt.",
+          "race_week_start_day": "Lege fest, ob die Rennwoche am Samstag, Sonntag oder Montag beginnt."
         }
       },
       "reconfigure": {
@@ -26,53 +32,59 @@
         "data": {
           "sensor_name": "Gerätename",
           "enabled_sensors": "Aktivierte Sensoren",
-          "operation_mode": "Operation mode",
-          "replay_file": "Replay dump path",
+          "operation_mode": "Betriebsmodus",
+          "replay_file": "Pfad zur Replay-Aufzeichnungsdatei",
           "race_week_start_day": "Erster Tag der Rennwoche",
-          "live_timing_auth_header": "Manual backup: F1TV authorization value",
-          "clear_live_timing_auth_header": "Clear F1TV authorization value",
-          "start_f1tv_pairing": "Recommended: Connect F1TV access with Token Helper",
-          "install_dashboard_cards": "Install bundled dashboard cards",
-          "install_legacy_cards": "Ältere Dashboard-Karten installieren"
+          "live_timing_auth_header": "Manuelle Ausweichlösung: F1TV-Autorisierungswert",
+          "clear_live_timing_auth_header": "F1TV-Autorisierungswert löschen",
+          "start_f1tv_pairing": "Empfohlen: F1TV-Zugang über den Token Helper verbinden",
+          "install_dashboard_cards": "Mitgelieferte Dashboard-Karten installieren",
+          "install_legacy_cards": "Ältere Dashboard-Karten installieren",
+          "enable_race_control": "Live-F1-API aktivieren"
         },
         "data_description": {
-          "live_timing_auth_header": "Manual backup if Token Helper pairing does not work. Paste a new full Bearer token only as an advanced fallback. Leave blank to keep the current value.",
-          "clear_live_timing_auth_header": "Remove the saved F1TV authorization value and continue with public live timing only.",
-          "start_f1tv_pairing": "Recommended path. Start a short-lived pairing session and send the token from the browser extension without copying it manually. F1TV access is optional; public live timing continues without it.",
-          "install_dashboard_cards": "Registers the bundled F1 Sensor cards in Home Assistant. Disable this if you only use entities and automations. Existing F1 dashboard cards will stop working after you reload the browser.",
-          "install_legacy_cards": "Registriert auch die veralteten F1-Karten. Bei neuen Installationen deaktiviert; bestehende Installationen behalten ihre Karten. Erfordert die Installation der Dashboard-Karten. Nach Änderungen den Browser neu laden. Bei Deaktivierung funktionieren ältere Karten erst nach der Migration zur F1 Sensor-Karte wieder. Bei mehreren Installationen bleiben ältere Karten verfügbar, solange eine aktive Installation sie anfordert."
+          "live_timing_auth_header": "Manuelle Ausweichlösung, falls die Kopplung mit dem Token Helper nicht funktioniert. Füge einen neuen vollständigen Bearer-Token nur als erweiterte Ausweichlösung ein. Lasse das Feld leer, um den aktuellen Wert beizubehalten.",
+          "clear_live_timing_auth_header": "Entferne den gespeicherten F1TV-Autorisierungswert und fahre mit dem öffentlichen Live-Timing fort. Der Replay-Modus und Archivmedien sind dann nicht verfügbar.",
+          "start_f1tv_pairing": "Empfohlener Weg: Verbinde ein aktives, kostenpflichtiges F1TV-Abonnement, um den Replay-Modus, Archivmedien und zusätzliche Live-Daten zu nutzen. Das öffentliche Live-Timing funktioniert auch ohne Abonnement weiterhin.",
+          "install_dashboard_cards": "Registriert die mitgelieferten F1-Sensorkarten in Home Assistant. Deaktiviere diese Option, wenn du ausschließlich Entitäten und Automatisierungen verwendest. Bereits vorhandene F1-Dashboard-Karten funktionieren nach dem Neuladen des Browsers nicht mehr.",
+          "install_legacy_cards": "Registriert auch die veralteten F1-Karten. Bei neuen Installationen deaktiviert; bestehende Installationen behalten ihre Karten. Erfordert die Installation der Dashboard-Karten. Nach Änderungen den Browser neu laden. Bei Deaktivierung funktionieren ältere Karten erst nach der Migration zur F1 Sensor-Karte wieder. Bei mehreren Installationen bleiben ältere Karten verfügbar, solange eine aktive Installation sie anfordert.",
+          "operation_mode": "Wähle „Live“, um eine Verbindung zu Formula 1 SignalR herzustellen, oder „Entwicklung“, um eine gespeicherte Aufzeichnung lokal wiederzugeben.",
+          "replay_file": "Absoluter Pfad zu einer aufgezeichneten SignalR-Dumpdatei. Nur im Entwicklungsmodus erforderlich.",
+          "enable_race_control": "Stellt eine Verbindung zum Formel-1-Live-Timing her, um Live-Updates zu empfangen. Wenn deaktiviert, werden diese Live-Sensoren nicht erstellt.",
+          "race_week_start_day": "Lege fest, ob die Rennwoche am Samstag, Sonntag oder Montag beginnt."
         }
       },
       "reauth_confirm": {
-        "title": "Update F1TV live timing authorization",
+        "title": "F1TV-Autorisierung für das Live-Timing aktualisieren",
         "data": {
-          "live_timing_auth_header": "Manual backup: F1TV authorization value",
-          "clear_live_timing_auth_header": "Clear F1TV authorization value",
-          "start_f1tv_pairing": "Recommended: Connect F1TV access with Token Helper"
+          "live_timing_auth_header": "Manuelle Ausweichlösung: F1TV-Autorisierungswert",
+          "clear_live_timing_auth_header": "F1TV-Autorisierungswert löschen",
+          "start_f1tv_pairing": "Empfohlen: F1TV-Zugang über den Token Helper verbinden"
         },
         "data_description": {
-          "live_timing_auth_header": "Manual backup if Token Helper pairing does not work. Paste a new full Bearer token only as an advanced fallback.",
-          "clear_live_timing_auth_header": "Remove the saved F1TV authorization value and continue with public live timing only.",
-          "start_f1tv_pairing": "Recommended path. Start a short-lived pairing session and send the token from the browser extension without copying it manually. F1TV access is optional; public live timing continues without it."
+          "live_timing_auth_header": "Manuelle Ausweichlösung, falls die Kopplung mit dem Token Helper nicht funktioniert. Füge einen neuen vollständigen Bearer-Token nur als erweiterte Ausweichlösung ein.",
+          "clear_live_timing_auth_header": "Entferne den gespeicherten F1TV-Autorisierungswert und fahre mit dem öffentlichen Live-Timing fort. Der Replay-Modus und Archivmedien sind dann nicht verfügbar.",
+          "start_f1tv_pairing": "Empfohlener Weg: Verbinde ein aktives, kostenpflichtiges F1TV-Abonnement, um den Replay-Modus, Archivmaterial und zusätzliche Live-Daten zu nutzen. Das öffentliche Live-Timing funktioniert auch ohne Abonnement weiterhin."
         }
       },
       "f1tv_pairing": {
-        "title": "Connect F1TV access",
-        "description": "Use the F1TV Token Helper to send your token to Home Assistant. F1TV access is optional, and this pairing expires at {expires_at}."
+        "title": "F1TV-Zugang verbinden",
+        "description": "Verwende den F1TV Token Helper, um ein aktives, kostenpflichtiges Abonnement zu verbinden. Für das öffentliche Live-Timing ist keine Authentifizierung erforderlich. Der Replay-Modus und Archivmedien setzen jedoch einen F1TV-Zugang voraus. Diese Kopplung läuft am {expires_at} ab."
       }
     },
     "error": {
-      "replay_required": "Select a replay dump file when Development mode is enabled.",
-      "replay_missing": "Replay dump file not found or unreadable.",
-      "auth_header_required": "Enter the F1TV authorization value or select clear.",
-      "invalid_auth_header": "Enter a valid Bearer token value.",
-      "auth_token_missing_exp": "The token does not include an expiry time.",
-      "auth_token_expired": "The token has expired.",
-      "auth_token_expiring_soon": "The token expires too soon. Generate a new token and try again."
+      "replay_required": "Wähle eine Replay-Aufzeichnungsdatei aus, wenn der Entwicklungsmodus aktiviert ist.",
+      "replay_missing": "Replay-Aufzeichnungsdatei nicht gefunden oder nicht lesbar.",
+      "auth_header_required": "Gib den F1TV-Autorisierungswert ein oder wähle \"Löschen\".",
+      "invalid_auth_header": "Gib einen gültigen Bearer-Token ein.",
+      "auth_token_missing_exp": "Der Token enthält keine Ablaufzeit.",
+      "auth_token_expired": "Der Token ist abgelaufen.",
+      "auth_token_expiring_soon": "Der Token läuft zu bald ab. Erstelle einen neuen Token und versuche es erneut."
     },
     "abort": {
-      "f1tv_pairing_unavailable": "F1TV pairing is not available in this build.",
-      "f1tv_pairing_failed": "F1TV pairing did not complete. Start a new pairing session and try again."
+      "f1tv_pairing_unavailable": "Die F1TV-Kopplung ist in dieser Version nicht verfügbar.",
+      "f1tv_pairing_failed": "Die F1TV-Kopplung wurde nicht abgeschlossen. Starte eine neue Kopplungssitzung und versuche es erneut.",
+      "reconfigure_successful": "Der F1-Sensor wurde erfolgreich neu konfiguriert."
     }
   },
   "entity": {
@@ -120,43 +132,123 @@
         "name": "Live-Timing-Modus"
       },
       "track_limits": {
-        "name": "Track limits"
+        "name": "Track-Limits"
       },
       "investigations": {
-        "name": "Investigations & penalties"
+        "name": "Untersuchungen & Strafen"
       },
       "f1tv_token_status": {
         "name": "F1TV token status",
         "state": {
-          "not_configured": "Not configured",
-          "valid": "Valid",
-          "expiring_soon": "Expiring soon",
-          "expired": "Expired",
-          "invalid": "Invalid",
-          "rejected": "Rejected"
+          "not_configured": "Nicht konfiguriert",
+          "valid": "Gültig",
+          "expiring_soon": "Läuft bald ab",
+          "expired": "Abgelaufen",
+          "invalid": "ungültig",
+          "rejected": "abgelehnt"
         }
       },
       "f1tv_token_expires_at": {
-        "name": "F1TV token expires at"
+        "name": "F1TV Token läuft ab am"
+      },
+      "track_time": {
+        "name": "Streckenzeit"
+      },
+      "track_weather": {
+        "name": "Streckenwetter"
+      },
+      "top_three_p1": {
+        "name": "Top 3 (P1)"
+      },
+      "top_three_p2": {
+        "name": "Top 3 (P2)"
+      },
+      "top_three_p3": {
+        "name": "Top 3 (P3)"
+      },
+      "championship_prediction_drivers": {
+        "name": "Meisterschaftsprognose (Fahrer)"
+      },
+      "championship_prediction_teams": {
+        "name": "Meisterschaftsprognose (Teams)"
+      },
+      "driver_positions": {
+        "name": "Fahrerplatzierungen"
+      },
+      "favorite_driver": {
+        "name": "Lieblingsfahrer"
+      },
+      "starting_grid": {
+        "name": "Startaufstellung"
+      },
+      "straight_mode": {
+        "name": "Geradenmodus",
+        "state": {
+          "normal_grip": "Normaler Grip",
+          "low_grip": "Wenig Grip",
+          "disabled": "Deaktiviert"
+        }
+      },
+      "track_status": {
+        "name": "Streckenstatus"
+      },
+      "session_status": {
+        "name": "Session-Status"
+      },
+      "session_time_remaining": {
+        "name": "Verbleibende Session-Zeit"
+      },
+      "session_time_elapsed": {
+        "name": "Vergangene Session-Zeit"
+      },
+      "race_time_to_three_hour_limit": {
+        "name": "Verbleibende Zeit bis zum 3-Stunden-Limit"
+      },
+      "driver_list": {
+        "name": "Fahrerliste"
+      },
+      "current_tyres": {
+        "name": "Aktuelle Reifen"
+      },
+      "tyre_statistics": {
+        "name": "Reifen Statistik"
+      },
+      "team_radio": {
+        "name": "Teamradio"
+      },
+      "race_lap_count": {
+        "name": "Anzahl Rennrunden"
+      },
+      "driver_points_progression": {
+        "name": "Entwicklung der Fahrer-Punkte"
+      },
+      "constructor_points_progression": {
+        "name": "Entwicklung der Konstrukteurs-Punkte"
+      },
+      "replay_status": {
+        "name": "Replay-Status"
       }
     },
     "media_player": {
       "replay_player": {
-        "name": "Replay player"
+        "name": "Replay-Player"
       }
     },
     "select": {
       "live_delay_reference": {
-        "name": "Live delay reference"
+        "name": "Referenz für die Live-Verzögerung"
       },
       "replay_year": {
-        "name": "Replay year"
+        "name": "Replay-Jahr"
       },
       "replay_session": {
-        "name": "Replay session"
+        "name": "Replay-Session"
       },
       "replay_start_reference": {
-        "name": "Replay start reference"
+        "name": "Replay-Startreferenz"
+      },
+      "favorite_driver": {
+        "name": "Lieblingsfahrer"
       }
     },
     "binary_sensor": {
@@ -167,7 +259,7 @@
         "name": "Live-Timing online"
       },
       "safety_car": {
-        "name": "Sicherheitsauto"
+        "name": "Safety Car"
       },
       "on_track_incident": {
         "name": "Zwischenfall auf der Strecke"
@@ -176,12 +268,18 @@
         "name": "Möglicher Zwischenfall auf der Strecke"
       },
       "formation_start": {
-        "name": "Formation start"
+        "name": "Formationsstart"
+      },
+      "overtake_mode": {
+        "name": "Overtake-Modus"
       }
     },
     "switch": {
       "no_spoiler_mode": {
         "name": "Kein-Spoiler-Modus"
+      },
+      "delay_calibration": {
+        "name": "Verzögerungskalibrierung"
       }
     },
     "weather": {
@@ -191,41 +289,139 @@
     },
     "button": {
       "clear_f1tv_access": {
-        "name": "Clear F1TV access"
+        "name": "F1TV-Zugang löschen"
+      },
+      "delay_calibration_match": {
+        "name": "Live-Verzögerung abgleichen"
+      },
+      "replay_play": {
+        "name": "Abspielen"
+      },
+      "replay_pause": {
+        "name": "Pause"
+      },
+      "replay_back_30": {
+        "name": "30 Sekunden zurück"
+      },
+      "replay_forward_30": {
+        "name": "30 Sekunden vorwärts"
+      },
+      "replay_stop": {
+        "name": "Stopp"
+      },
+      "replay_refresh": {
+        "name": "Sessions aktualisieren"
+      },
+      "replay_load": {
+        "name": "Session laden"
+      },
+      "jolpica_ua_test": {
+        "name": "Jolpica-User-Agent-Test"
+      },
+      "refresh_f1tv_access": {
+        "name": "Aktualisiere F1TV Zugang"
+      }
+    },
+    "calendar": {
+      "season_calendar": {
+        "name": "Saisonkalender"
+      }
+    },
+    "number": {
+      "live_delay": {
+        "name": "Live-Verzögerung"
       }
     }
   },
   "issues": {
     "f1tv_token_attention_required": {
-      "title": "F1TV live timing token needs attention",
+      "title": "F1TV-Live-Timing-Token muss überprüft werden",
       "fix_flow": {
         "step": {
           "confirm": {
             "data": {
-              "live_timing_auth_header": "F1TV authorization value",
-              "clear_live_timing_auth_header": "Clear F1TV authorization value"
+              "live_timing_auth_header": "F1TV-Autorisierungswert",
+              "clear_live_timing_auth_header": "F1TV-Autorisierungswert löschen",
+              "start_f1tv_pairing": "Empfohlen: F1TV-Zugang über den Token Helper verbinden"
             },
             "data_description": {
-              "live_timing_auth_header": "Paste a new Bearer token value from the F1TV Token Helper for F1TV access.",
-              "clear_live_timing_auth_header": "Remove the saved F1TV token and continue with public live timing only."
+              "live_timing_auth_header": "Füge einen neuen Bearer-Token aus dem F1TV Token Helper ein, um den F1TV-Zugang einzurichten.",
+              "clear_live_timing_auth_header": "Entferne den gespeicherten F1TV-Token und fahre mit dem öffentlichen Live-Timing fort. Der Replay-Modus und Archivmedien sind dann nicht verfügbar.",
+              "start_f1tv_pairing": "Empfohlener Weg: Starte eine kurzzeitig gültige Kopplungssitzung und übermittle den Token über die Browser-Erweiterung, ohne ihn manuell kopieren zu müssen."
             },
-            "description": "The saved F1TV token for {name} needs attention. Public live timing continues to work, but F1TV live data will not be used until the token is replaced.",
-            "title": "Update F1TV live timing token"
+            "description": "Der gespeicherte F1TV-Token für {name} muss überprüft werden. Das öffentliche Live-Timing funktioniert weiterhin, aber für den Replay-Modus, Archivmedien und zusätzliche F1TV-Livedaten wird ein neuer Token benötigt.",
+            "title": "F1TV-Live-Timing-Token aktualisieren"
+          },
+          "f1tv_pairing": {
+            "title": "F1TV-Zugang verbinden",
+            "description": "Verwende den F1TV Token Helper, um ein aktives, kostenpflichtiges Abonnement zu verbinden. Für das öffentliche Live-Timing ist keine Authentifizierung erforderlich. Der Replay-Modus und Archivmedien setzen jedoch einen F1TV-Zugang voraus. Diese Kopplung läuft am {expires_at} ab."
           }
         }
       }
+    },
+    "stale_live_data_card_resources": {
+      "description": "In Home Assistant sind noch veraltete Lovelace-Ressourceneinträge für die alte eigenständige F1-Karte vorhanden ({stale_resource_count} detected). Diese können zu doppelten Karten führen oder dafür sorgen, dass F1-Karten weiterhin angezeigt werden, obwohl die mitgelieferten Dashboard-Karten deaktiviert sind. Entferne das alte eigenständige HACS-Dashboard-Repository sowie die veralteten Lovelace-Ressourceneinträge. Starte anschließend Home Assistant neu oder lade die Lovelace-Ressourcen erneut und erzwinge eine vollständige Aktualisierung des Browsers.",
+      "title": "Veraltete Ressourcen der eigenständigen F1-Live-Datenkarte erkannt"
     }
   },
   "options": {
     "step": {
       "init": {
         "data": {
-          "install_legacy_cards": "Ältere Dashboard-Karten installieren"
+          "install_legacy_cards": "Ältere Dashboard-Karten installieren",
+          "replay_file": "Pfad zur Replay-Aufzeichnung",
+          "enabled_sensors": "Aktivierte Sensoren",
+          "enable_race_control": "Live-F1-API aktivieren",
+          "install_dashboard_cards": "Mitgelieferte Dashboard-Karten installieren",
+          "race_week_start_day": "Erster Tag der Rennwoche",
+          "operation_mode": "Betriebsmodus"
         },
         "data_description": {
-          "install_legacy_cards": "Registriert auch die veralteten F1-Karten. Bei neuen Installationen deaktiviert; bestehende Installationen behalten ihre Karten. Erfordert die Installation der Dashboard-Karten. Nach Änderungen den Browser neu laden. Bei Deaktivierung funktionieren ältere Karten erst nach der Migration zur F1 Sensor-Karte wieder. Bei mehreren Installationen bleiben ältere Karten verfügbar, solange eine aktive Installation sie anfordert."
-        }
+          "install_legacy_cards": "Registriert auch die veralteten F1-Karten. Bei neuen Installationen deaktiviert; bestehende Installationen behalten ihre Karten. Erfordert die Installation der Dashboard-Karten. Nach Änderungen den Browser neu laden. Bei Deaktivierung funktionieren ältere Karten erst nach der Migration zur F1 Sensor-Karte wieder. Bei mehreren Installationen bleiben ältere Karten verfügbar, solange eine aktive Installation sie anfordert.",
+          "enable_race_control": "Stelle nur dann eine Verbindung zum Formel-1-Live-Timing her, wenn die Live-Funktionen aktiviert sind.",
+          "install_dashboard_cards": "Registriert die mitgelieferten F1-Sensorkarten in Home Assistant. Deaktiviere diese Option, wenn du ausschließlich Entitäten und Automatisierungen verwendest. Bereits vorhandene F1-Dashboard-Karten funktionieren nach dem Neuladen des Browsers nicht mehr.",
+          "race_week_start_day": "Lege fest, ob die Rennwoche am Samstag, Sonntag oder Montag beginnt.",
+          "operation_mode": "Wähle zwischen dem Live-Modus und dem Entwicklungsmodus für die lokale Wiedergabe.",
+          "replay_file": "Absoluter Pfad zur Replay-Aufzeichnung, die ausschließlich im Entwicklungsmodus verwendet wird."
+        },
+        "title": "F1-Sensorfunktionen konfigurieren"
       }
+    },
+    "error": {
+      "replay_required": "Wähle eine Replay-Aufzeichnungsdatei aus, wenn der Entwicklungsmodus aktiviert ist.",
+      "replay_missing": "Replay-Aufzeichnungsdatei nicht gefunden oder nicht lesbar."
+    }
+  },
+  "device_automation": {
+    "trigger_type": {
+      "on_track_incident_detected": "Zwischenfall auf der Strecke erkannt",
+      "race_week_started": "Rennwoche hat gestartet",
+      "race_week_ended": "Rennwoche beendet",
+      "safety_car_deployed": "Safety Car auf der Strecke",
+      "safety_car_cleared": "Safetycar Phase beendet",
+      "possible_on_track_incident_detected": "Möglicher Unfall auf der Strecke",
+      "possible_on_track_incident_cleared": "Möglicher Zwischenfall auf der Strecke aufgehoben",
+      "on_track_incident_cleared": "Zwischenfall auf der Strecke aufgehoben",
+      "formation_start_ready": "Start der Formationsrunde bereit",
+      "overtake_mode_enabled": "Overtake-Modus aktiviert",
+      "overtake_mode_disabled": "Overtake-Modus deaktiviert",
+      "session_live": "Session gestartet",
+      "track_status_clear": "Streckenstatus: Frei",
+      "track_status_yellow": "Streckenstatus: gelbe Flagge",
+      "track_status_safety_car": "Streckenstatus: Safety Car",
+      "track_status_vsc": "Streckenstatus: virtuelles Safety Car",
+      "track_status_red_flag": "Streckenstatus: rote Flagge",
+      "new_race_control_message": "Neue Rennleitungsmitteilung",
+      "new_fia_document": "Neues FIA Dokument veröffentlicht",
+      "investigation_changed": "Status der Untersuchung geändert",
+      "new_team_radio": "Neue Teamfunknachricht",
+      "favorite_driver_position_gained": "Lieblingsfahrer hat eine Position gutgemacht",
+      "favorite_driver_position_lost": "Lieblingsfahrer hat eine Position verloren",
+      "favorite_driver_entered_pits": "Lieblingsfahrer ist an die Box gefahren",
+      "favorite_driver_exited_pits": "Lieblingsfahrer hat die Box verlassen",
+      "favorite_driver_retired": "Lieblingsfahrer hat das Rennen aufgegeben",
+      "live_timing_online": "Live-Timing ist jetzt verfügbar",
+      "live_timing_offline": "Live-Timing ist nicht mehr verfügbar"
     }
   }
 }

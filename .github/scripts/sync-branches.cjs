@@ -88,10 +88,10 @@ async function synchronize(environment) {
     source = release.prerelease ? 'beta' : 'main';
     if (release.target_commitish !== source) throw new Error('Unexpected release target; synchronization stopped.');
     if (release.prerelease) {
-      // Beta is promoted from dev and is intentionally not synchronized back
-      // after every release. Keep beta -> dev available through dispatch for
-      // the exceptional case of a beta-only hotfix.
-      environment.core.info('Published beta release does not require automatic synchronization into dev.');
+      // Beta and RC are promoted from dev and are intentionally not synchronized
+      // back after every release. Keep beta -> dev available through dispatch
+      // for the exceptional case of a preview-only hotfix.
+      environment.core.info('Published pre-release does not require automatic synchronization into dev.');
       return;
     }
     sha = (await github.rest.repos.getCommit({...context.repo, ref:release.tag_name})).data.sha;

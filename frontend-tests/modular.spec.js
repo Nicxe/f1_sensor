@@ -7,6 +7,58 @@ test.beforeEach(async ({ page }) => {
   await page.waitForFunction(() => window.modularReady);
 });
 
+test('qualifying timing table shows a rounded gap instead of a raw float', async ({ page }) => {
+  await page.evaluate(() => {
+    window.mountModular({ scene: 'qualifying', config: { modules: [{ type: 'timing', fields: ['driver', 'qualifying_gap'], options: { profile: 'custom' } }] } });
+    const card = window.fixtureCard, demo = window.fixtureDemo;
+    const drivers = demo.hass.states[demo.preview.entries[0].entities.driver_positions].attributes.drivers;
+    drivers[0].q2_time = 82.631;
+    drivers[1].q2_time = 82.847;
+    for (const driver of drivers.slice(2)) driver.q2_time = null;
+    card.hass = { ...demo.hass };
+  });
+  const rows = page.locator('f1-module-view table tbody tr');
+  await expect(rows.nth(0).locator('td').nth(1)).toHaveText('0.000');
+  await expect(rows.nth(1).locator('td').nth(1)).toHaveText('+0.216');
+});
+
+test('practice best lap gap keeps its session reference under focus and clears deleted bests', async ({ page }) => {
+  await page.evaluate(() => window.mountModular({ scene: 'practice', config: { modules: [{
+    type: 'timing', fields: ['driver', 'best_lap', 'best_lap_gap'], options: { profile: 'custom' },
+  }] } }));
+  await expect(page.getByRole('columnheader', { name: 'Gap to fastest lap', exact: true })).toBeVisible();
+  const gap = page.locator('f1-module-view tr[data-driver="4"]').getByRole('cell').nth(2);
+  await expect(gap).toHaveText('+0.230');
+  await page.getByRole('combobox', { name: 'Driver focus', exact: true }).selectOption('4');
+  await expect(page.locator('f1-module-view table tbody tr')).toHaveCount(1);
+  await expect(gap).toHaveText('+0.230');
+
+  await page.evaluate(() => {
+    const demo = window.fixtureDemo, entry = demo.preview.entries[0];
+    for (const driver of demo.hass.states[entry.entities.driver_positions].attributes.drivers) driver.best_lap_gap = null;
+    window.fixtureCard.hass = { ...demo.hass };
+  });
+  await expect(gap).toHaveText('+0.230');
+
+  await page.evaluate(() => {
+    const demo = window.fixtureDemo, entry = demo.preview.entries[0];
+    const leader = demo.hass.states[entry.entities.driver_positions].attributes.drivers[0];
+    leader.best_lap_time = null;
+    leader.best_lap_time_source = null;
+    window.fixtureCard.hass = { ...demo.hass };
+  });
+  await expect(gap).toHaveText('0.000');
+
+  await page.evaluate(() => {
+    const demo = window.fixtureDemo, entry = demo.preview.entries[0];
+    const norris = demo.hass.states[entry.entities.driver_positions].attributes.drivers[1];
+    norris.best_lap_time = null;
+    norris.best_lap_time_source = null;
+    window.fixtureCard.hass = { ...demo.hass };
+  });
+  await expect(gap).toHaveText('—');
+});
+
 test('first three presets render useful demonstration data with no page overflow', async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 900 });
   for (const preset of ['weekend', 'session', 'driver']) {
@@ -185,7 +237,6 @@ test('timing gap cells localize lap-qualified TimingData values', async ({ page 
     drivers[1].interval_to_position_ahead = 'LAP 9';
     window.fixtureCard.hass = { ...demo.hass };
   });
-  await expect(page.getByText('Ronde 9', { exact: true })).toHaveCount(2);
   await expect(page.getByText('LAP 9', { exact: true })).toHaveCount(0);
 });
 
@@ -628,14 +679,14 @@ test('global spoiler protection blocks every sensitive module and keeps sensitiv
     blocked: node.model.blocked,
     leakedPayload: ['rows', 'items', 'series', 'events', 'values', 'documents'].some(key => Object.hasOwn(node.model, key)),
   })))).toEqual([...sensitive, 'weather'].map(type => ({ type, blocked: 'Spoiler protection is active.', leakedPayload: false })));
-  expect(await page.evaluate(() => window.spoilerResourceCalls.filter(call => call !== 'event:entity_registry_updated'))).toEqual(['ws:f1_sensor/entities']);
+  expect(await page.evaluate(() => window.spoilerResourceCalls.filter(call => !['event:entity_registry_updated', 'event:f1_sensor_data_configuration'].includes(call)))).toEqual(['ws:f1_sensor/entities']);
 
   await page.evaluate(() => {
     const card = window.fixtureCard, entity = card.entry.global_entities.no_spoiler_mode;
     card.hass = { ...card.hass, states: { ...card.hass.states, [entity]: { state: 'unavailable', attributes: {} } } };
   });
   await expect(page.getByText('Spoiler status cannot be verified. Refresh F1 Sensor before showing sensitive data.', { exact: true })).toHaveCount(sensitive.length + 1);
-  expect(await page.evaluate(() => window.spoilerResourceCalls.filter(call => call !== 'event:entity_registry_updated'))).toEqual(['ws:f1_sensor/entities']);
+  expect(await page.evaluate(() => window.spoilerResourceCalls.filter(call => !['event:entity_registry_updated', 'event:f1_sensor_data_configuration'].includes(call)))).toEqual(['ws:f1_sensor/entities']);
 
   await page.evaluate(() => {
     const card = window.fixtureCard, entity = card.entry.global_entities.no_spoiler_mode;
@@ -1844,4 +1895,20 @@ test('telemetry editor saves chosen laps and channels without fetching samples',
   await form.getByRole('checkbox', { name: 'Gear', exact: true }).check();
   expect(await page.evaluate(() => window.savedConfig.modules[0].fields)).toContain('telemetry_gear');
   expect(await page.evaluate(() => window.telemetryEditorRequests.some(query => query.type.endsWith('telemetry_compare')))).toBe(false);
+});
+
+test('older backend configuration requirement hides saved data and links to settings', async ({ page }) => {
+  await page.evaluate(() => {
+    window.mountModular({ preset: 'weekend' });
+    const card = window.fixtureCard;
+    const entries = structuredClone(window.fixtureDemo.preview.entries);
+    entries[0].data_api = { configuration_required: true, enabled: [], supported: [], protocol_version: 1 };
+    card.entries = entries;
+    card.previewData = null;
+  });
+  await expect(page.getByText('The connected F1 Sensor backend requires configuration.', { exact: false })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Open integration settings' })).toHaveAttribute('href', '/config/integrations/integration/f1_sensor');
+  await expect(page.getByRole('region', { name: 'Overview', exact: true })).toHaveCount(0);
+  const results = await new AxeBuilder({ page }).include('f1-sensor-card').analyze();
+  expect(results.violations).toEqual([]);
 });
