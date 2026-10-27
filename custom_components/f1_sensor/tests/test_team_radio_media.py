@@ -248,3 +248,89 @@ def test_team_radio_media_view_registration_is_idempotent(hass) -> None:
     hass.http = None
     async_register_team_radio_media_view(hass)
     assert TEAM_RADIO_MEDIA_VIEW_REGISTERED not in hass.data[DOMAIN]
+
+
+_RADIO_FP1_PATH = "2026/2026-10-25_United_States_Grand_Prix/2026-10-23_Practice_1/"
+
+
+def _pathless_radio_case(hass, *, window_key=11389, info_key=11389):
+    entry = MockConfigEntry(domain=DOMAIN, entry_id="entry-pathless-live-radio")
+    entry.add_to_hass(hass)
+    capture = {
+        "Utc": "2026-10-23T17:38:17.032Z",
+        "RacingNumber": "63",
+        "Path": "TeamRadio/RUS_63_20261023_123745.mp3",
+    }
+    session = _Session()
+    runtime = {
+        "archive_client": F1ArchiveClient(session, "Bearer secret"),
+        "team_radio_coordinator": SimpleNamespace(
+            data={"latest": capture, "history": [capture]}
+        ),
+        "live_supervisor": SimpleNamespace(
+            current_window=SimpleNamespace(path="", session_key=window_key)
+        ),
+        "session_coordinator": SimpleNamespace(year=2026),
+        "session_info_coordinator": SimpleNamespace(
+            data={"Key": info_key, "Path": _RADIO_FP1_PATH}
+        ),
+    }
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = runtime
+    return entry, capture, session, runtime
+
+
+@pytest.mark.asyncio
+async def test_team_radio_media_pathless_window_uses_matching_current_session_info(
+    hass,
+) -> None:
+    entry, capture, session, _runtime = _pathless_radio_case(hass)
+    view = TeamRadioMediaView()
+    response = await view.get(
+        _request(hass), entry.entry_id, team_radio_clip_id(capture)
+    )
+    assert view.requires_auth is True
+    assert response.status == HTTPStatus.OK
+    assert response.body == b"ID3radio"
+    assert response.content_type == "audio/mpeg"
+    assert (
+        session.calls[0][0]
+        == "https://livetiming.formula1.com/static/" + _RADIO_FP1_PATH + capture["Path"]
+    )
+    assert session.calls[0][1]["headers"]["Authorization"] == "Bearer secret"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("window_key", "info_key"), [(11389, 11388), (None, 11389)])
+async def test_team_radio_media_pathless_window_rejects_unconfirmed_session_path(
+    hass, window_key, info_key
+) -> None:
+    entry, capture, session, _runtime = _pathless_radio_case(
+        hass, window_key=window_key, info_key=info_key
+    )
+    response = await TeamRadioMediaView().get(
+        _request(hass), entry.entry_id, team_radio_clip_id(capture)
+    )
+    assert response.status == HTTPStatus.NOT_FOUND
+    assert session.calls == []
+
+
+def test_team_radio_media_existing_window_path_has_priority(hass) -> None:
+    _entry, capture, _session, runtime = _pathless_radio_case(hass, info_key=11388)
+    runtime["live_supervisor"].current_window.path = _RADIO_FP1_PATH
+    assert (
+        team_radio_media._source_url(runtime, capture)
+        == "https://livetiming.formula1.com/static/" + _RADIO_FP1_PATH + capture["Path"]
+    )
+
+
+def test_team_radio_media_replay_root_does_not_require_live_session_info(hass) -> None:
+    _entry, capture, _session, runtime = _pathless_radio_case(hass, info_key=11388)
+    runtime["live_supervisor"] = None
+    capture = {
+        **capture,
+        "_static_root": "https://livetiming.formula1.com/static/replay",
+    }
+    assert (
+        team_radio_media._source_url(runtime, capture)
+        == "https://livetiming.formula1.com/static/replay/" + capture["Path"]
+    )

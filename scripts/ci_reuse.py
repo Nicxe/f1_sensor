@@ -18,6 +18,7 @@ REUSABLE = {
     "documentation": ["checks / documentation / documentation"],
     "validation": ["checks / validation / validate"],
     "package": ["checks / package / package"],
+    "translations": ["checks / translations / translations"],
     "automation": ["checks / automation / automation"],
 }
 
@@ -55,11 +56,8 @@ def eligible_run(run, now):
             and run["path"] == ".github/workflows/development.yml"
             and run["head_branch"] in ("dev", "content")
         )
-        pr_verification = (
-            run["event"] == "pull_request" and run["path"] == ".github/workflows/ci.yml"
-        )
         return (
-            (development_push or pr_verification)
+            development_push
             and re.fullmatch(r"[0-9a-f]{40}", run["head_sha"]) is not None
             and run["status"] == "completed"
             and run["conclusion"] == "success"
@@ -95,32 +93,31 @@ def evidence_checks(api, run, tree, now):
 
 
 def find_evidence(api, selected, tree, now):
-    sources = (
-        ("development.yml", "push"),
-        ("ci.yml", "pull_request"),
-    )
-    for workflow, event in sources:
-        runs = api.get(
-            f"actions/workflows/{workflow}/runs?"
-            + urlencode(
-                {
-                    "event": event,
-                    "status": "success",
-                    "per_page": 30,
-                }
-            )
-        )["workflow_runs"]
-        for run in runs:
-            checks = sorted(
-                key for key in evidence_checks(api, run, tree, now) if selected.get(key)
-            )
-            if checks:
-                return {
-                    "run_id": run["id"],
-                    "attempt": run["run_attempt"],
-                    "head_sha": run["head_sha"],
-                    "checks": checks,
-                }
+    # A push run checks out its immutable head_sha. PR run head_sha identifies
+    # the contributor head, not the merge result that its jobs actually tested.
+    runs = api.get(
+        "actions/workflows/development.yml/runs?"
+        + urlencode(
+            {
+                "event": "push",
+                "status": "success",
+                "per_page": 30,
+            }
+        )
+    )["workflow_runs"]
+    for run in runs:
+        checks = sorted(
+            key for key in evidence_checks(api, run, tree, now) if selected.get(key)
+        )
+        if checks:
+            return {
+                "run_id": run["id"],
+                "attempt": run["run_attempt"],
+                "head_sha": run["head_sha"],
+                "tree_sha": tree,
+                "selected_at": now.isoformat(),
+                "checks": checks,
+            }
     return {}
 
 
@@ -129,29 +126,45 @@ def verify_evidence(api, evidence, tree, now):
         return
     run = api.get(f"actions/runs/{int(evidence['run_id'])}")
     checks = set(evidence["checks"])
+    try:
+        selected_at = datetime.fromisoformat(evidence["selected_at"])
+        if selected_at.tzinfo is None or selected_at > now:
+            raise ValueError("Invalid reuse selection time")
+    except (KeyError, TypeError, ValueError) as error:
+        raise ValueError("Missing or invalid reuse selection time") from error
     if (
-        run["head_sha"] != evidence["head_sha"]
+        evidence.get("tree_sha") != tree
+        or run["head_sha"] != evidence["head_sha"]
         or run["run_attempt"] != evidence["attempt"]
         or not checks
-        or not checks <= evidence_checks(api, run, tree, now)
+        # Freshness is checked when selecting evidence. A slow, unrelated job
+        # must not invalidate an immutable run merely by crossing the TTL.
+        or not checks <= evidence_checks(api, run, tree, selected_at)
     ):
-        raise ValueError("Reused check evidence changed or expired; rerun CI")
+        raise ValueError(
+            "Reused check evidence changed or cannot be verified; rerun CI"
+        )
+    current = api.get(f"actions/runs/{int(evidence['run_id'])}")
+    if any(
+        current.get(key) != run.get(key)
+        for key in (
+            "head_sha",
+            "run_attempt",
+            "status",
+            "conclusion",
+            "path",
+            "head_branch",
+            "event",
+        )
+    ):
+        raise ValueError(
+            "Reused check source changed while verifying its jobs; rerun CI"
+        )
 
 
 def reuse_allowed(event_name: str, branch: str, enabled: bool) -> bool:
-    """Allow trusted reuse for PRs and promotion pushes only."""
-    return enabled and (
-        event_name == "pull_request"
-        or (event_name == "push" and branch in ("beta", "main"))
-    )
-
-
-def without_deployment_checks(evidence: dict, deploy: bool) -> dict:
-    """Keep documentation fresh when this run must create a Pages artifact."""
-    if not deploy:
-        return evidence
-    checks = [check for check in evidence.get("checks", []) if check != "documentation"]
-    return evidence | {"checks": checks} if checks else {}
+    """Only PRs may reuse evidence; releases and development pushes run fresh."""
+    return enabled and event_name == "pull_request"
 
 
 def main():
@@ -167,8 +180,7 @@ def main():
     evidence = {}
     event_name = os.environ["GITHUB_EVENT_NAME"]
     branch = os.environ.get("GITHUB_REF_NAME", "")
-    # Promotion pushes retain target-specific audit, documentation publication and
-    # release steps, but can reuse source checks for an identical fresh tree.
+    # Publication has its own build; only pure verification results are reused.
     if reuse_allowed(
         event_name,
         branch,
@@ -176,11 +188,6 @@ def main():
     ):
         try:
             evidence = find_evidence(api, selected, tree, now)
-            # A Pages deployment needs a freshly built artifact from this run.
-            evidence = without_deployment_checks(
-                evidence,
-                os.environ.get("CI_DEPLOY") == "true",
-            )
         except Exception as error:  # Optimization failure must never block fresh tests.
             print(
                 f"Reuse unavailable; running applicable tests: {type(error).__name__}"

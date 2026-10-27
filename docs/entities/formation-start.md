@@ -15,7 +15,7 @@ These are standard entity IDs. If Home Assistant assigned a different ID, or you
 ## State and attributes
 
 :::info[Replay Mode or F1TV Auth live timing]
-This entity stays registered in Home Assistant. It updates in [Replay Mode](/features/replay-mode) and can update during live sessions when [F1TV Auth](/features/f1tv-auth) is paired with a valid token and the required extra live data is available.
+This entity stays registered in Home Assistant. It updates in [Replay Mode](/features/replay-mode) and can update live when your [F1TV Auth account](/features/f1tv-auth) receives the required car telemetry. A valid token alone does not guarantee that feed. Live telemetry arrived only with the tested paid account during the 23 October 2026 FP1 comparison; the race or sprint formation-start behavior still needs its own session-specific verification.
 :::
 
 Indicates when the formation start procedure is ready. Useful for triggering automations at race start during replay or authenticated live sessions.

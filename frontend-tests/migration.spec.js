@@ -1,5 +1,6 @@
 const { test, expect } = require('@playwright/test');
 const AxeBuilder = require('@axe-core/playwright').default;
+const { LEGACY_CARD_TYPES, COMPATIBILITY_CARD_TYPES } = require('./supported-cards.cjs');
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/frontend-tests/modular.html');
@@ -23,7 +24,8 @@ test('all legacy factories including archive alias expose conversion without pub
     const { LEGACY_MIGRATIONS } = await import('/custom_components/f1_sensor/www/f1-sensor-live-data-card/modular/migration.js');
     return Object.keys(LEGACY_MIGRATIONS).map(type => ({ type, tag: customElements.get(type).getConfigElement().localName }));
   });
-  expect(counts).toHaveLength(24); expect(counts.every(c => c.tag === 'f1-migration-editor')).toBe(true);
+  expect(counts.map(card => card.type)).toEqual(expect.arrayContaining([...LEGACY_CARD_TYPES, ...COMPATIBILITY_CARD_TYPES]));
+  for (const card of counts) expect(card.tag, card.type).toBe('f1-migration-editor');
   await page.evaluate(() => window.mountMigration({ type: 'custom:f1-practice-timing-card', title: 'Original', color_overall_fastest: '#123456', show_sectors: true }));
   await expect(page.getByRole('heading', { name: 'This card is deprecated', exact: true })).toBeVisible();
   await expect(page.getByText('Nothing changes until you apply the conversion and save in Home Assistant.', { exact: false })).toBeVisible();
@@ -59,7 +61,7 @@ test('every actual legacy stub configuration converts and restores exactly', asy
       };
     }));
   });
-  expect(results).toHaveLength(24);
+  expect(results.map(card => card.type)).toEqual(expect.arrayContaining([...LEGACY_CARD_TYPES, ...COMPATIBILITY_CARD_TYPES]));
   for (const result of results) {
     expect(result.warnings, result.type).toEqual([]);
     expect(result.missing, result.type).toEqual([]);
@@ -140,7 +142,8 @@ test('Pit Stops conversion transfers status and availability controls into the l
   }));
   await page.getByRole('button', { name: 'Review conversion', exact: true }).click();
   const preview = page.locator('f1-sensor-card');
-  await expect(preview.getByRole('columnheader', { name: 'Status', exact: true })).toBeVisible();
+  await expect(preview.getByRole('columnheader', { name: 'Current status', exact: true })).toBeVisible();
+  await expect(preview.getByRole('columnheader', { name: 'Status', exact: true })).toHaveCount(0);
   await expect(preview.getByText('On track', { exact: true }).first()).toBeVisible();
   await page.locator('summary').filter({ hasText: 'Transferred settings' }).click();
   for (const key of ['show_availability_notice', 'show_status']) await expect(page.getByText(key, { exact: true })).toBeVisible();
@@ -160,7 +163,7 @@ test('Qualifying conversion transfers current-part gaps into the live preview', 
   await page.getByRole('button', { name: 'Review conversion', exact: true }).click();
   const preview = page.locator('f1-sensor-card');
   await expect(preview.getByRole('columnheader', { name: 'Current part gap', exact: true })).toBeVisible();
-  await expect(preview.getByRole('row', { name: /NOR · Lando Norris/ }).getByRole('cell').nth(5)).toHaveText('0.25');
+  await expect(preview.getByRole('row', { name: /NOR · Lando Norris/ }).getByRole('cell').nth(5)).toHaveText('+0.250');
   await page.locator('summary').filter({ hasText: 'Transferred settings' }).click();
   await expect(page.getByText('show_delta', { exact: true })).toBeVisible();
   await page.getByRole('checkbox', { name: 'I have reviewed the differences and settings that need to be chosen again.' }).check();
@@ -176,12 +179,13 @@ test('conversion review supports keyboard, narrow widths, Swedish and forced col
     window.mountMigration({ type: 'custom:f1-weekend-hub-card', title: 'Helgen', unknown: true });
     window.migrationEditor.hass = { ...window.migrationEditor.hass, locale: { ...window.migrationEditor.hass.locale, language: 'sv' } };
   });
-  await expect(page.getByRole('heading', { name: 'Det här kortet är deprecierat', exact: true })).toBeVisible();
-  await expect(page.getByText('Ingenting ändras förrän du tillämpar konverteringen och sparar i Home Assistant.', { exact: false })).toBeVisible();
-  await page.getByRole('button', { name: 'Granska konvertering', exact: true }).focus(); await page.keyboard.press('Enter');
-  await expect(page.getByText('Ändrat beteende', { exact: false })).toBeVisible();
-  const check = page.getByRole('checkbox'); await check.focus(); await page.keyboard.press('Space');
-  await expect(page.getByRole('button', { name: 'Tillämpa konvertering', exact: true })).toBeEnabled();
+  const notice = page.locator('f1-migration-editor .migration');
+  await expect(notice.getByRole('heading')).toBeVisible();
+  await expect(notice.getByRole('paragraph')).toBeVisible();
+  await notice.locator('[data-action="review-conversion"]').focus(); await page.keyboard.press('Enter');
+  await expect(notice.locator('details')).not.toHaveCount(0);
+  const check = notice.getByRole('checkbox'); await check.focus(); await page.keyboard.press('Space');
+  await expect(notice.locator('[data-action="apply-conversion"]')).toBeEnabled();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   const violations = await new AxeBuilder({ page }).include('f1-migration-editor').withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
   expect(violations.violations).toEqual([]);

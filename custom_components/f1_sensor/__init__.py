@@ -4,6 +4,7 @@ import asyncio
 from collections import deque
 from collections.abc import Callable, Iterator
 from contextlib import suppress
+from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from functools import partial
 import hashlib
@@ -19,7 +20,10 @@ from urllib.parse import urljoin
 from homeassistant.components import websocket_api
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall, callback as ha_callback
-from homeassistant.exceptions import ConfigEntryNotReady, ServiceValidationError
+from homeassistant.exceptions import (
+    ConfigEntryNotReady,
+    ServiceValidationError,
+)
 from homeassistant.helpers import config_validation as cv, entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.entity_platform import async_get_platforms
@@ -55,6 +59,13 @@ from .auth_http import (
     async_setup_f1tv_auth_http,
 )
 from .calibration import LiveDelayCalibrationManager
+from .card_data import CardDataStore, available_card_features
+from .card_data_sources import CardDataSources
+from .card_data_websocket import (
+    CARD_DATA_WS_MARKER,
+    CARD_RACE_CONTROL_EVENT,
+    async_register_card_data_websocket,
+)
 from .const import (
     API_URL,
     CONF_LEGACY_RACE_CONTROL_EVENTS,
@@ -93,6 +104,9 @@ from .const import (
     STRAIGHT_MODE_NORMAL,
     SUPPORTED_SENSOR_KEYS,
 )
+from .data_catalog import card_feature_requirements, static_source_requirements
+from .data_choice import async_dismiss_card_data_notice, async_notify_card_data
+from .data_helpers import _session_status_mapping_context
 from .entity import (
     async_prepare_translation_names,
     register_entry_name_settings,
@@ -176,9 +190,12 @@ from .runtime import (
     ProviderRuntime,
     ReplayRuntime,
     StaticRuntime,
+    active_sensor_demand,
     effective_entry_settings,
     entry_value,
+    track_sensor_demand,
 )
+from .schedule_laps import add_scheduled_laps, validate_session_page
 from .signalr import (
     AUTH_GATED_LIVE_STREAMS,
     PUBLIC_LIVE_STREAMS,
@@ -188,7 +205,14 @@ from .signalr import (
 )
 from .starting_grid import StartingGridCoordinator
 from .storage import async_remove_entry_storage
+from .team_radio_common import resolve_team_radio_source_url
 from .team_radio_media import async_register_team_radio_media_view
+from .team_radio_transcription import (
+    TRANSCRIPTION_MANAGER_KEY,
+    TeamRadioTranscriptionManager,
+    async_register_team_radio_transcription_service,
+    team_radio_clip_id,
+)
 from .track_map import (
     TRACK_MAP_SOURCE_LIVE,
     TRACK_MAP_SOURCE_REPLAY,
@@ -265,6 +289,7 @@ _DOMAIN_ROOT_INTERNAL_KEYS = frozenset(
         MINISECTOR_WS_MARKER,
         TRACK_MAP_WS_MARKER,
         ENTITY_MAP_WS_MARKER,
+        CARD_DATA_WS_MARKER,
     }
 )
 _FINISHING_PLUS_LAPS_RE = re.compile(r"^\+\d+\s+Laps?$", re.IGNORECASE)
@@ -709,7 +734,8 @@ def _get_race_control_log_store_for_entity(
 @websocket_api.websocket_command(
     {
         vol.Required("type"): _RC_LOG_WS_TYPE,
-        vol.Required("entity_id"): cv.entity_id,
+        vol.Exclusive("entity_id", "address"): cv.entity_id,
+        vol.Exclusive("entry_id", "address"): str,
     }
 )
 @websocket_api.async_response
@@ -718,8 +744,27 @@ async def _ws_get_race_control_log(
     connection: Any,
     msg: dict[str, Any],
 ) -> None:
-    entity_id = msg["entity_id"]
-    store = _get_race_control_log_store_for_entity(hass, entity_id)
+    entity_id = msg.get("entity_id")
+    if entry_id := msg.get("entry_id"):
+        entry = hass.config_entries.async_get_entry(entry_id)
+        data = hass.data.get(DOMAIN, {}).get(entry_id, {})
+        store = (
+            data.get(_RC_LOG_STORE_KEY)
+            if entry is not None and entry.domain == DOMAIN
+            else None
+        )
+        manager = hass.data.get(DOMAIN, {}).get(_NO_SPOILER_MANAGER_KEY)
+        if manager is None or manager.is_active:
+            connection.send_result(
+                msg["id"], {"entry_id": entry_id, "status": "blocked", "items": []}
+            )
+            return
+    else:
+        store = (
+            _get_race_control_log_store_for_entity(hass, entity_id)
+            if entity_id
+            else None
+        )
     if store is None:
         connection.send_error(
             msg["id"],
@@ -730,7 +775,11 @@ async def _ws_get_race_control_log(
     connection.send_result(
         msg["id"],
         {
-            "entity_id": entity_id,
+            **(
+                {"entry_id": msg["entry_id"]}
+                if "entry_id" in msg
+                else {"entity_id": entity_id}
+            ),
             "session_key": store.session_key,
             "items": store.get_items(),
         },
@@ -740,8 +789,21 @@ async def _ws_get_race_control_log(
 async def _async_handle_clear_race_control_log(
     hass: HomeAssistant, call: ServiceCall
 ) -> None:
-    entity_id = call.data["entity_id"]
-    store = _get_race_control_log_store_for_entity(hass, entity_id)
+    entity_id = call.data.get("entity_id")
+    if entry_id := call.data.get("entry_id"):
+        entry = hass.config_entries.async_get_entry(entry_id)
+        data = hass.data.get(DOMAIN, {}).get(entry_id, {})
+        store = (
+            data.get(_RC_LOG_STORE_KEY)
+            if entry is not None and entry.domain == DOMAIN
+            else None
+        )
+    else:
+        store = (
+            _get_race_control_log_store_for_entity(hass, entity_id)
+            if entity_id
+            else None
+        )
     if store is None:
         raise ServiceValidationError(
             f"Race Control log is not available for {entity_id}"
@@ -756,7 +818,12 @@ def _async_register_race_control_log_interfaces(hass: HomeAssistant) -> None:
             DOMAIN,
             _RC_LOG_SERVICE,
             partial(_async_handle_clear_race_control_log, hass),
-            schema=vol.Schema({vol.Required("entity_id"): cv.entity_id}),
+            schema=vol.Schema(
+                {
+                    vol.Exclusive("entity_id", "address"): cv.entity_id,
+                    vol.Exclusive("entry_id", "address"): str,
+                }
+            ),
         )
         root[_RC_LOG_SERVICE_MARKER] = True
     if not root.get(_RC_LOG_WS_MARKER):
@@ -775,6 +842,13 @@ def _compute_session_fingerprint(index_payload: Any) -> str | None:
         return json.dumps(minimal, sort_keys=True, default=str)[:20000]
     except Exception:
         return None
+
+
+def _stream_session_key(payload: Any) -> str | None:
+    """Read confirmed session identity without treating metadata deltas as new sessions."""
+    if not isinstance(payload, dict) or payload.get("Key") is None:
+        return None
+    return str(payload["Key"]).strip() or None
 
 
 def _refresh_session_fingerprint(
@@ -1407,8 +1481,11 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         await manager.async_load()
         domain_root[_NO_SPOILER_MANAGER_KEY] = manager
     async_setup_f1tv_auth_http(hass)
+    async_register_entity_map_websocket(hass)
+    async_register_card_data_websocket(hass)
     async_register_team_radio_media_view(hass)
     _async_register_race_control_log_interfaces(hass)
+    async_register_team_radio_transcription_service(hass)
     return True
 
 
@@ -1453,6 +1530,9 @@ class _SetupTransaction:
 async def _async_close_runtime_mapping(data: dict[str, Any]) -> None:
     """Close every entry-owned runtime object exactly once."""
     seen: set[int] = set()
+    if sources := data.get("card_data_sources"):
+        await sources.async_close()
+        seen.add(id(sources))
     for name, obj in reversed(list(data.items())):
         if obj is None or name == "jolpica_client":
             continue
@@ -1553,6 +1633,8 @@ async def async_migrate_entry(hass: HomeAssistant, entry: F1ConfigEntry) -> bool
             unique_id = DOMAIN
             changed = True
 
+    if entry.version < 4 or entry.minor_version < 4:
+        changed = True
     if changed or entry.version != 4:
         hass.config_entries.async_update_entry(
             entry,
@@ -1560,7 +1642,7 @@ async def async_migrate_entry(hass: HomeAssistant, entry: F1ConfigEntry) -> bool
             options=options,
             unique_id=unique_id,
             version=4,
-            minor_version=max(entry.minor_version, 2) if entry.version == 4 else 2,
+            minor_version=max(entry.minor_version, 4) if entry.version == 4 else 4,
         )
     return True
 
@@ -1681,6 +1763,7 @@ async def _async_refresh_static_runtime(
 
 async def async_setup_entry(hass: HomeAssistant, entry: F1ConfigEntry) -> bool:
     """Set up one config entry transactionally."""
+    await async_notify_card_data(hass, entry)
     transaction = _SetupTransaction()
     existing_platforms = {
         id(platform) for platform in async_get_platforms(hass, DOMAIN)
@@ -1725,6 +1808,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: F1ConfigEntry) -> bool:
 
 async def _async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Reload an entry after its user-editable options change."""
+    hass.bus.async_fire("f1_sensor_data_configuration", {"entry_id": entry.entry_id})
     await hass.config_entries.async_reload(entry.entry_id)
 
 
@@ -1734,6 +1818,25 @@ async def _async_setup_entry(
     transaction: _SetupTransaction,
 ) -> bool:
     """Set up integration via config flow."""
+    # Explicit exposure changes are applied only after acknowledgement. Registry
+    # disabling remains HA-owned; entries for selected disabled sensors survive.
+    selected = entry.options.get("exposed_sensor_keys")
+    if isinstance(selected, (list, tuple)):
+        registry = er.async_get(hass)
+        for entity in er.async_entries_for_config_entry(registry, entry.entry_id):
+            prefix = f"{entry.entry_id}_"
+            if not entity.unique_id.startswith(prefix):
+                continue
+            suffix = entity.unique_id.removeprefix(prefix)
+            key = (
+                "top_three"
+                if suffix.startswith("top_three_p")
+                else "championship_prediction"
+                if suffix.startswith("championship_prediction_")
+                else suffix
+            )
+            if key in SUPPORTED_SENSOR_KEYS and key not in selected:
+                registry.async_remove(entity.entity_id)
     # Dev-only: periodically report how many Jolpica requests actually hit the network.
     _ensure_jolpica_stats_reporting(hass)
     settings = effective_entry_settings(entry)
@@ -1745,7 +1848,9 @@ async def _async_setup_entry(
     # disabled set until the user chooses them in integration options.
     raw_disabled = settings.get("disabled_sensors") or []
     disabled: set[str] = {k for k in raw_disabled if k in SUPPORTED_SENSOR_KEYS}
-    enabled = SUPPORTED_SENSOR_KEYS - disabled
+    sensor_demand = active_sensor_demand(hass, entry, SUPPORTED_SENSOR_KEYS - disabled)
+    sensor_sources = static_source_requirements(sensor_demand)
+    enabled = sensor_demand | card_feature_requirements(available_card_features(entry))
     enable_rc = bool(settings.get("enable_race_control", False))
     configured_operation_mode = settings.get(
         CONF_OPERATION_MODE, DEFAULT_OPERATION_MODE
@@ -1861,6 +1966,8 @@ async def _async_setup_entry(
             while ensuring the newest season results page refreshes within hours.
             """
             kk = str(k)
+            if "/f1/alpha/core/sessions/?year=" in kk:
+                return TTL_CURRENT
             if "/ergast/f1/current.json" in kk:
                 return TTL_CURRENT
             if (
@@ -1960,6 +2067,7 @@ async def _async_setup_entry(
             persist_map=persisted_map,
             persist_save=persisted.schedule_save,
             config_entry=entry,
+            auto_start=False,
         )
         if race_coordinator is not None and "next_race" in enabled
         else None
@@ -2153,18 +2261,35 @@ async def _async_setup_entry(
             entry.data.get(CONF_LEGACY_RACE_CONTROL_EVENTS, False)
         ),
     )
-    await _async_refresh_static_runtime(
-        race_coordinator=race_coordinator,
-        next_race_history_coordinator=next_race_history_coordinator,
-        race_weather_coordinator=race_weather_coordinator,
-        driver_coordinator=driver_coordinator,
-        constructor_coordinator=constructor_coordinator,
-        last_race_coordinator=last_race_coordinator,
-        season_results_coordinator=season_results_coordinator,
-        sprint_results_coordinator=sprint_results_coordinator,
-        lap_position_progression_coordinator=lap_position_progression_coordinator,
-        fia_documents_coordinator=fia_documents_coordinator,
+    sensor_event_plan = build_feature_plan(
+        sensor_demand,
+        live_enabled=enable_rc,
+        development_mode=operation_mode == OPERATION_MODE_DEVELOPMENT,
+        legacy_race_control_events=bool(
+            entry.data.get(CONF_LEGACY_RACE_CONTROL_EVENTS, False)
+        ),
     )
+    static_sources = {
+        "race_coordinator": race_coordinator,
+        "next_race_history_coordinator": next_race_history_coordinator,
+        "race_weather_coordinator": race_weather_coordinator,
+        "driver_coordinator": driver_coordinator,
+        "constructor_coordinator": constructor_coordinator,
+        "last_race_coordinator": last_race_coordinator,
+        "season_results_coordinator": season_results_coordinator,
+        "sprint_results_coordinator": sprint_results_coordinator,
+        "lap_position_progression_coordinator": lap_position_progression_coordinator,
+        "fia_documents_coordinator": fia_documents_coordinator,
+    }
+    await _async_refresh_static_runtime(
+        **{
+            name: value if name in sensor_sources else None
+            for name, value in static_sources.items()
+        }
+    )
+    card_data_sources = CardDataSources(hass, static_sources, sensor_sources)
+    transaction.track(card_data_sources)
+    card_data_sources.reconcile(set())
 
     if not feature_plan.live_required:
         track_map_store = TrackMapStore(
@@ -2212,6 +2337,7 @@ async def _async_setup_entry(
             )
             transaction.track(dormant_live_bus, track_map_replay_adapter)
         static_entry_data: dict[str, Any] = {
+            "card_data_sources": card_data_sources,
             "http_session": http_session,
             "user_agent": ua_string,
             "jolpica_client": jolpica_client,
@@ -2288,6 +2414,11 @@ async def _async_setup_entry(
             ),
             legacy=static_entry_data,
         )
+        card_data_store = CardDataStore(hass, entry, static_entry_data)
+        static_entry_data["card_data_store"] = card_data_store
+        entry.runtime_data.card_data = card_data_store
+        transaction.track(card_data_store)
+        await card_data_store.async_start()
         if lap_position_progression_coordinator is not None:
             async_register_lap_position_websocket(hass)
         async_register_history_websocket(hass)
@@ -2317,6 +2448,8 @@ async def _async_setup_entry(
                 if active:
                     return
                 for coordinator in blocked_refresh:
+                    if not card_data_sources.is_needed(coordinator):
+                        continue
                     hass.async_create_task(coordinator.async_request_refresh())
 
             static_entry_data["no_spoiler_unsub"] = no_spoiler_mgr.add_listener(
@@ -2326,9 +2459,12 @@ async def _async_setup_entry(
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
         if track_map_replay_adapter is not None:
             track_map_replay_adapter.start()
-        if race_weather_coordinator is not None:
-            race_weather_coordinator.async_start()
+        entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
+        entry.async_on_unload(track_sensor_demand(hass, entry))
         transaction.commit()
+        hass.bus.async_fire(
+            "f1_sensor_data_configuration", {"entry_id": entry.entry_id}
+        )
         return True
 
     year = dt_util.utcnow().year
@@ -2641,6 +2777,8 @@ async def _async_setup_entry(
             delay_controller=delay_controller,
             live_state=live_state,
             log_store=race_control_log_store,
+            publish_events=sensor_event_plan.needs("race_control"),
+            publish_card_data=True,
         )
     if feature_plan.needs("weather_data"):
         weather_data_coordinator = WeatherDataCoordinator(
@@ -2775,6 +2913,7 @@ async def _async_setup_entry(
         await top_three_coordinator.async_config_entry_first_refresh()
 
     team_radio_coordinator = None
+    team_radio_transcription_manager = None
     if feature_plan.needs("team_radio"):
         team_radio_coordinator = TeamRadioCoordinator(
             hass,
@@ -2787,6 +2926,22 @@ async def _async_setup_entry(
         )
         transaction.track(team_radio_coordinator)
         await team_radio_coordinator.async_config_entry_first_refresh()
+
+        def _team_radio_source_url(capture: dict[str, Any]) -> str | None:
+            window = getattr(live_supervisor, "current_window", None)
+            return resolve_team_radio_source_url(
+                capture,
+                session_path=getattr(window, "path", None),
+                year=session_coordinator.year,
+            )
+
+        team_radio_transcription_manager = TeamRadioTranscriptionManager(
+            hass,
+            team_radio_coordinator,
+            archive_client=archive_client,
+            source_url_resolver=_team_radio_source_url,
+        )
+        transaction.track(team_radio_transcription_manager)
 
     pitstop_coordinator = None
     if feature_plan.needs("pitstops"):
@@ -2837,6 +2992,7 @@ async def _async_setup_entry(
     transaction.track(track_map_replay_adapter)
 
     entry_data: dict[str, Any] = {
+        "card_data_sources": card_data_sources,
         "http_session": http_session,
         "archive_client": archive_client,
         "user_agent": ua_string,
@@ -2868,6 +3024,7 @@ async def _async_setup_entry(
         "lap_count_coordinator": lap_count_coordinator,
         "top_three_coordinator": top_three_coordinator,
         "team_radio_coordinator": team_radio_coordinator,
+        TRANSCRIPTION_MANAGER_KEY: team_radio_transcription_manager,
         "pitstop_coordinator": pitstop_coordinator,
         "championship_prediction_coordinator": championship_prediction_coordinator,
         "drivers_coordinator": drivers_coordinator,
@@ -3004,6 +3161,12 @@ async def _async_setup_entry(
         ),
     )
 
+    card_data_store = CardDataStore(hass, entry, entry_data)
+    entry_data["card_data_store"] = card_data_store
+    entry.runtime_data.card_data = card_data_store
+    transaction.track(card_data_store)
+    entry_data["replay_reset_callbacks"].insert(0, card_data_store.reset_for_replay)
+    await card_data_store.async_start()
     if lap_position_progression_coordinator is not None:
         async_register_lap_position_websocket(hass)
     async_register_history_websocket(hass)
@@ -3053,6 +3216,11 @@ async def _async_setup_entry(
                     return
                 # Deactivated: trigger catch-up for blocked spoiler-sensitive coordinators.
                 for coord in _blocked_refresh:
+                    if (
+                        coord in static_sources.values()
+                        and not card_data_sources.is_needed(coord)
+                    ):
+                        continue
                     hass.async_create_task(coord.async_request_refresh())
                 # Wake supervisor so it re-evaluates session windows.
                 _sup = hass_data.get("live_supervisor") if hass_data else None
@@ -3066,14 +3234,14 @@ async def _async_setup_entry(
     await async_reconcile_live_data_card_frontend(hass)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     track_map_replay_adapter.start()
-    if race_weather_coordinator is not None:
-        race_weather_coordinator.async_start()
     if operation_mode == OPERATION_MODE_LIVE and live_supervisor is not None:
         await live_supervisor.async_start()
     else:
         await live_bus.start()
     entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
+    entry.async_on_unload(track_sensor_demand(hass, entry))
     transaction.commit()
+    hass.bus.async_fire("f1_sensor_data_configuration", {"entry_id": entry.entry_id})
     return True
 
 
@@ -3245,6 +3413,8 @@ class RaceControlCoordinator(DataUpdateCoordinator):
         delay_controller: LiveDelayController | None = None,
         live_state: LiveAvailabilityTracker | None = None,
         log_store: RaceControlLogStore | None = None,
+        publish_events: bool = True,
+        publish_card_data: bool = False,
     ):
         super().__init__(
             hass,
@@ -3280,6 +3450,8 @@ class RaceControlCoordinator(DataUpdateCoordinator):
             == OPERATION_MODE_DEVELOPMENT
         )
         self._log_store = log_store
+        self._publish_events = publish_events
+        self._publish_card_data = publish_card_data
         self._live_state_unsub: Callable[[], None] | None = None
         if live_state is not None:
             self._live_state_unsub = live_state.add_listener(self._handle_live_state)
@@ -3486,31 +3658,28 @@ class RaceControlCoordinator(DataUpdateCoordinator):
                 )
         # Publish on HA event bus with a consistent event name
         try:
-            self.hass.bus.async_fire(
-                _RC_LOG_EVENT,
-                {
-                    "entry_id": self.config_entry.entry_id
-                    if self.config_entry
-                    else None,
-                    "entity_id": (
-                        _race_control_entity_id_for_entry(
-                            self.hass,
-                            self.config_entry.entry_id,
-                        )
-                        if self.config_entry is not None
-                        else None
-                    ),
-                    "message": item,
-                    "received_at": received_at,
-                    "event_id": self._message_id(item),
-                    "log_item": log_item,
-                    "session_key": (
-                        self._log_store.session_key
-                        if self._log_store is not None
-                        else None
-                    ),
-                },
-            )
+            payload = {
+                "entry_id": self.config_entry.entry_id if self.config_entry else None,
+                "entity_id": (
+                    _race_control_entity_id_for_entry(
+                        self.hass,
+                        self.config_entry.entry_id,
+                    )
+                    if self.config_entry is not None
+                    else None
+                ),
+                "message": item,
+                "received_at": received_at,
+                "event_id": self._message_id(item),
+                "log_item": log_item,
+                "session_key": (
+                    self._log_store.session_key if self._log_store is not None else None
+                ),
+            }
+            if self._publish_events:
+                self.hass.bus.async_fire(_RC_LOG_EVENT, payload)
+            if self._publish_card_data:
+                self.hass.bus.async_fire(CARD_RACE_CONTROL_EVENT, payload)
         except Exception:
             _LOGGER.debug("RaceControl: Failed to publish event for item")
 
@@ -3888,12 +4057,11 @@ class LiveModeCoordinator(DataUpdateCoordinator):
             context = self._session_status_coordinator
             if bool(getattr(context, "is_testing_session", False)):
                 return False
-            if bool(getattr(context, "is_qualifying_like_session", False)):
-                try:
-                    part = int(getattr(context, "qualifying_part", None))
-                except (TypeError, ValueError):
-                    return False
-                return part not in (1, 2)
+            is_qualifying, part = _session_status_mapping_context(
+                context, use_status_part=True
+            )
+            if is_qualifying:
+                return part not in (None, 1, 2)
             return True
         return status in {"Finalised", "Ends"}
 
@@ -4007,9 +4175,12 @@ class LapCountCoordinator(DataUpdateCoordinator):
             delay_controller=delay_controller,
             live_state=live_state,
         )
+        self._session_info_unsub = None
+        self._live_session_key = None
 
     async def async_close(self, *_):
         self._unsub = _call_unsub(self._unsub)
+        self._session_info_unsub = _call_unsub(self._session_info_unsub)
         self._deliver_handle = _cancel_handle(self._deliver_handle)
         self._delay_listener = _call_unsub(self._delay_listener)
         self._live_state_unsub = _call_unsub(self._live_state_unsub)
@@ -4038,9 +4209,32 @@ class LapCountCoordinator(DataUpdateCoordinator):
             return
         self._deliver(msg)
 
+    def _on_sessioninfo(self, payload: dict) -> None:
+        session_key = _stream_session_key(payload)
+        if session_key is None or session_key == self._live_session_key:
+            return
+        changed = self._live_session_key is not None
+        self._live_session_key = session_key
+        if changed:
+            # Keep later frames already queued for the new session.
+            self._reset_store()
+
+    def _reset_store(self) -> None:
+        self._last_message = None
+        self.data_list = []
+        self.async_set_updated_data(None)
+
     def _deliver(self, msg: dict) -> None:
         if _is_no_spoiler_blocked(self):
             return
+        current = self._last_message
+        msg = dict(msg)
+        if (
+            "TotalLaps" not in msg
+            and isinstance(current, dict)
+            and "TotalLaps" in current
+        ):
+            msg["TotalLaps"] = current["TotalLaps"]
         self.available = True
         self._last_message = msg
         self.data_list = [msg]
@@ -4056,10 +4250,17 @@ class LapCountCoordinator(DataUpdateCoordinator):
 
     async def async_config_entry_first_refresh(self):
         await super().async_config_entry_first_refresh()
+        bus = self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")
         try:
-            self._unsub = (
-                self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")
-            ).subscribe("LapCount", _wrap_delayed_handler(self, self._on_bus_message))  # type: ignore[attr-defined]
+            self._session_info_unsub = bus.subscribe(
+                "SessionInfo", _wrap_delayed_handler(self, self._on_sessioninfo)
+            )
+        except Exception:
+            self._session_info_unsub = None
+        try:
+            self._unsub = bus.subscribe(
+                "LapCount", _wrap_delayed_handler(self, self._on_bus_message)
+            )
         except Exception:
             self._unsub = None
 
@@ -4069,6 +4270,7 @@ class LapCountCoordinator(DataUpdateCoordinator):
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
         if reason == "init":
             return
+        previous_replay_mode = self._replay_mode
         self._replay_mode = _is_replay_delay_reason(reason)
         if self._replay_mode:
             _clear_delayed_ingest_state(self)
@@ -4076,12 +4278,11 @@ class LapCountCoordinator(DataUpdateCoordinator):
             _clear_delayed_ingest_state(self)
             return
         self.available = is_live
-        if not is_live:
+        if not is_live or previous_replay_mode != self._replay_mode:
             _clear_delayed_ingest_state(self)
-            self._last_message = None
-            self.data_list = []
+            self._live_session_key = None
             # Notify entities to clear their state
-            self.async_set_updated_data(self._last_message)
+            self._reset_store()
 
 
 class TeamRadioCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
@@ -4115,6 +4316,7 @@ class TeamRadioCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
         self._delay = max(0, int(delay_seconds or 0))
         self._replay_mode = False
         self._history_limit = max(1, int(history_limit or 20))
+        self._driver_identities: dict[str, dict[str, str | None]] = {}
         self._state: dict[str, Any] = {"latest": None, "history": []}
         if delay_controller is not None:
             self._delay_listener = delay_controller.add_listener(self.set_delay)
@@ -4159,9 +4361,125 @@ class TeamRadioCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
         _apply_delay_with_queue(self, seconds)
 
     def _reset_store(self) -> None:
+        self._driver_identities = {}
         self._state = {"latest": None, "history": []}
         with suppress(Exception):
             self.async_set_updated_data(self._state)
+
+    @staticmethod
+    def _identity_value(value: Any) -> str | None:
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text or None
+
+    @staticmethod
+    def _team_color(value: Any) -> str | None:
+        text = TeamRadioCoordinator._identity_value(value)
+        if text is None:
+            return None
+        return text if text.startswith("#") else f"#{text}"
+
+    @staticmethod
+    def _driver_tla_from_path(path: Any, racing_number: str | None) -> str | None:
+        text = TeamRadioCoordinator._identity_value(path)
+        if text is None:
+            return None
+        match = re.search(r"(?:^|/)([A-Za-z]{3})_([0-9]+)_", text)
+        if match is None:
+            return None
+        if racing_number is not None and match.group(2) != racing_number:
+            return None
+        return match.group(1).upper()
+
+    def _enrich_capture(self, capture: dict[str, Any]) -> dict[str, Any]:
+        enriched = dict(capture)
+        racing_number = self._identity_value(capture.get("RacingNumber"))
+        identity = self._driver_identities.get(racing_number or "", {})
+        enriched["driver_tla"] = (
+            identity.get("driver_tla")
+            or self._identity_value(capture.get("driver_tla"))
+            or self._driver_tla_from_path(capture.get("Path"), racing_number)
+        )
+        enriched["driver_name"] = identity.get("driver_name") or self._identity_value(
+            capture.get("driver_name")
+        )
+        enriched["team_name"] = identity.get("team_name") or self._identity_value(
+            capture.get("team_name")
+        )
+        enriched["team_color"] = identity.get("team_color") or self._team_color(
+            capture.get("team_color")
+        )
+        return enriched
+
+    def _on_driverlist(self, payload: dict) -> None:
+        """Merge driver identities and enrich radio clips already received."""
+        if not isinstance(payload, dict):
+            return
+        drivers = payload.get("Drivers")
+        if not isinstance(drivers, dict):
+            drivers = payload
+        identity_changed = False
+        for key, info in drivers.items():
+            if not isinstance(info, dict):
+                continue
+            racing_number = self._identity_value(info.get("RacingNumber") or key)
+            if racing_number is None:
+                continue
+            current = self._driver_identities.get(racing_number, {})
+            incoming = {
+                "driver_tla": self._identity_value(info.get("Tla")),
+                "driver_name": self._identity_value(
+                    info.get("FullName") or info.get("BroadcastName")
+                ),
+                "team_name": self._identity_value(info.get("TeamName")),
+                "team_color": self._team_color(
+                    info.get("TeamColour") or info.get("TeamColor")
+                ),
+            }
+            merged = {
+                field: value if value is not None else current.get(field)
+                for field, value in incoming.items()
+            }
+            if merged != current:
+                self._driver_identities[racing_number] = merged
+                identity_changed = True
+        if not identity_changed:
+            return
+
+        latest = self._state.get("latest")
+        enriched_latest = (
+            self._enrich_capture(latest) if isinstance(latest, dict) else latest
+        )
+        history = [
+            self._enrich_capture(item) if isinstance(item, dict) else item
+            for item in self._state.get("history") or []
+        ]
+        next_state = {"latest": enriched_latest, "history": history}
+        if next_state != self._state:
+            self._state = next_state
+            self.async_set_updated_data(self._state)
+
+    def set_transcription(self, clip_id: str, result: dict[str, Any]) -> bool:
+        """Attach a transcription result to a known team radio capture."""
+        changed = False
+
+        def _updated(item: Any) -> Any:
+            nonlocal changed
+            if not isinstance(item, dict) or team_radio_clip_id(item) != clip_id:
+                return item
+            changed = True
+            updated = dict(item)
+            updated["Transcription"] = dict(result)
+            return updated
+
+        latest = _updated(self._state.get("latest"))
+        history = [_updated(item) for item in self._state.get("history") or []]
+        if not changed:
+            return False
+        self._state = {"latest": latest, "history": history}
+        self.async_set_updated_data(self._state)
+        return True
 
     @staticmethod
     def _normalize_captures(payload: dict) -> list[dict]:
@@ -4206,6 +4524,7 @@ class TeamRadioCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
             for item in (self._state.get("history") or [])
             if isinstance(item, dict)
         ]
+        captures = [self._enrich_capture(capture) for capture in captures]
         history.extend(captures)
         if len(history) > self._history_limit:
             history = history[-self._history_limit :]
@@ -4236,6 +4555,13 @@ class TeamRadioCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
         except Exception:
             self._session_unsub = None
         bus = self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")
+        with suppress(Exception):
+            self._unsubs.append(
+                bus.subscribe(
+                    "DriverList",
+                    _wrap_delayed_handler(self, self._on_driverlist),
+                )
+            )
         with suppress(Exception):
             self._unsubs.append(
                 bus.subscribe(
@@ -4297,6 +4623,7 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
 
         self._session_unsub: Callable[[], None] | None = None
         self._session_fingerprint: str | None = None
+        self._live_session_key: str | None = None
 
         self._history_limit = min(
             PITSTOP_MAX_HISTORY_PER_CAR,
@@ -4306,6 +4633,7 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
         self._dedup: set[tuple] = set()
         self._driver_map: dict[str, dict[str, Any]] = {}
         self._driver_pit_counts: dict[str, int] = {}
+        self._lane_partial: dict[str, dict[str, Any]] = {}
         self._deliver_handle: asyncio.Handle | None = None
         self._drivers_coord = drivers_coordinator
 
@@ -4336,6 +4664,7 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
             _clear_delayed_ingest_state(self)
         if _is_no_spoiler_live_state(reason):
             _clear_delayed_ingest_state(self)
+            self._lane_partial.clear()
             return
         replay_available = bool(is_live and self._replay_mode)
         auth_live_available = bool(
@@ -4352,10 +4681,20 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
     def set_delay(self, seconds: int) -> None:
         _apply_delay_with_queue(self, seconds)
 
+    def _on_sessioninfo(self, payload: dict) -> None:
+        session_key = _stream_session_key(payload)
+        if session_key is None or session_key == self._live_session_key:
+            return
+        changed = self._live_session_key is not None
+        self._live_session_key = session_key
+        if changed:
+            self._reset_store()
+
     def _reset_store(self) -> None:
         self._by_car = {}
         self._dedup = set()
         self._driver_pit_counts = {}
+        self._lane_partial = {}
         self._state = {
             "total_stops": 0,
             "cars": {},
@@ -4450,36 +4789,171 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
     def _schedule_deliver(self) -> None:
         self._deliver()
 
-    def _add_stop(self, racing_number: str, stop: dict) -> None:
+    def _add_stop(self, racing_number: str, stop: dict) -> bool:
         rn = self._normalize_racing_number(racing_number)
         if rn is None:
-            return
+            return False
         if rn not in self._by_car and len(self._by_car) >= PITSTOP_MAX_CARS:
-            return
+            return False
         lap = self._parse_int(stop.get("lap"))
         ts = self._bounded_text(stop.get("timestamp"))
         pit_stop_time = self._parse_float(stop.get("pit_stop_time"))
         pit_lane_time = self._parse_float(stop.get("pit_lane_time"))
-
-        # Dedup: prefer timestamp when present, else fall back to lap/times.
-        key = self._dedup_key(rn, lap, ts, pit_lane_time, pit_stop_time)
-        if key in self._dedup:
-            return
-        self._dedup.add(key)
-
+        source = stop.get("source", "PitStopSeries")
+        lane_only = source == "PitLaneTimeCollection"
         entry = {
             "lap": lap,
             "timestamp": ts,
             "pit_stop_time": pit_stop_time,
             "pit_lane_time": pit_lane_time,
             "pit_delta": None,
+            "source": source,
         }
-        self._maybe_update_pit_delta(rn, entry)
-        lst = self._by_car.setdefault(rn, [])
-        lst.append(entry)
-        if len(lst) > self._history_limit:
-            self._by_car[rn] = lst[-self._history_limit :]
+        lst = self._by_car.get(rn, [])
+        if lane_only and any(
+            item.get("lap") == lap
+            and item.get("source", "PitStopSeries") == "PitStopSeries"
+            for item in lst
+        ):
+            return False
+
+        for index, previous in enumerate(lst):
+            same_fallback = (
+                lane_only
+                and previous.get("source") == source
+                and previous.get("lap") == lap
+            )
+            same_series = (
+                not lane_only
+                and ts is not None
+                and previous.get("source", "PitStopSeries") == "PitStopSeries"
+                and previous.get("timestamp") == ts
+            )
+            if not (same_fallback or same_series):
+                continue
+            if same_series:
+                # Corrections can omit unchanged fields; the event timestamp is
+                # the identity, whereas different timestamps remain distinct stops.
+                entry = {**previous, **{k: v for k, v in entry.items() if k in stop}}
+                entry["source"] = "PitStopSeries"
+                if previous.get("lap") != entry.get("lap"):
+                    entry["pit_delta"] = None
+            self._maybe_update_pit_delta(rn, entry)
+            updated = [*lst[:index], entry, *lst[index + 1 :]]
+            if same_series and entry.get("lap") is not None:
+                updated = [
+                    item
+                    for item in updated
+                    if not (
+                        item.get("source") == "PitLaneTimeCollection"
+                        and item.get("lap") == entry["lap"]
+                    )
+                ]
+            if entry == previous and len(updated) == len(lst):
+                return False
+            self._by_car[rn] = updated
             self._rebuild_pitstop_dedup()
+            return True
+
+        if not lane_only and lap is not None:
+            # A collection has no stable stop identifier. Prefer real Series
+            # events over an ambiguous car/lap fallback, without attaching its
+            # duration or stationary time to an arbitrary event.
+            lst = [
+                item
+                for item in lst
+                if not (
+                    item.get("source") == "PitLaneTimeCollection"
+                    and item.get("lap") == lap
+                )
+            ]
+            if len(lst) != len(self._by_car.get(rn, [])):
+                self._by_car[rn] = lst
+                self._rebuild_pitstop_dedup()
+        key = self._dedup_key(rn, lap, ts, pit_lane_time, pit_stop_time)
+        if key in self._dedup:
+            return False
+        self._maybe_update_pit_delta(rn, entry)
+        self._by_car[rn] = [*lst, entry][-self._history_limit :]
+        self._rebuild_pitstop_dedup()
+        return True
+
+    def _on_bus_pit_lane_times(self, msg: dict) -> None:
+        """Keep live lane records after their transient collection entries expire."""
+        if (
+            not isinstance(msg, dict)
+            or self._replay_mode
+            or self._live_session_key is None
+            or not getattr(self._bus, "auth_enabled", False)
+            or _is_no_spoiler_blocked(self)
+        ):
+            return
+        if msg.get("_kf") is True:
+            self._lane_partial.clear()
+        pit_times = msg.get("PitTimes")
+        if not isinstance(pit_times, dict):
+            return
+        deleted = pit_times.get("_deleted")
+        if isinstance(deleted, list):
+            for raw_rn in deleted[:PITSTOP_MAX_CARS_PER_PAYLOAD]:
+                self._lane_partial.pop(self._normalize_racing_number(raw_rn), None)
+        changed = False
+        for car_index, (raw_rn, update) in enumerate(pit_times.items()):
+            if car_index >= PITSTOP_MAX_CARS_PER_PAYLOAD:
+                break
+            rn = self._normalize_racing_number(raw_rn)
+            if rn is None or not isinstance(update, dict):
+                continue
+            if (
+                "RacingNumber" in update
+                and self._normalize_racing_number(update["RacingNumber"]) != rn
+            ):
+                continue
+            if (
+                rn not in self._lane_partial
+                and len(self._lane_partial) >= PITSTOP_MAX_CARS
+            ):
+                continue
+            partial = dict(self._lane_partial.get(rn, {}))
+            if "Lap" in update:
+                raw_lap = update["Lap"]
+                lap = (
+                    int(str(raw_lap).strip())
+                    if not isinstance(raw_lap, bool)
+                    and isinstance(raw_lap, (int, str))
+                    and str(raw_lap).strip().isdecimal()
+                    else None
+                )
+                if lap is None or lap < 1:
+                    self._lane_partial.pop(rn, None)
+                    continue
+                if lap != partial.get("lap"):
+                    partial = {"lap": lap}
+            if "Duration" in update:
+                raw_duration = update["Duration"]
+                duration = (
+                    self._parse_float(raw_duration)
+                    if not isinstance(raw_duration, bool)
+                    else None
+                )
+                if duration is None or not math.isfinite(duration) or duration <= 0:
+                    partial.pop("pit_lane_time", None)
+                else:
+                    partial["pit_lane_time"] = duration
+            self._lane_partial[rn] = partial
+            if "lap" not in partial or "pit_lane_time" not in partial:
+                continue
+            changed |= self._add_stop(
+                rn,
+                {
+                    **partial,
+                    "timestamp": None,
+                    "pit_stop_time": None,
+                    "source": "PitLaneTimeCollection",
+                },
+            )
+        if changed:
+            self._schedule_deliver()
 
     def _ingest_pitstopseries(self, msg: dict) -> None:
         pit_times = (msg or {}).get("PitTimes")
@@ -4509,10 +4983,20 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
                 self._add_stop(
                     pitstop.get("RacingNumber") or rn,
                     {
-                        "lap": pitstop.get("Lap"),
-                        "timestamp": item.get("Timestamp"),
-                        "pit_stop_time": pitstop.get("PitStopTime"),
-                        "pit_lane_time": pitstop.get("PitLaneTime"),
+                        **{
+                            field: pitstop[key]
+                            for field, key in (
+                                ("lap", "Lap"),
+                                ("pit_stop_time", "PitStopTime"),
+                                ("pit_lane_time", "PitLaneTime"),
+                            )
+                            if key in pitstop
+                        },
+                        **(
+                            {"timestamp": item["Timestamp"]}
+                            if "Timestamp" in item
+                            else {}
+                        ),
                     },
                 )
 
@@ -4575,7 +5059,7 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
                 ((rn, self._by_car.get(rn, [])) for rn in sorted_car_numbers),
                 key=lambda kv: int(str(kv[0])),
             ):
-                lst = list(stops or [])
+                lst = deepcopy(stops or [])
                 fallback_count = int(self._driver_pit_counts.get(str(rn), 0))
                 stop_count = max(len(lst), fallback_count)
                 ident = self._get_identity(str(rn))
@@ -4605,7 +5089,7 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
                         len(stops or []),
                         int(self._driver_pit_counts.get(rn, 0)),
                     ),
-                    "stops": list(stops or []),
+                    "stops": deepcopy(stops or []),
                 }
             try:
                 total = sum(
@@ -4641,6 +5125,12 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
         with suppress(Exception):
             self._unsubs.append(
                 bus.subscribe(
+                    "SessionInfo", _wrap_delayed_handler(self, self._on_sessioninfo)
+                )
+            )
+        with suppress(Exception):
+            self._unsubs.append(
+                bus.subscribe(
                     "DriverList", _wrap_delayed_handler(self, self._on_driverlist)
                 )
             )  # type: ignore[attr-defined]
@@ -4649,6 +5139,13 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
                 bus.subscribe(
                     "PitStopSeries",
                     _wrap_delayed_handler(self, self._on_bus_pitstopseries),
+                )
+            )
+        with suppress(Exception):
+            self._unsubs.append(
+                bus.subscribe(
+                    "PitLaneTimeCollection",
+                    _wrap_delayed_handler(self, self._on_bus_pit_lane_times),
                 )
             )
         if self._drivers_coord is not None:
@@ -5299,6 +5796,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         self._delay_listener: Callable[[], None] | None = None
         self._session_unsub: Callable[[], None] | None = None
         self._session_fingerprint: str | None = None
+        self._live_session_key: str | None = None
         _init_delayed_ingest_state(self)
         self._delay = max(0, int(delay_seconds or 0))
         self._replay_mode = False
@@ -5382,8 +5880,25 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
     def reset_for_replay(self) -> None:
         """Discard replay-sensitive driver and segment state before rebuilding."""
         _clear_delayed_ingest_state(self)
+        self._live_session_key = None
+        self._reset_session_state("replay_reset")
+
+    def _on_sessioninfo(self, payload: dict) -> None:
+        session_key = _stream_session_key(payload)
+        if session_key is None or session_key == self._live_session_key:
+            return
+        changed = self._live_session_key is not None
+        self._live_session_key = session_key
+        if changed:
+            self._reset_session_state("session_change")
+
+    def _reset_session_state(self, reason: str) -> None:
+        """Clear previous-session timing without dropping queued current-session frames."""
+        if self._deliver_handle is not None:
+            self._deliver_handle.cancel()
+            self._deliver_handle = None
         self._minisectors.reset(
-            "replay_reset",
+            reason,
             source="replay" if self._replay_mode else "live",
         )
         self._state = {
@@ -5701,6 +6216,12 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         if not isinstance(lines, dict):
             return False
         drivers = self._state["drivers"]
+        has_best_lap_update = any(
+            isinstance(line, dict) and "BestLapTime" in line for line in lines.values()
+        )
+        previous_best_reference = (
+            self._official_best_lap_reference() if has_best_lap_update else None
+        )
         changed = False
         position_changed = False
         # 1) Apply incremental updates to stored driver timing
@@ -5780,10 +6301,23 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                     timing, last_lap_payload, lap_num, last_lap
                 ):
                     changed = True
-            if "BestLapTime" in td and self._merge_official_best_lap(
-                timing, td["BestLapTime"]
-            ):
-                changed = True
+            if "BestLapTime" in td:
+                previous_best = timing.get("official_best_lap", {}).get("time_secs")
+                if self._merge_official_best_lap(timing, td["BestLapTime"]):
+                    changed = True
+                if (
+                    previous_best
+                    != timing.get("official_best_lap", {}).get("time_secs")
+                    and "TimeDiffToFastest" not in td
+                    and timing.get("practice_gap_to_fastest") is not None
+                ):
+                    timing["practice_gap_to_fastest"] = None
+                    changed = True
+            if "TimeDiffToFastest" in td:
+                practice_gap = td["TimeDiffToFastest"]
+                if timing.get("practice_gap_to_fastest") != practice_gap:
+                    timing["practice_gap_to_fastest"] = practice_gap
+                    changed = True
             best_lap = self._get_value(td, "BestLapTime", "Value")
             best_lap_num_raw = self._get_value(td, "BestLapTime", "Lap")
             best_lap_num: int | None = None
@@ -5865,6 +6399,20 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 if value and seg.get("best_time") != value:
                     seg["best_time"] = value
                     changed = True
+        if (
+            has_best_lap_update
+            and previous_best_reference != self._official_best_lap_reference()
+        ):
+            # Source gaps can precede their new leader time in another delta.
+            # Once the reference changes, keep only gaps supplied in this frame.
+            for rn, entry in drivers.items():
+                line = lines.get(rn)
+                if isinstance(line, dict) and "TimeDiffToFastest" in line:
+                    continue
+                timing = entry.get("timing", {})
+                if timing.get("practice_gap_to_fastest") is not None:
+                    timing["practice_gap_to_fastest"] = None
+                    changed = True
         # SessionPart (for Q1/Q2/Q3 detection)
         with suppress(Exception):
             part = payload.get("SessionPart")
@@ -5883,6 +6431,20 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         if position_changed:
             self._recompute_leader_from_state()
         return changed
+
+    def _official_best_lap_reference(self) -> float | None:
+        """Return the current corrected best, without using observed lap history."""
+        return min(
+            (
+                best["time_secs"]
+                for entry in self._state["drivers"].values()
+                if isinstance(
+                    best := entry.get("timing", {}).get("official_best_lap"), dict
+                )
+                and best.get("time_secs") is not None
+            ),
+            default=None,
+        )
 
     @staticmethod
     def _empty_current_sector() -> dict[str, Any]:
@@ -6338,6 +6900,67 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             return stint_idx
         return None
 
+    @classmethod
+    def _current_tyre_stint_index(
+        cls, tyre_history: dict, progressing_stints: set[int]
+    ) -> int | None:
+        """Follow the counting stint without treating mirrored rows as new sets."""
+        confirmed_index = cls._current_valid_stint_index(tyre_history)
+        if confirmed_index is None:
+            return None
+        stints = tyre_history["stints"]
+        current_index = tyre_history.get("current_tyres_stint_index")
+        initializing = (
+            not isinstance(current_index, int)
+            or current_index < confirmed_index
+            or current_index >= len(stints)
+        )
+        if initializing:
+            current_index = confirmed_index
+
+        compound = cls._normalize_compound(stints[confirmed_index].get("compound"))
+        for stint_index in range(confirmed_index, len(stints)):
+            if stint_index == current_index:
+                continue
+            stint = stints[stint_index]
+            if stint.get("source_seen") is False:
+                continue
+            if not initializing and stint_index not in progressing_stints:
+                continue
+            candidate_compound = cls._normalize_compound(stint.get("compound"))
+            if compound not in (None, "UNKNOWN") and candidate_compound not in (
+                None,
+                "UNKNOWN",
+                compound,
+            ):
+                continue
+            # Same-set rows use cumulative tyre age. Equal counters can be a
+            # mirrored phantom; only independent progress establishes a switch.
+            # Keep an established row through its own downward corrections.
+            total_laps = stint.get("total_laps") or 0
+            if total_laps > (stints[current_index].get("total_laps") or 0):
+                current_index = stint_index
+        return current_index
+
+    @classmethod
+    def _current_tyre_values(cls, tyre_history: dict, stint_index: int) -> dict:
+        """Project the merged stint, retaining compound during same-set gaps."""
+        stints = tyre_history["stints"]
+        stint = stints[stint_index]
+        compound = cls._normalize_compound(stint.get("compound"))
+        if compound in (None, "UNKNOWN") and stint.get("tyres_not_changed") is True:
+            confirmed_index = tyre_history["current_stint_index"]
+            for previous in reversed(stints[confirmed_index:stint_index]):
+                previous_compound = cls._normalize_compound(previous.get("compound"))
+                if previous_compound not in (None, "UNKNOWN"):
+                    compound = previous_compound
+                    break
+        return {
+            "compound": compound,
+            "stint_laps": stint.get("total_laps"),
+            "new": stint.get("new"),
+        }
+
     @staticmethod
     def _extract_compound_presence(payload: dict) -> tuple[int, list[str]]:
         """Return count and sample of drivers with a meaningful tyre compound."""
@@ -6484,47 +7107,40 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             tyres = entry["tyres"]
             tyre_history = entry["tyre_history"]
 
+            progressing_stints: set[int] = set()
             for stint_idx, stint_data in stint_items:
+                stored_stints = tyre_history["stints"]
+                previous_laps = (
+                    stored_stints[stint_idx].get("total_laps", 0)
+                    if stint_idx < len(stored_stints)
+                    else 0
+                )
                 if self._update_stint_history(tyre_history, stint_idx, stint_data):
                     stints_changed = True
+                if "TotalLaps" in stint_data and (
+                    stored_stints[stint_idx].get("total_laps", 0) > previous_laps
+                ):
+                    progressing_stints.add(stint_idx)
 
+            # Statistics and lap-time ownership remain attached to the physical
+            # tyre set, while current tyres can follow a later same-set stint.
             current_stint_index = self._current_valid_stint_index(tyre_history)
             if tyre_history["current_stint_index"] != current_stint_index:
                 tyre_history["current_stint_index"] = current_stint_index
                 stints_changed = True
 
-            current_delta = next(
-                (
-                    stint_data
-                    for stint_idx, stint_data in stint_items
-                    if stint_idx == current_stint_index
-                ),
-                None,
+            tyre_stint_index = self._current_tyre_stint_index(
+                tyre_history, progressing_stints
             )
-            if current_delta is not None and "Compound" in current_delta:
-                compound = self._normalize_compound(current_delta.get("Compound"))
-                if tyres.get("compound") != compound:
-                    tyres["compound"] = compound
-                    stints_changed = True
-            if current_delta is not None and "TotalLaps" in current_delta:
-                stint_laps = current_delta.get("TotalLaps")
-                stint_laps_val = (
-                    int(stint_laps) if str(stint_laps or "").isdigit() else stint_laps
+            if tyre_history.get("current_tyres_stint_index") != tyre_stint_index:
+                tyre_history["current_tyres_stint_index"] = tyre_stint_index
+                stints_changed = True
+            if tyre_stint_index is not None:
+                current_tyres = self._current_tyre_values(
+                    tyre_history, tyre_stint_index
                 )
-                if tyres.get("stint_laps") != stint_laps_val:
-                    tyres["stint_laps"] = stint_laps_val
-                    stints_changed = True
-            if current_delta is not None and "New" in current_delta:
-                is_new = current_delta.get("New")
-                s = str(is_new).lower()
-                if s == "true":
-                    new_val: Any = True
-                elif s == "false":
-                    new_val = False
-                else:
-                    new_val = is_new
-                if tyres.get("new") != new_val:
-                    tyres["new"] = new_val
+                if tyres != current_tyres:
+                    tyres.update(current_tyres)
                     stints_changed = True
 
             # Extract the latest stint entry for lap time updates
@@ -7106,12 +7722,27 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         return None
 
     def _deliver(self) -> None:
+        if self._deliver_handle is not None:
+            self._deliver_handle.cancel()
+            self._deliver_handle = None
         if _is_no_spoiler_blocked(self):
             return
         # Push deep-copied shallow dict to avoid accidental external mutation
         self.async_set_updated_data(self._state)
 
     def _schedule_deliver(self) -> None:
+        if self._replay_mode and self.config_entry is not None:
+            controller = (
+                self.hass.data.get(DOMAIN, {})
+                .get(self.config_entry.entry_id, {})
+                .get("replay_controller")
+            )
+            if controller is not None and controller.state == ReplayState.SEEKING:
+                # Keep every merge and lap in order, but publish once per
+                # catch-up batch instead of copying growing histories per frame.
+                if self._deliver_handle is None:
+                    self._deliver_handle = self.hass.loop.call_soon(self._deliver)
+                return
         self._deliver()
 
     def _on_driverlist(self, dl: dict) -> None:
@@ -7267,6 +7898,12 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             with suppress(Exception):
                 self._unsubs.append(
                     bus.subscribe(
+                        "SessionInfo", _wrap_delayed_handler(self, self._on_sessioninfo)
+                    )
+                )
+            with suppress(Exception):
+                self._unsubs.append(
+                    bus.subscribe(
                         "DriverList", _wrap_delayed_handler(self, self._on_driverlist)
                     )
                 )
@@ -7366,6 +8003,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_remove_entry(hass: HomeAssistant, entry: F1ConfigEntry) -> None:
     """Remove storage owned by a deleted config entry."""
+    async_dismiss_card_data_notice(hass, entry.entry_id)
     await async_remove_entry_storage(hass, entry.entry_id)
 
 
@@ -7419,13 +8057,13 @@ def _reset_replay_sensitive_coordinator_state(coordinator: Any) -> None:
 
     if isinstance(coordinator, LapCountCoordinator):
         _clear_delayed_ingest_state(coordinator)
-        coordinator._last_message = None
-        coordinator.data_list = []
-        coordinator.async_set_updated_data(None)
+        coordinator._live_session_key = None
+        coordinator._reset_store()
         return
 
     if isinstance(coordinator, PitStopCoordinator):
         _clear_delayed_ingest_state(coordinator)
+        coordinator._live_session_key = None
         coordinator._reset_store()
         return
 
@@ -7477,6 +8115,8 @@ def _reset_replay_sensitive_coordinator_state(coordinator: Any) -> None:
         _clear_delayed_ingest_state(coordinator)
         coordinator.is_qualifying_like_session = False
         coordinator.qualifying_part = None
+        coordinator.status_qualifying_part = None
+        coordinator._pending_status_part = None
         coordinator._last_message = None
         coordinator.data_list = []
         coordinator.async_set_updated_data(None)
@@ -7632,6 +8272,10 @@ class F1DataCoordinator(DataUpdateCoordinator):
                 coord = reg.get(name)
                 if coord is None:
                     continue
+                if (
+                    sources := reg.get("card_data_sources")
+                ) is not None and not sources.is_needed(coord):
+                    continue
                 req = getattr(coord, "async_request_refresh", None)
                 if callable(req):
                     self.hass.async_create_task(req())
@@ -7683,17 +8327,57 @@ class F1DataCoordinator(DataUpdateCoordinator):
             # No-spoiler: keep the cache warm but don't deliver new data to entities.
             if _is_no_spoiler_jolpica_blocked(self):
                 return self.data
-            if self._provider_registry is None:
-                return data
-            return self._provider_registry.normalize(
-                "jolpica",
-                self._url,
-                data,
-            ).payload
+            if self._provider_registry is not None:
+                data = self._provider_registry.normalize(
+                    "jolpica",
+                    self._url,
+                    data,
+                ).payload
+            if self._url == API_URL:
+                data = await self._async_add_scheduled_laps(data)
+            return data
         except Exception as err:
             raise UpdateFailed(
                 f"Error fetching data: {_format_update_error(err)}"
             ) from err
+
+    async def _async_add_scheduled_laps(self, data: dict) -> dict:
+        """Best-effort enrichment of the season schedule from alpha sessions."""
+        races = data.get("MRData", {}).get("RaceTable", {}).get("Races")
+        if not isinstance(races, list) or not races:
+            return data
+        season = self._extract_season(data)
+        if not season or not season.isdecimal() or len(season) != 4:
+            return data
+
+        pages = []
+        session_types = ["R"]
+        if any(isinstance(race, dict) and race.get("Sprint") for race in races):
+            session_types.append("SR")
+        for kind in session_types:
+            url = (
+                "https://api.jolpi.ca/f1/alpha/core/sessions/"
+                f"?year={season}&session_type={kind}"
+            )
+            try:
+                page = await fetch_json(
+                    self.hass,
+                    self._session,
+                    url,
+                    headers=self._headers,
+                    ttl_seconds=24 * 3600,
+                    cache=self._cache,
+                    inflight=self._inflight,
+                    persist_map=self._persist,
+                    persist_save=self._persist_save,
+                    validator=validate_session_page,
+                )
+                validate_session_page(page)
+            except Exception as err:
+                _LOGGER.debug("Could not load scheduled %s laps: %s", kind, err)
+                continue
+            pages.append(page)
+        return add_scheduled_laps(data, pages)
 
 
 class F1NextRaceHistoryCoordinator(DataUpdateCoordinator):
@@ -7712,6 +8396,7 @@ class F1NextRaceHistoryCoordinator(DataUpdateCoordinator):
         persist_map=None,
         persist_save=None,
         config_entry: ConfigEntry | None = None,
+        auto_start: bool = True,
     ) -> None:
         super().__init__(
             hass,
@@ -7730,17 +8415,28 @@ class F1NextRaceHistoryCoordinator(DataUpdateCoordinator):
         self._persist_save = persist_save
         self._target_key: tuple[str, str, str] | None = None
         self._source_unsub = None
-        if hasattr(race_coordinator, "async_add_listener"):
-            with suppress(Exception):
-                self._source_unsub = race_coordinator.async_add_listener(
-                    self._handle_race_source_update
-                )
+        if auto_start:
+            self.async_start()
+
+    @ha_callback
+    def async_start(self) -> None:
+        """Follow schedule changes only while a consumer needs circuit history."""
+        if self._source_unsub is None and hasattr(
+            self._race_coordinator, "async_add_listener"
+        ):
+            self._source_unsub = self._race_coordinator.async_add_listener(
+                self._handle_race_source_update
+            )
+
+    @ha_callback
+    def async_stop(self) -> None:
+        """Release schedule demand without shutting down the reusable source."""
+        if callable(self._source_unsub):
+            self._source_unsub()
+        self._source_unsub = None
 
     async def async_close(self, *_):
-        if callable(self._source_unsub):
-            with suppress(Exception):
-                self._source_unsub()
-        self._source_unsub = None
+        self.async_stop()
 
     @staticmethod
     def _empty_history() -> dict[str, Any]:
@@ -9812,6 +10508,8 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
         self.is_qualifying_like_session = False
         self.is_testing_session = False
         self.qualifying_part: int | None = None
+        self.status_qualifying_part: int | None = None
+        self._pending_status_part: tuple[str, int] | None = None
 
     async def async_close(self, *_):
         if self._context_unsubs:
@@ -9930,6 +10628,8 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
         if not isinstance(msg, dict):
             return
         latest_part: int | None = None
+        part_events: list[tuple[datetime, int]] = []
+        complete_part_history = True
         for item in self._iter_series_items(msg.get("Series")):
             part_raw = item.get("QualifyingPart")
             if part_raw is None:
@@ -9937,12 +10637,61 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
             try:
                 latest_part = int(part_raw)
             except (TypeError, ValueError):
+                complete_part_history = False
                 continue
+            utc = dt_util.parse_datetime(str(item.get("Utc") or ""))
+            if utc is not None and utc.tzinfo is not None and latest_part in (1, 2, 3):
+                part_events.append((utc, latest_part))
+            else:
+                complete_part_history = False
+        previous_context = (self.qualifying_part, self.status_qualifying_part)
         if latest_part is not None:
-            changed = self.qualifying_part != latest_part
             self.qualifying_part = latest_part
-            if changed:
-                self._refresh_finished_context()
+            # A reconnect can deliver the status before its segment context.
+            if self.status_qualifying_part is None:
+                self.status_qualifying_part = latest_part
+        # Full reconnect snapshots can disambiguate identical Finished payloads
+        # even when the intervening Started message was missed.
+        payload = self._last_message or {}
+        status = str(payload.get("Status") or payload.get("Message") or "").strip()
+        status_events: list[tuple[datetime, str]] = []
+        incomplete_statuses: set[str] = set()
+        for item in self._iter_series_items(msg.get("StatusSeries")):
+            event_status = item.get("SessionStatus")
+            if not isinstance(event_status, str) or not event_status:
+                continue
+            utc = dt_util.parse_datetime(str(item.get("Utc") or ""))
+            if utc is not None and utc.tzinfo is not None:
+                status_events.append((utc, event_status))
+            else:
+                incomplete_statuses.add(event_status)
+        if complete_part_history and part_events:
+            status_parts = {}
+            for event_status in {
+                event[1] for event in status_events
+            } - incomplete_statuses:
+                latest_status_utc = max(
+                    utc for utc, value in status_events if value == event_status
+                )
+                preceding_parts = [
+                    event for event in part_events if event[0] <= latest_status_utc
+                ]
+                if preceding_parts:
+                    status_parts[event_status] = max(preceding_parts)[1]
+            if status in status_parts:
+                self.status_qualifying_part = status_parts[status]
+            if status_events and not incomplete_statuses:
+                latest_status = max(status_events)[1]
+                if latest_status != status and latest_status in status_parts:
+                    # The full context may arrive before its SessionStatus snapshot.
+                    self._pending_status_part = (
+                        latest_status,
+                        status_parts[latest_status],
+                    )
+                else:
+                    self._pending_status_part = None
+        if previous_context != (self.qualifying_part, self.status_qualifying_part):
+            self._refresh_finished_context()
 
     @staticmethod
     def _parse_message(data):
@@ -9962,6 +10711,19 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
     def _deliver(self, msg: dict) -> None:
         if _is_no_spoiler_blocked(self):
             return
+        previous = self._last_message or {}
+        previous_status = str(
+            previous.get("Status") or previous.get("Message") or ""
+        ).strip()
+        status = str(msg.get("Status") or msg.get("Message") or "").strip()
+        # Announcing Q3 must not turn Q2's Finished (or its reconnect copy)
+        # into a final-session finish before Q3 has actually started.
+        pending_status_part = self._pending_status_part
+        self._pending_status_part = None
+        if pending_status_part is not None and pending_status_part[0] == status:
+            self.status_qualifying_part = pending_status_part[1]
+        elif status != previous_status or self.status_qualifying_part is None:
+            self.status_qualifying_part = self.qualifying_part
         self.available = True
         self._last_message = msg
         self.data_list = [msg]
@@ -10017,6 +10779,8 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
             self.is_qualifying_like_session = False
             self.is_testing_session = False
             self.qualifying_part = None
+            self.status_qualifying_part = None
+            self._pending_status_part = None
             _clear_delayed_ingest_state(self)
             self._last_message = None
             self.data_list = []
@@ -10279,13 +11043,27 @@ class SessionInfoCoordinator(DataUpdateCoordinator):
             return result.get("SessionInfo")
         return None
 
+    @staticmethod
+    def _merge_message(previous: dict, delta: dict) -> dict:
+        merged = deepcopy(previous)
+        for key, value in delta.items():
+            if isinstance(value, dict) and isinstance(merged.get(key), dict):
+                merged[key] = SessionInfoCoordinator._merge_message(merged[key], value)
+            else:
+                merged[key] = deepcopy(value)
+        return merged
+
     def _deliver(self, msg: dict) -> None:
         if _is_no_spoiler_blocked(self):
             return
+        previous = self._last_message if isinstance(self._last_message, dict) else {}
+        if "Key" in msg and str(msg["Key"]) != str(previous.get("Key")):
+            previous = {}
+        merged = self._merge_message(previous, msg)
         self.available = True
-        self._last_message = msg
-        self.data_list = [msg]
-        self.async_set_updated_data(msg)
+        self._last_message = merged
+        self.data_list = [merged]
+        self.async_set_updated_data(merged)
         if _LOGGER.isEnabledFor(logging.DEBUG):
             with suppress(Exception):
                 name = (msg or {}).get("Name")

@@ -49,7 +49,9 @@ Each entry in `drivers` contains:
 | completed_laps | number | Number of laps completed by this driver |
 | best_lap_time | string | Driver's personal best lap time; `null` when unknown or removed by the timing source |
 | best_lap_time_secs | number | Personal best lap time in seconds; `null` when no valid best time is available |
+| best_lap_time_source | string | `official` when supplied by live timing, `observed` when derived from received laps, or `null` when unavailable |
 | best_lap_lap | number | Lap number for the personal best; `null` when the source does not provide it |
+| best_lap_gap | number | Gap in seconds to the fastest practice best lap, supplied by live timing; `null` outside practice or when no valid source gap is available |
 | status | string | Driver status: `on_track`, `pit_in`, `pit_out`, or `out` |
 | gap_to_leader | string | Public live timing gap to the session leader when available |
 | interval_to_position_ahead | string | Public live timing interval to the car directly ahead when available |

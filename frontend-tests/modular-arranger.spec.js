@@ -15,7 +15,7 @@ async function mount(page, config = {}, language = 'en') {
     window.changes = [];
     window.fixtureCard.addEventListener('config-changed', event => window.changes.push(event.detail.config));
   }, { config, modules, language });
-  await page.getByRole('button', { name: language === 'sv' ? 'Arrangera moduler' : 'Arrange modules', exact: true }).click();
+  await page.locator('f1-sensor-card-editor button[aria-controls="module-arrangement"]').click();
   const board = page.locator('f1-module-arranger');
   await expect(board.locator('.tile')).toHaveCount((config.modules || modules).length);
   await board.scrollIntoViewIfNeeded();
@@ -137,13 +137,13 @@ test('Swedish mobile layout scrolls within its overview and has large touch hand
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   const scroll = board.locator('.scroll');
   expect(await scroll.evaluate(n => n.scrollWidth > n.clientWidth)).toBe(true);
-  const handle = board.getByRole('button', { name: 'Flytta Timing', exact: true });
+  const handle = board.locator('[data-id="timing"] button[data-handle="move"]');
   const p = await center(handle);
   const box = await handle.boundingBox();
   expect(box.width).toBeGreaterThanOrEqual(44); expect(box.height).toBeGreaterThanOrEqual(44);
   await expect(handle).toHaveCSS('touch-action', 'none');
   await expect(board.locator('[data-id=timing] .choose')).toHaveCSS('touch-action', 'auto');
-  await expect(board.getByLabel('Vald moduls bredd', { exact: true })).toHaveValue('2');
+  await expect(board.locator('.controls').last().locator('select')).toHaveValue('2');
   const a11y = await new AxeBuilder({ page }).include('f1-sensor-card-editor').withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
   expect(a11y.violations).toEqual([]);
 });

@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import timedelta
+import logging
 from pathlib import Path
 from typing import Any
 
-from homeassistant.core import HomeAssistant, ServiceCall
+from freezegun.api import FrozenDateTimeFactory
+from homeassistant.const import EVENT_CALL_SERVICE
+from homeassistant.core import Event, HomeAssistant, ServiceCall, callback
 from homeassistant.setup import async_setup_component
+from homeassistant.util import dt as dt_util
 import pytest
+from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
 BLUEPRINT_SOURCE = Path(__file__).resolve().parent / "fixtures" / "f1_track_status.yaml"
 BLUEPRINT_DEST = Path("blueprints/automation/homeassistant/f1_track_status.yaml")
@@ -22,28 +28,36 @@ async def _install_blueprint(hass: HomeAssistant) -> None:
     )
 
 
-def _register_services(
+async def _register_services(
     hass: HomeAssistant,
 ) -> list[tuple[str, dict[str, Any]]]:
+    assert await async_setup_component(hass, "scene", {})
+    await hass.async_block_till_done()
     calls: list[tuple[str, dict[str, Any]]] = []
     register_service = getattr(hass.services, "async_" + "register")
 
-    def _recorder(domain: str):
-        async def _record(call: ServiceCall) -> None:
-            calls.append((f"{domain}.{call.service}", dict(call.data)))
-
-        return _record
+    async def _ignore_device_call(call: ServiceCall) -> None:
+        """Keep device actions isolated while recording dispatch on the event bus."""
 
     for domain, service in (
         ("input_boolean", "turn_on"),
         ("light", "turn_on"),
         ("light", "turn_off"),
-        ("scene", "create"),
-        ("scene", "delete"),
-        ("scene", "turn_on"),
         ("select", "select_option"),
     ):
-        register_service(domain, service, _recorder(domain))
+        register_service(domain, service, _ignore_device_call)
+
+    @callback
+    def _record_service_call(event: Event) -> None:
+        if event.data["domain"] in {"scene", "light", "select", "input_boolean"}:
+            calls.append(
+                (
+                    f"{event.data['domain']}.{event.data['service']}",
+                    dict(event.data["service_data"]),
+                )
+            )
+
+    hass.bus.async_listen(EVENT_CALL_SERVICE, _record_service_call)
     return calls
 
 
@@ -129,7 +143,7 @@ async def test_blueprint_syncs_track_light_when_session_enters_active(
     hass: HomeAssistant,
 ) -> None:
     await _install_blueprint(hass)
-    calls = _register_services(hass)
+    calls = await _register_services(hass)
     await _set_states(
         hass,
         {
@@ -161,7 +175,7 @@ async def test_blueprint_restores_pre_race_scene_after_start_clear_delay(
     hass: HomeAssistant,
 ) -> None:
     await _install_blueprint(hass)
-    calls = _register_services(hass)
+    calls = await _register_services(hass)
     await _set_states(
         hass,
         {
@@ -208,6 +222,8 @@ async def test_blueprint_restores_pre_race_scene_after_start_clear_delay(
             },
         ),
     ]
+    scene = hass.states.get("scene.automation_track_status_blueprint_test_pre_race")
+    assert scene is not None and scene.state != "unknown"
 
 
 @pytest.mark.asyncio
@@ -215,7 +231,7 @@ async def test_blueprint_ignores_internal_session_updates_without_track_change(
     hass: HomeAssistant,
 ) -> None:
     await _install_blueprint(hass)
-    calls = _register_services(hass)
+    calls = await _register_services(hass)
     await _set_states(
         hass,
         {
@@ -254,7 +270,7 @@ async def test_blueprint_keeps_end_action_on_session_exit(
     hass: HomeAssistant,
 ) -> None:
     await _install_blueprint(hass)
-    calls = _register_services(hass)
+    calls = await _register_services(hass)
     await _set_states(
         hass,
         {
@@ -283,7 +299,7 @@ async def test_blueprint_notifies_before_continuous_sc_flash(
     hass: HomeAssistant,
 ) -> None:
     await _install_blueprint(hass)
-    calls = _register_services(hass)
+    calls = await _register_services(hass)
     await _set_states(
         hass,
         {
@@ -332,7 +348,7 @@ async def test_blueprint_uses_native_snapshot_entity_list_for_pre_alert_scene(
     hass: HomeAssistant,
 ) -> None:
     await _install_blueprint(hass)
-    calls = _register_services(hass)
+    calls = await _register_services(hass)
     await _set_states(
         hass,
         {
@@ -381,7 +397,7 @@ async def test_blueprint_prefers_wled_playlist_over_preset_for_track_status(
     hass: HomeAssistant,
 ) -> None:
     await _install_blueprint(hass)
-    calls = _register_services(hass)
+    calls = await _register_services(hass)
     await _set_states(
         hass,
         {
@@ -435,7 +451,7 @@ async def test_blueprint_falls_back_to_preset_when_playlist_is_invalid(
     hass: HomeAssistant,
 ) -> None:
     await _install_blueprint(hass)
-    calls = _register_services(hass)
+    calls = await _register_services(hass)
     await _set_states(
         hass,
         {
@@ -489,7 +505,7 @@ async def test_blueprint_resets_wled_effect_when_clear_falls_back_to_standard_mo
     hass: HomeAssistant,
 ) -> None:
     await _install_blueprint(hass)
-    calls = _register_services(hass)
+    calls = await _register_services(hass)
     await _set_states(
         hass,
         {
@@ -553,7 +569,7 @@ async def test_blueprint_restores_pre_alert_scene_after_wled_clear_delay(
     hass: HomeAssistant,
 ) -> None:
     await _install_blueprint(hass)
-    calls = _register_services(hass)
+    calls = await _register_services(hass)
     await _set_states(
         hass,
         {
@@ -640,7 +656,7 @@ async def test_blueprint_applies_finished_override_before_end_action(
     hass: HomeAssistant,
 ) -> None:
     await _install_blueprint(hass)
-    calls = _register_services(hass)
+    calls = await _register_services(hass)
     await _set_states(
         hass,
         {
@@ -687,3 +703,274 @@ async def test_blueprint_applies_finished_override_before_end_action(
             },
         ),
     ]
+
+
+@pytest.mark.parametrize("clear_mode", ["restore_immediately", "restore_after_delay"])
+@pytest.mark.parametrize("wled_enabled", [False, True], ids=["rgb", "wled"])
+@pytest.mark.asyncio
+async def test_blueprint_first_clear_without_snapshot_uses_clear_fallback(
+    hass: HomeAssistant,
+    caplog: pytest.LogCaptureFixture,
+    clear_mode: str,
+    wled_enabled: bool,
+) -> None:
+    await _install_blueprint(hass)
+    calls = await _register_services(hass)
+    await _set_states(
+        hass,
+        {
+            "sensor.test_track_status": "unknown",
+            "sensor.test_session_status": "live",
+            "light.test_track_status": "off",
+            "select.test_wled_preset": ("Idle", {"options": ["Idle", "Green Flag"]}),
+        },
+    )
+    assert await _setup_blueprint_automation(
+        hass,
+        extra_inputs={
+            "snapshot_before_alert": True,
+            "clear_behavior_mode": clear_mode,
+            "clear_restore_delay_s": 0,
+            "enable_wled_advanced": wled_enabled,
+            "wled_preset_entity": "select.test_wled_preset",
+            "wled_preset_clear": "Green Flag",
+        },
+    )
+    calls.clear()
+    caplog.clear()
+
+    await _set_states(hass, {"sensor.test_track_status": "CLEAR"})
+
+    expected_calls = (
+        [
+            ("light.turn_on", {"entity_id": ["light.test_track_status"]}),
+            (
+                "select.select_option",
+                {"entity_id": "select.test_wled_preset", "option": "Green Flag"},
+            ),
+        ]
+        if wled_enabled
+        else [
+            (
+                "light.turn_on",
+                {
+                    "entity_id": ["light.test_track_status"],
+                    "brightness_pct": 100,
+                    "rgb_color": [11, 22, 33],
+                    "transition": 0,
+                },
+            )
+        ]
+    )
+    assert calls == expected_calls
+    assert "missing or not currently available" not in caplog.text
+    assert not [record for record in caplog.records if record.levelno >= logging.ERROR]
+
+
+@pytest.mark.asyncio
+async def test_blueprint_cleans_up_session_without_an_alert_snapshot(
+    hass: HomeAssistant,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    await _install_blueprint(hass)
+    calls = await _register_services(hass)
+    await _set_states(
+        hass,
+        {
+            "sensor.test_track_status": "CLEAR",
+            "sensor.test_session_status": "pre",
+            "light.test_track_status": "off",
+        },
+    )
+    assert await _setup_blueprint_automation(
+        hass,
+        extra_inputs={
+            "snapshot_pre_race": True,
+            "snapshot_before_alert": True,
+            "cleanup_scenes_on_end": True,
+        },
+    )
+    await _set_states(hass, {"sensor.test_session_status": "live"})
+    assert hass.states.get("scene.automation_track_status_blueprint_test_pre_race")
+    assert (
+        hass.states.get("scene.automation_track_status_blueprint_test_pre_alert")
+        is None
+    )
+    calls.clear()
+    caplog.clear()
+
+    await _set_states(hass, {"sensor.test_session_status": "finished"})
+
+    assert calls == [
+        ("light.turn_off", {"entity_id": ["light.test_track_status"]}),
+        (
+            "scene.delete",
+            {"entity_id": "scene.automation_track_status_blueprint_test_pre_race"},
+        ),
+    ]
+    assert (
+        hass.states.get("scene.automation_track_status_blueprint_test_pre_race") is None
+    )
+    assert not [record for record in caplog.records if record.levelno >= logging.ERROR]
+
+
+@pytest.mark.asyncio
+async def test_blueprint_skips_snapshot_removed_during_clear_delay(
+    hass: HomeAssistant,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    await _install_blueprint(hass)
+    calls = await _register_services(hass)
+    await _set_states(
+        hass,
+        {
+            "sensor.test_track_status": "SC",
+            "sensor.test_session_status": "live",
+            "light.test_track_status": "off",
+        },
+    )
+    scene_entity = "scene.automation_track_status_blueprint_test_pre_alert"
+    await hass.services.async_call(
+        "scene",
+        "create",
+        {
+            "scene_id": "automation_track_status_blueprint_test_pre_alert",
+            "snapshot_entities": ["light.test_track_status"],
+        },
+        blocking=True,
+    )
+    await hass.async_block_till_done()
+    assert hass.states.get(scene_entity)
+    assert await _setup_blueprint_automation(
+        hass,
+        extra_inputs={
+            "snapshot_before_alert": True,
+            "clear_behavior_mode": "restore_after_delay",
+            "clear_restore_delay_s": 15,
+        },
+    )
+    calls.clear()
+
+    await _set_states_without_full_drain(hass, {"sensor.test_track_status": "CLEAR"})
+    for _ in range(20):
+        if calls and calls[-1][0] == "light.turn_on":
+            break
+        await asyncio.sleep(0)
+    assert calls and calls[-1][0] == "light.turn_on"
+    await hass.services.async_call(
+        "scene", "delete", {"entity_id": scene_entity}, blocking=True
+    )
+    calls.clear()
+    caplog.clear()
+
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=16))
+    await hass.async_block_till_done()
+
+    assert calls == []
+    assert "missing or not currently available" not in caplog.text
+    assert not [record for record in caplog.records if record.levelno >= logging.ERROR]
+
+
+@pytest.mark.asyncio
+async def test_blueprint_restores_real_pre_alert_snapshot_when_clear_returns(
+    hass: HomeAssistant,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    await _install_blueprint(hass)
+    calls = await _register_services(hass)
+    await _set_states(
+        hass,
+        {
+            "sensor.test_track_status": "CLEAR",
+            "sensor.test_session_status": "live",
+            "light.test_track_status": "off",
+        },
+    )
+    assert await _setup_blueprint_automation(
+        hass,
+        extra_inputs={
+            "snapshot_before_alert": True,
+            "clear_behavior_mode": "restore_immediately",
+        },
+    )
+    await _set_states(hass, {"sensor.test_track_status": "SC"})
+    scene_entity = "scene.automation_track_status_blueprint_test_pre_alert"
+    assert hass.states.get(scene_entity)
+    await _set_states(hass, {"light.test_track_status": "on"})
+    calls.clear()
+    caplog.clear()
+
+    await _set_states(hass, {"sensor.test_track_status": "CLEAR"})
+
+    assert calls == [
+        ("scene.turn_on", {"entity_id": scene_entity}),
+        ("light.turn_off", {"entity_id": "light.test_track_status"}),
+    ]
+    assert hass.states.get(scene_entity).state != "unknown"
+    assert "missing or not currently available" not in caplog.text
+    assert not [record for record in caplog.records if record.levelno >= logging.ERROR]
+
+
+@pytest.mark.parametrize("track_state", ["YELLOW", "RED", "SC", "VSC"])
+@pytest.mark.asyncio
+async def test_blueprint_timed_alert_without_snapshot_keeps_steady_color(
+    hass: HomeAssistant,
+    caplog: pytest.LogCaptureFixture,
+    freezer: FrozenDateTimeFactory,
+    track_state: str,
+) -> None:
+    await _install_blueprint(hass)
+    calls = await _register_services(hass)
+    await _set_states(
+        hass,
+        {
+            "sensor.test_track_status": track_state,
+            "sensor.test_session_status": "pre",
+            "light.test_track_status": "off",
+        },
+    )
+    assert await _setup_blueprint_automation(
+        hass,
+        extra_inputs={
+            "snapshot_before_alert": True,
+            "yellow_red_mode": "flash_timed",
+            "yellow_red_flash_duration_s": 1,
+            "yellow_red_after_flash": "restore_previous",
+            "sc_vsc_mode": "flash_timed",
+            "sc_vsc_flash_duration_s": 1,
+            "sc_vsc_after_flash": "restore_previous",
+            "flash_interval_s": 1,
+        },
+    )
+    calls.clear()
+    caplog.clear()
+
+    await _set_states_without_full_drain(hass, {"sensor.test_session_status": "live"})
+    for _ in range(20):
+        if calls:
+            break
+        await asyncio.sleep(0)
+    assert calls and calls[-1][0] == "light.turn_on"
+    freezer.tick(timedelta(seconds=2))
+    async_fire_time_changed(hass)
+    for _ in range(20):
+        if calls[-1][0] == "light.turn_off":
+            break
+        await asyncio.sleep(0)
+    assert calls[-1][0] == "light.turn_off"
+    freezer.tick(timedelta(seconds=2))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+
+    assert [service for service, _ in calls] == [
+        "light.turn_on",
+        "light.turn_off",
+        "light.turn_on",
+    ]
+    assert calls[-1][1]["transition"] == 0
+    assert (
+        hass.states.get("scene.automation_track_status_blueprint_test_pre_alert")
+        is None
+    )
+    assert "missing or not currently available" not in caplog.text
+    assert not [record for record in caplog.records if record.levelno >= logging.ERROR]

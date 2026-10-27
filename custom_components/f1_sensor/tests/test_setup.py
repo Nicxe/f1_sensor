@@ -165,6 +165,9 @@ class DummyCoordinator:
     def __init__(self, *args, **kwargs) -> None:
         self.config_entry = kwargs.get("config_entry")
         self.data = kwargs.get("data", {})
+        self.data_list = []
+        self.last_update_success = True
+        self.available = True
         self._listeners = []
         self.closed = False
 
@@ -213,6 +216,9 @@ class FakeReplayController:
     def __init__(self, *args, **kwargs) -> None:
         self._initialized = False
         self.closed = False
+        self.session_manager = SimpleNamespace(
+            add_listener=lambda _listener: lambda: None
+        )
 
     async def async_initialize(self) -> None:
         self._initialized = True
@@ -951,8 +957,13 @@ async def test_async_setup_entry_skips_lap_position_coordinator_when_disabled(
 
     assert result is True
     entry_data = hass.data[DOMAIN][entry.entry_id]
-    assert entry_data["lap_position_progression_coordinator"] is None
-    assert entry_data["race_weather_coordinator"] is None
+    assert entry_data["lap_position_progression_coordinator"] is not None
+    assert entry_data["race_weather_coordinator"] is not None
+    assert (
+        "lap_position_progression_coordinator"
+        not in entry_data["card_data_sources"].required
+    )
+    assert "race_weather_coordinator" not in entry_data["card_data_sources"].required
     assert entry_data["live_bus"] is None
     assert entry.runtime_data.live is None
     assert FakeLiveBus.last_instance is None
@@ -1640,7 +1651,7 @@ async def test_legacy_enabled_sensor_migration_is_lossless_and_idempotent(hass) 
     first_data = dict(entry.data)
 
     assert entry.version == 4
-    assert entry.minor_version == 2
+    assert entry.minor_version == 4
     assert entry.unique_id == DOMAIN
     assert "disabled_sensors" not in entry.data
     assert "next_race" not in entry.options["disabled_sensors"]

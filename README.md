@@ -49,7 +49,7 @@ Thank you to everyone who has helped make F1 Sensor better. [Meet the contributo
 
 F1 Sensor is still learning new languages, and you can help without writing any code.
 
-Translations are managed through [Hosted Weblate](https://hosted.weblate.org/engage/f1-sensor/). Choose a language, translate in your browser, and help more Home Assistant users enjoy race weekend.
+Translations are managed through [Hosted Weblate](https://hosted.weblate.org/engage/f1-sensor/). Choose a language, translate in your browser, and help more Home Assistant users enjoy race weekend. The [translation guide](https://nicxe.github.io/f1_sensor/help/translations) also explains how to improve an existing language or request an AI-assisted first pass.
 
 [![Translation status](https://hosted.weblate.org/widgets/f1-sensor/-/integration/open-graph.png)](https://hosted.weblate.org/engage/f1-sensor/)
 

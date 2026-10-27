@@ -20,6 +20,7 @@ If F1 Sensor adds something to your race weekends, [star the project](https://gi
 
 - [Report a problem](/help/contact) with enough detail to reproduce it.
 - [Suggest a feature](https://github.com/Nicxe/f1_sensor/discussions/categories/ideas) and explain what it would help you do.
+- [Translate F1 Sensor](/help/translations) in Weblate or help review an AI-assisted first pass.
 - Follow the [contribution guide](https://github.com/Nicxe/f1_sensor/blob/dev/CONTRIBUTING.md) for code or documentation changes.
 - [Test preview releases](/help/beta-tester) and share specific feedback.
 

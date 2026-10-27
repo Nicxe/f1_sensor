@@ -1,6 +1,11 @@
 name: Release
 on:
   workflow_call:
+    inputs:
+      create_rc:
+        description: Start the release candidate phase on beta
+        type: boolean
+        default: false
 permissions:
   contents: write
   issues: write
@@ -17,15 +22,27 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      - name: Reject RC creation outside beta
+        if: inputs.create_rc && github.ref != 'refs/heads/beta'
+        run: |
+          echo '::error::Release candidates can only be created from beta.'
+          exit 1
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
           fetch-tags: true
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version-file: .python-version
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: "22"
+          node-version-file: .node-version
           cache: npm
           registry-url: https://registry.npmjs.org
+      - name: Use the project npm version
+        run: node scripts/install_project_npm.cjs
+        env:
+          NODE_AUTH_TOKEN: ${{ github.token }}
       - run: npm ci --no-audit --no-fund
         env:
           NODE_AUTH_TOKEN: ${{ github.token }}
@@ -40,7 +57,14 @@ jobs:
         run: node .github/scripts/run-release.cjs
         env:
           GITHUB_TOKEN: ${{ github.token }}
-      - name: Verify and reconcile the release tag
+          CREATE_RC: ${{ inputs.create_rc }}
+      - name: Add promotion editorial to the release draft
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          script: |
+            const editorial = require('./.github/scripts/release-editorial.cjs');
+            await editorial.applyReleaseEditorial({github, context, core});
+      - name: Verify the completed draft for manual publication
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         with:
           script: |
@@ -50,19 +74,22 @@ jobs:
               core.info('No release tag points at this commit; no release reconciliation is needed.');
               return;
             }
-            await editorial.reconcileReleaseTag({
+            const release = await editorial.reconcileReleaseTag({
               github,
               context,
               core,
               tag,
               assetNames: ['f1_sensor.zip', 'f1_sensor.zip.sha256', 'f1_sensor.zip.spdx.json']
             });
-      - name: Add promotion editorial to the release draft
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
-        with:
-          script: |
-            const editorial = require('./.github/scripts/release-editorial.cjs');
-            await editorial.applyReleaseEditorial({github, context, core});
+            if (release.draft) {
+              const editUrl = release.html_url.replace('/releases/tag/', '/releases/edit/');
+              await core.summary
+                .addHeading('Draft ready for manual publication')
+                .addRaw(`Expected tag: **${tag}**\n\n`)
+                .addLink('Edit and publish the draft in GitHub', editUrl)
+                .addRaw(`\n\nSelect the existing **${tag}** tag, edit the release notes, then click **Publish release**. Publication is always manual. An untagged-* draft URL is normal.\n`)
+                .write();
+            }
       - name: Attest release provenance
         if: hashFiles('f1_sensor.zip') != ''
         uses: actions/attest-build-provenance@96278af6caaf10aea03fd8d33a09a777ca52d62f # v3.2.0

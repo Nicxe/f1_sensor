@@ -100,6 +100,8 @@ test('issue form fields support CRLF, hashes and empty responses', () => {
   assert.equal(extractField('### Logs\n\nfoo #1', 'Logs'), 'foo #1');
   assert.equal(extractField('### Component\n\n_No response_', 'Component'), '');
   assert.deepEqual(componentLabels('### Component\n\nBoth integration and card'), ['integration', 'card']);
+  assert.equal(dashboardCardVersion('### Dashboard Card Version\n\nModular F1 Sensor Live Data Card'), 'modular');
+  assert.equal(dashboardCardVersion('### Dashboard Card Version\n\nLegacy standalone F1 Sensor card (deprecated)'), 'legacy');
   assert.equal(componentLabels('### Component\n\nNew modular Live Data Card').includes('card'), true);
   assert.equal(componentLabels('### Component\n\nLegacy standalone F1 Sensor card (deprecated)').includes('card'), true);
   assert.equal(dashboardCardVersion('### Component\n\nNew modular Live Data Card'), 'modular');
@@ -135,8 +137,39 @@ test('legacy card reports receive migration guidance', async () => {
 });
 
 test('only older stable versions are outdated', () => {
-  for (const [value, expected] of [['5.3.0','outdated-version'], ['v5.4.0','current'], ['5.5.0','newer'], ['unknown','unknown'], ['5.5.0-beta.2','beta'], ['5.4.0+local','current'], ['5.4.0-dev','unknown']]) {
+  for (const [value, expected] of [['5.3.0','outdated-version'], ['v5.4.0','current'], ['5.5.0','newer'], ['unknown','unknown'], ['5.5.0-beta.2','beta'], ['v5.5.0-rc.1','beta'], ['5.5.0-rc.2+local','beta'], ['5.4.0+local','current'], ['5.4.0-dev','unknown']]) {
     assert.equal(versionState(value, 'v5.4.0'), expected, value);
+  }
+});
+
+test('beta and RC issue reports retain preview labeling and update guidance for the reported stage', async () => {
+  for (const [version, stage] of [['6.1.0-beta.3', 'beta'], ['6.1.0-rc.1', 'release candidate']]) {
+    const added = [], removed = [], updated = [];
+    const issue = {number: 42, labels: ['bug', 'beta', 'outdated-version'],
+      body: `### F1 Sensor Version\n\n${version}\n\n### Component\n\nLive data card`};
+    const github = {
+      paginate: async () => [{id: 9, body: '<!-- f1-version-check -->\nEarlier beta guidance', user: {login: 'github-actions[bot]'}}],
+      rest: {
+        repos: {getLatestRelease: async () => ({data: {tag_name: 'v6.0.0'}})},
+        issues: {
+          get: async () => ({data: issue}),
+          getLabel: async () => ({data: {}}),
+          addLabels: async ({labels}) => added.push(...labels),
+          removeLabel: async ({name}) => removed.push(name),
+          listComments() {},
+          createComment: async () => assert.fail('Updating the reported stage should reuse the existing comment'),
+          updateComment: async ({body}) => updated.push(body)
+        }
+      }
+    };
+    await updateIssue({github, context: {repo: {owner: 'Nicxe', repo: 'f1_sensor'}, payload: {issue}}}, 'version');
+    assert.deepEqual(added, ['beta']);
+    assert.deepEqual(removed, ['outdated-version']);
+    assert.equal(updated.length, 1);
+    assert.match(updated[0], new RegExp(`Thanks for testing the ${stage}`));
+    assert.match(updated[0], /a pre-release version/);
+    assert.match(updated[0], /reload your browser/);
+    assert.match(updated[0], /choose the stable version/);
   }
 });
 
@@ -151,6 +184,19 @@ test('published beta and stable instructions retain user guidance', () => {
   assert.match(releaseComment(issue, release), /reload your browser/);
   release.prerelease = false;
   assert.match(releaseComment(issue, release), /latest stable release/);
+});
+
+test('published release candidates identify the final testing stage and retain HACS and card instructions', () => {
+  for (const title of ['[Bug]: card', '[Feature]: card']) {
+    const issue = {title, body:'### Component\n\nLive data card', labels:[]};
+    const release = {tag_name:'v6.1.0-rc.1', html_url:'https://example.test/release', prerelease:true};
+    const comment = releaseComment(issue, release);
+    assert.match(comment, /a release candidate of F1 Sensor/);
+    assert.match(comment, /To test the release candidate/);
+    assert.match(comment, /Show beta versions/);
+    assert.match(comment, /reload your browser/);
+    assert.match(comment, /feedback on the release candidate/);
+  }
 });
 
 test('foreign Markdown link labels cannot become local issue references',()=>{

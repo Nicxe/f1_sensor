@@ -11,10 +11,12 @@ The **Track map** module shows car markers on a circuit map during live or repla
 | Mode | Availability |
 | --- | --- |
 | Public live timing | Not available during live sessions |
-| F1TV Auth live timing | Available when a valid token unlocks live car position data and the session publishes usable data |
+| F1TV Auth live timing | Requires account permission for live car positions and usable position data from the active session |
 | Replay Mode | Best effort when the replay archive contains car position data |
 
-Live Track Map depends on [F1TV Auth](/features/f1tv-auth). Replay Track Map is separate from live auth and can work later from archived replay data when the session archive contains car positions.
+Live Track Map depends on [F1TV Auth](/features/f1tv-auth) and your account’s live-data permissions. During United States FP1 on 23 October 2026, live positions arrived with the tested paid account and did not arrive with the tested free account in five comparison windows. A valid token alone does not guarantee live positions. This observation does not establish the requirements for every subscription plan.
+
+Replay Track Map can work with a free Formula 1 account when the completed-session archive contains usable car positions. Archive access and live position access are separate.
 
 During live sessions, Track Map follows the configured [Live Delay](/features/live-delay). This keeps car markers aligned with the other modules and with delayed TV or streaming broadcasts. Replay Track Map is not delayed.
 
@@ -103,11 +105,11 @@ Track Map is not required for incident detection. Public confirmed incident aler
 
 ### Cars do not show during a live session
 
-Live Track Map requires [F1TV Auth](/features/f1tv-auth) and live car position data. Check `sensor.f1_f1tv_token_status`, then check the Track Map card status. If the diagnostic entity is present, `sensor.f1_live_timing_mode` can also help confirm that live timing is active.
+Live Track Map requires [F1TV Auth](/features/f1tv-auth), account permission for live positions, and published position data. Check `sensor.f1_f1tv_token_status`, then check the Track Map card status. A `valid` token can still belong to an account that does not receive live positions; repeated pairing alone is not a test of those permissions. If the diagnostic entity is present, `sensor.f1_live_timing_mode` can also help confirm that live timing is active.
 
 ### Replay shows a map but live does not
 
-Replay Mode can use archived car position data after the session. That does not mean the same data is available from public live timing. Live Track Map still needs F1TV Auth.
+Replay Mode can use archived car position data after the session. That does not mean the same data is available from public live timing. Live Track Map still needs F1TV Auth and account permission for live positions.
 
 ### The card says Stale
 
@@ -119,7 +121,7 @@ The card has car position data but cannot yet draw the map outline. This is more
 
 ## Limitations
 
-- Live Track Map requires an active F1 session with usable position data and working F1TV Auth.
+- Live Track Map requires an active F1 session with usable position data, working F1TV Auth, and account permission for live positions.
 - Replay Track Map is best effort and depends on the archived session data.
 - The map outline may be unavailable for unknown circuits until enough replay data exists.
 - Track Map is a module in the F1 Sensor dashboard card, not a normal Home Assistant entity.

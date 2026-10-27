@@ -4,6 +4,11 @@ title: Configure F1 Sensor
 description: Choose your data, enable live features, and find the entities created by F1 Sensor.
 ---
 
+:::info[Automatic card data]
+Add the modules you want to the F1 Sensor card. Its [data is available automatically](/features/card-data-and-sensors), independently of the sensors exposed in Home Assistant. Existing installations keep their sensor choices and start normally after updating; see [Upgrading to automatic card data](/getting-started/required-data-choice).
+:::
+
+
 Choose the data you want on your dashboard. Complete [installation and restart](/getting-started/installation) first, then start the setup flow:
 
 [![Open your Home Assistant instance and start configuration](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start?domain=f1_sensor)

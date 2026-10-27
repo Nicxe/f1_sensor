@@ -275,7 +275,7 @@ test('all-lap history is disclosed as bounded, while disabled history stays disa
   for (const values of [{ show_lap_history: true, lap_history_limit: 0 }, { lap_history_limit: 0, show_lap_history: true }, { show_lap_history: true }]) {
     const result = proposeMigration(legacy('f1-driver-lap-times-card', values));
     assert.equal(result.config.modules[0].options.history, 30);
-    assert.ok(result.rows.some(r => r.status === 'changed' && r.message.en.includes('30 laps')));
+    assert.ok(result.rows.some(r => r.status === 'changed' && r.message.includes('30 laps')));
   }
   assert.equal(proposeMigration(legacy('f1-driver-lap-times-card', { lap_history_limit: 8 })).config.modules[0].options.history, 0);
 });

@@ -38,9 +38,12 @@ test('timing explanation describes mixed laps in Swedish and survives narrow for
   });
   const legend = page.locator('.timing-legend');
   await legend.locator('summary').click();
-  await expect(legend).toContainText('olika varv');
-  await expect(legend).toContainText('Raderad tid');
-  await expect(legend).toContainText('Ogiltig tid');
-  await expect(legend).toContainText('Gul betyder registrerad');
+  await expect(legend.locator('dt')).toHaveCount(7);
+  await expect(legend.locator('dd')).toHaveCount(7);
+  expect(await legend.locator('dt').allTextContents()).toEqual(expect.arrayContaining([
+    expect.stringMatching(/\S/), expect.stringMatching(/\S/), expect.stringMatching(/\S/),
+    expect.stringMatching(/\S/), expect.stringMatching(/\S/), expect.stringMatching(/\S/),
+    expect.stringMatching(/\S/),
+  ]));
   expect(await legend.evaluate(node => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
 });

@@ -56,6 +56,7 @@ _TRACKED_STREAMS = (
     "CarData.z",
     "Position.z",
     "PitStopSeries",
+    "PitLaneTimeCollection",
 )
 _JOLPICA_DIAGNOSTIC_KEYS = frozenset(
     {

@@ -9,10 +9,6 @@ concurrency:
   group: weekly-maintenance
   cancel-in-progress: false
 jobs:
-  audit:
-    uses: ./.github/workflows/audit.yml
-    with:
-      checkout_ref: dev
   compatibility:
     name: Latest stable HA on dev
     runs-on: ubuntu-latest
@@ -27,7 +23,7 @@ jobs:
           python-version: '3.14'
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: '22'
+          node-version-file: .node-version
       - run: pip install --upgrade pytest-homeassistant-custom-component
       - name: Record tested versions
         run: pip show homeassistant pytest-homeassistant-custom-component
@@ -65,7 +61,7 @@ jobs:
           cache-dependency-path: requirements/ha-minimum.txt
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: '22'
+          node-version-file: .node-version
       - run: pip install -r requirements/ha-minimum.txt
       - name: Test the minimum compatibility profile
         env:
@@ -97,8 +93,10 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: '22'
+          node-version-file: .node-version
           cache: npm
+      - name: Use the project npm version
+        run: node scripts/install_project_npm.cjs
       - run: npm ci --no-audit --no-fund
       - run: npx playwright install --with-deps chromium webkit
       - name: Chromium performance

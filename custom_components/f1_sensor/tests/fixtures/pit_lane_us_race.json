@@ -1,0 +1,132 @@
+{
+  "description": "Selected original Formula 1 US Race 2026-10-25 lane collection and authoritative stop records; archive-relative times are not receipt or UTC event times.",
+  "session": {
+    "Key": 11396,
+    "Type": "Race",
+    "Name": "Race"
+  },
+  "lane_events": [
+    {
+      "relative_time": "01:19:20.441",
+      "payload": {
+        "PitTimes": {
+          "3": {
+            "RacingNumber": "3",
+            "Duration": "23.9",
+            "Lap": "13"
+          }
+        }
+      }
+    },
+    {
+      "relative_time": "01:19:44.676",
+      "payload": {
+        "PitTimes": {
+          "_deleted": [
+            "3"
+          ]
+        }
+      }
+    },
+    {
+      "relative_time": "01:19:58.369",
+      "payload": {
+        "PitTimes": {
+          "87": {
+            "RacingNumber": "87",
+            "Duration": "24.2",
+            "Lap": "13"
+          }
+        }
+      }
+    },
+    {
+      "relative_time": "01:20:23.321",
+      "payload": {
+        "PitTimes": {
+          "_deleted": [
+            "87"
+          ]
+        }
+      }
+    },
+    {
+      "relative_time": "01:28:31.689",
+      "payload": {
+        "PitTimes": {
+          "41": {
+            "RacingNumber": "41",
+            "Duration": "23.7",
+            "Lap": "18"
+          }
+        }
+      }
+    },
+    {
+      "relative_time": "01:28:56.609",
+      "payload": {
+        "PitTimes": {
+          "_deleted": [
+            "41"
+          ]
+        }
+      }
+    }
+  ],
+  "series_events": [
+    {
+      "relative_time": "01:19:20.441",
+      "payload": {
+        "PitTimes": {
+          "3": [
+            {
+              "Timestamp": "2026-10-25T20:26:15.407Z",
+              "PitStop": {
+                "RacingNumber": "3",
+                "PitStopTime": "2.7",
+                "PitLaneTime": "23.960",
+                "Lap": "13"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "relative_time": "01:19:58.373",
+      "payload": {
+        "PitTimes": {
+          "87": [
+            {
+              "Timestamp": "2026-10-25T20:26:53.339Z",
+              "PitStop": {
+                "RacingNumber": "87",
+                "PitStopTime": "2.8",
+                "PitLaneTime": "24.217",
+                "Lap": "13"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "relative_time": "01:28:31.689",
+      "payload": {
+        "PitTimes": {
+          "41": [
+            {
+              "Timestamp": "2026-10-25T20:35:26.655Z",
+              "PitStop": {
+                "RacingNumber": "41",
+                "PitStopTime": "2.3",
+                "PitLaneTime": "23.793",
+                "Lap": "18"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

@@ -42,9 +42,9 @@ export class F1TelemetryView extends LitElement {
   willUpdate() {
     if (this.session !== this.model?.replay?.sessionId) { this.session = this.model?.replay?.sessionId; this.draftDriver = ''; this.draftLap = ''; this.table = ''; }
   }
-  w(en, sv) { return words(this.settings?.language, en, sv); }
+  w(source, replacements = {}) { return words(this.settings?.language, source, replacements); }
   value(value) { return value == null ? '—' : new Intl.NumberFormat(this.settings?.language ?? 'en', { maximumFractionDigits: 3 }).format(value); }
-  title(key) { const field = CHANNELS[key]; return field ? `${this.w(field.en, field.sv)}${field.unit ? ` (${field.unit})` : ''}` : ''; }
+  title(key) { const field = CHANNELS[key]; return field ? `${this.w(field.label)}${field.unit ? ` (${field.unit})` : ''}` : ''; }
   seriesName(item) { return `${item.name} · ${this.w('modular.lap_300caf91')} ${item.lap}`; }
   send(type, values = {}) { this.dispatchEvent(new CustomEvent(`f1-telemetry-${type}`, { bubbles: true, composed: true, detail: { module: this.module.id, sessionId: this.model.replay.sessionId, ...values } })); }
   select(selected) { this.send('selection', { selected }); }

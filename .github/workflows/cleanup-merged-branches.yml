@@ -1,7 +1,7 @@
 name: Clean up merged temporary branches
 
 on:
-  pull_request:
+  pull_request_target:
     types: [closed]
 
 permissions:
@@ -20,25 +20,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
       - uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         with:
           script: |
-            const permanent = new Set(['main', 'beta', 'content', 'dev']);
-            const branch = context.payload.pull_request.head.ref;
-            if (permanent.has(branch)) {
-              core.info(`Preserving permanent branch ${branch}.`);
-              return;
-            }
-            try {
-              await github.rest.git.deleteRef({
-                ...context.repo,
-                ref: `heads/${branch}`,
-              });
-              core.info(`Deleted merged temporary branch ${branch}.`);
-            } catch (error) {
-              if (error.status === 404) {
-                core.info(`Branch ${branch} was already deleted.`);
-                return;
-              }
-              throw error;
-            }
+            await require('./.github/scripts/cleanup-branch.cjs').cleanupMergedBranch({github, context, core});

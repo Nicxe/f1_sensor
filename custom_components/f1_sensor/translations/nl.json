@@ -10,15 +10,20 @@
           "replay_file": "Replay dump path",
           "race_week_start_day": "Eerste dag van de raceweek",
           "live_timing_auth_header": "Manual backup: F1TV authorization value",
-          "start_f1tv_pairing": "Recommended: Connect F1TV access with Token Helper",
+          "start_f1tv_pairing": "Aangeraden: verbind F1TV via de token helper",
           "install_dashboard_cards": "Install bundled dashboard cards",
-          "install_legacy_cards": "Oudere dashboardkaarten installeren"
+          "install_legacy_cards": "Oudere dashboardkaarten installeren",
+          "enable_race_control": "Inschakelen live F1 API (race controlle/baan/sessie)",
+          "clear_live_timing_auth_header": "verwijder F1TV authorizatie waarde"
         },
         "data_description": {
-          "live_timing_auth_header": "Manual backup if Token Helper pairing does not work. Paste the full Bearer token from the F1TV Token Helper only as an advanced fallback. Leave blank to use public live timing only.",
-          "start_f1tv_pairing": "Recommended path. Start a short-lived pairing session and send the token from the browser extension without copying it manually. F1TV access is optional; public live timing continues without it.",
-          "install_dashboard_cards": "Registers the bundled F1 Sensor cards in Home Assistant. Disable this if you only use entities and automations. Existing F1 dashboard cards will stop working after you reload the browser.",
-          "install_legacy_cards": "Registreert ook de verouderde F1-kaarten. Uitgeschakeld bij nieuwe installaties; bestaande installaties behouden hun kaarten. Vereist installatie van dashboardkaarten. Herlaad de browser na wijzigingen. Bij uitschakeling werken oudere kaarten niet meer zonder migratie naar de F1 Sensor-kaart. Bij meerdere installaties blijven ze beschikbaar zolang een actieve installatie erom vraagt."
+          "live_timing_auth_header": "Handmatige backup als token helper pairing niet werkt. Plak de volledige bearer token uit de F1TV token helper alleen als geavanceerde reserve optie. Laat leeg om de publieke live timing te gebruiken zonder replay mode of gearchiveerde media.",
+          "start_f1tv_pairing": "Recommended path. Start a short-lived pairing session and send the token from the browser extension without copying it manually. F1TV access is optioneel; publieke live tijdsmeting werkt ook zonder.",
+          "install_dashboard_cards": "Make de gebundelde F1 Sensor cards in Home Assistant. Schakel dit uit als je alleen entities en automations gebruikt. Bestaande F1 dashboard cards werken niet meer na een browser reload.",
+          "install_legacy_cards": "Registreert ook de verouderde F1-kaarten. Uitgeschakeld bij nieuwe installaties; bestaande installaties behouden hun kaarten. Vereist installatie van dashboardkaarten. Herlaad de browser na wijzigingen. Bij uitschakeling werken oudere kaarten niet meer zonder migratie naar de F1 Sensor-kaart. Bij meerdere installaties blijven ze beschikbaar zolang een actieve installatie erom vraagt.",
+          "race_week_start_day": "Kies of de raceweek start op zaterdag, zondag of maandag.",
+          "replay_file": "Locatie waar een opgenomen SignalR dump bestand staat. Alleen nodig in Ontwikkel modus.",
+          "enable_race_control": "Verbindt naar Formule 1 live tijdsmeting via SignalR om live updates te ontvangen. Als dit niet aan staat, worden live sensoren niet aangemaakt."
         }
       },
       "reconfigure": {
@@ -26,21 +31,23 @@
         "data": {
           "sensor_name": "Apparaatnaam",
           "enabled_sensors": "Ingeschakelde sensoren",
-          "operation_mode": "Operation mode",
-          "replay_file": "Replay dump path",
+          "operation_mode": "Operationele modus",
+          "replay_file": "Replay dump locatie",
           "race_week_start_day": "Eerste dag van de raceweek",
-          "live_timing_auth_header": "Manual backup: F1TV authorization value",
-          "clear_live_timing_auth_header": "Clear F1TV authorization value",
-          "start_f1tv_pairing": "Recommended: Connect F1TV access with Token Helper",
-          "install_dashboard_cards": "Install bundled dashboard cards",
-          "install_legacy_cards": "Oudere dashboardkaarten installeren"
+          "live_timing_auth_header": "Handmatige backup: F1TV authorisatie waarde",
+          "clear_live_timing_auth_header": "Verwijder F1TV authorisatie waarde",
+          "start_f1tv_pairing": "Aangeraden: verbind F1TV toegang metToken Helper",
+          "install_dashboard_cards": "Installeer gebundelde dashboard kaarten",
+          "install_legacy_cards": "Oudere dashboardkaarten installeren",
+          "enable_race_control": "Schakel live F1 API in"
         },
         "data_description": {
           "live_timing_auth_header": "Manual backup if Token Helper pairing does not work. Paste a new full Bearer token only as an advanced fallback. Leave blank to keep the current value.",
           "clear_live_timing_auth_header": "Remove the saved F1TV authorization value and continue with public live timing only.",
           "start_f1tv_pairing": "Recommended path. Start a short-lived pairing session and send the token from the browser extension without copying it manually. F1TV access is optional; public live timing continues without it.",
           "install_dashboard_cards": "Registers the bundled F1 Sensor cards in Home Assistant. Disable this if you only use entities and automations. Existing F1 dashboard cards will stop working after you reload the browser.",
-          "install_legacy_cards": "Registreert ook de verouderde F1-kaarten. Uitgeschakeld bij nieuwe installaties; bestaande installaties behouden hun kaarten. Vereist installatie van dashboardkaarten. Herlaad de browser na wijzigingen. Bij uitschakeling werken oudere kaarten niet meer zonder migratie naar de F1 Sensor-kaart. Bij meerdere installaties blijven ze beschikbaar zolang een actieve installatie erom vraagt."
+          "install_legacy_cards": "Registreert ook de verouderde F1-kaarten. Uitgeschakeld bij nieuwe installaties; bestaande installaties behouden hun kaarten. Vereist installatie van dashboardkaarten. Herlaad de browser na wijzigingen. Bij uitschakeling werken oudere kaarten niet meer zonder migratie naar de F1 Sensor-kaart. Bij meerdere installaties blijven ze beschikbaar zolang een actieve installatie erom vraagt.",
+          "operation_mode": "Kies Live om te verbinden met Formule 1 SignalR, of Development om een een lokale dump af te spelen."
         }
       },
       "reauth_confirm": {
@@ -57,7 +64,7 @@
         }
       },
       "f1tv_pairing": {
-        "title": "Connect F1TV access",
+        "title": "Verbindt F1TV access",
         "description": "Use the F1TV Token Helper to send your token to Home Assistant. F1TV access is optional, and this pairing expires at {expires_at}."
       }
     },
@@ -226,6 +233,38 @@
           "install_legacy_cards": "Registreert ook de verouderde F1-kaarten. Uitgeschakeld bij nieuwe installaties; bestaande installaties behouden hun kaarten. Vereist installatie van dashboardkaarten. Herlaad de browser na wijzigingen. Bij uitschakeling werken oudere kaarten niet meer zonder migratie naar de F1 Sensor-kaart. Bij meerdere installaties blijven ze beschikbaar zolang een actieve installatie erom vraagt."
         }
       }
+    }
+  },
+  "device_automation": {
+    "trigger_type": {
+      "race_week_started": "Race week is gestart",
+      "race_week_ended": "Race week is geëindigd",
+      "safety_car_deployed": "Safety car ingezet",
+      "safety_car_cleared": "Safety car ingetrokken",
+      "possible_on_track_incident_detected": "Mogelijk on-track incident gedetecteerd",
+      "possible_on_track_incident_cleared": "Mogelijk on-track incident opgelost",
+      "on_track_incident_detected": "On-track incident gedetecteerd",
+      "on_track_incident_cleared": "On-track incident opgelost",
+      "formation_start_ready": "Klaar voor formatie start",
+      "overtake_mode_enabled": "Overtake mode ingeschakeld",
+      "overtake_mode_disabled": "Overtake mode uitgeschakeld",
+      "session_live": "Sessie is live gegaan",
+      "track_status_clear": "Track status: vrij",
+      "track_status_yellow": "Track status: gele vlag",
+      "track_status_safety_car": "Track status: safety car",
+      "track_status_vsc": "Track status: Virtuele safety car",
+      "track_status_red_flag": "Track status: rode vlag",
+      "new_race_control_message": "Nieuw race controle bericht",
+      "new_fia_document": "Nieuw FIA document gepubliceerd",
+      "investigation_changed": "Onderzoek status veranderd",
+      "new_team_radio": "Nieuw team radio bericht",
+      "favorite_driver_position_gained": "Favoriete rijder heeft een plek gewonnen",
+      "favorite_driver_position_lost": "Favoriete rijder heeft een plek verloren",
+      "favorite_driver_entered_pits": "Favoriete rijder is de pit ingegaan",
+      "favorite_driver_exited_pits": "Favoriete rijder is de pit uitgegaan",
+      "favorite_driver_retired": "Favoriete rijder is uitgeschakeld",
+      "live_timing_online": "Live timing is online gekomen",
+      "live_timing_offline": "Live timing is offline gegaan"
     }
   }
 }

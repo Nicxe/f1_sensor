@@ -11,7 +11,6 @@ from scripts.ci_reuse import (
     reuse_allowed,
     successful_checks,
     verify_evidence,
-    without_deployment_checks,
 )
 
 
@@ -31,7 +30,7 @@ class ReuseTests(unittest.TestCase):
 
     def test_only_recent_successful_exact_tree_verifications(self):
         self.assertTrue(eligible_run(self.run, self.now))
-        self.assertTrue(
+        self.assertFalse(
             eligible_run(
                 self.run
                 | {
@@ -67,24 +66,13 @@ class ReuseTests(unittest.TestCase):
         self.assertIn("validation", REUSABLE)
         self.assertNotIn("audit", REUSABLE)
 
-    def test_only_prs_and_promotion_pushes_can_reuse(self):
+    def test_only_prs_can_reuse_and_every_push_runs_fresh(self):
         self.assertTrue(reuse_allowed("pull_request", "beta", True))
-        self.assertTrue(reuse_allowed("push", "beta", True))
-        self.assertTrue(reuse_allowed("push", "main", True))
+        self.assertFalse(reuse_allowed("push", "beta", True))
+        self.assertFalse(reuse_allowed("push", "main", True))
         self.assertFalse(reuse_allowed("push", "dev", True))
         self.assertFalse(reuse_allowed("workflow_dispatch", "main", True))
         self.assertFalse(reuse_allowed("push", "main", False))
-
-    def test_deploy_requires_a_fresh_documentation_artifact(self):
-        evidence = {"run_id": 42, "checks": ["backend", "documentation"]}
-        self.assertEqual(without_deployment_checks(evidence, False), evidence)
-        self.assertEqual(
-            without_deployment_checks(evidence, True),
-            {"run_id": 42, "checks": ["backend"]},
-        )
-        self.assertEqual(
-            without_deployment_checks({"checks": ["documentation"]}, True), {}
-        )
 
 
 class EvidenceTests(ReuseTests):
@@ -116,6 +104,8 @@ class EvidenceTests(ReuseTests):
             "run_id": 42,
             "attempt": 1,
             "head_sha": "a" * 40,
+            "tree_sha": self.tree,
+            "selected_at": self.now.isoformat(),
             "checks": ["backend"],
         }
 
@@ -125,30 +115,71 @@ class EvidenceTests(ReuseTests):
         )
         verify_evidence(self.api, self.evidence, "tree", self.now)
 
-    def test_identical_pr_verification_is_reusable_when_no_push_run_exists(self):
+    def test_pr_head_never_proves_which_merge_tree_was_tested(self):
         pr_run = self.run | {
             "event": "pull_request",
             "path": ".github/workflows/ci.yml",
             "head_branch": "dev",
         }
-        outer = self
 
         class API:
             def get(self, path):
                 if path.startswith("actions/workflows/development.yml"):
                     return {"workflow_runs": []}
-                if path.startswith("actions/workflows/ci.yml"):
-                    return {"workflow_runs": [pr_run]}
-                if path.startswith("git/"):
-                    return {"tree": {"sha": outer.tree}}
-                return pr_run
+                raise AssertionError(f"PR evidence must not be queried: {path}")
+
+        self.assertEqual(
+            find_evidence(API(), {"backend": True}, self.tree, self.now),
+            {},
+        )
+        self.assertEqual(evidence_checks(self.api, pr_run, self.tree, self.now), set())
+
+    def test_evidence_records_the_exact_push_tree(self):
+        outer = self
+
+        class API:
+            def get(self, path):
+                if path.startswith("actions/workflows/development.yml"):
+                    return {"workflow_runs": [outer.run]}
+                return outer.api.get(path)
 
             def jobs(self, run_id):
-                return outer.jobs
+                return outer.api.jobs(run_id)
 
         self.assertEqual(
             find_evidence(API(), {"backend": True}, self.tree, self.now),
             self.evidence,
+        )
+
+    def test_unbound_tree_evidence_is_rejected(self):
+        for recorded_tree in (None, "another-tree"):
+            with self.subTest(tree=recorded_tree), self.assertRaises(ValueError):
+                verify_evidence(
+                    self.api,
+                    self.evidence | {"tree_sha": recorded_tree},
+                    self.tree,
+                    self.now,
+                )
+
+    def test_selected_fresh_evidence_does_not_expire_while_other_jobs_run(self):
+        verify_evidence(
+            self.api, self.evidence, self.tree, self.now + timedelta(hours=3)
+        )
+
+    def test_expired_or_unbound_selection_is_not_accepted(self):
+        for selected_at in (None, "bad", (self.now + timedelta(hours=1)).isoformat()):
+            with self.subTest(selected_at=selected_at), self.assertRaises(ValueError):
+                verify_evidence(
+                    self.api,
+                    self.evidence | {"selected_at": selected_at},
+                    self.tree,
+                    self.now,
+                )
+        self.assertEqual(
+            evidence_checks(
+                self.api, self.run, self.tree, self.now + timedelta(hours=3)
+            ),
+            set(),
         )
 
     def test_changed_sources_workflow_or_dependencies_force_fresh_checks(self):
@@ -171,3 +202,20 @@ class EvidenceTests(ReuseTests):
                 verify_evidence(
                     self.api, self.evidence | {"checks": [check]}, "tree", self.now
                 )
+
+    def test_source_restart_during_final_job_verification_is_rejected(self):
+        original_get = self.api.get
+        fetches = 0
+
+        def get(path):
+            nonlocal fetches
+            result = original_get(path)
+            if path.startswith("actions/runs/"):
+                fetches += 1
+                if fetches == 2:
+                    return result | {"run_attempt": 2, "status": "queued"}
+            return result
+
+        self.api.get = get
+        with self.assertRaisesRegex(ValueError, "source changed"):
+            verify_evidence(self.api, self.evidence, self.tree, self.now)

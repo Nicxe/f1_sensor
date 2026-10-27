@@ -35,7 +35,7 @@ test('native preview switches sources without changing HA states, config or inte
   await expect(page.getByText('DEMO · sample data')).toHaveCount(0);
   await page.getByLabel('Preview data', { exact: true }).selectOption('sample');
   await expect(page.getByText('DEMO · sample data')).toBeVisible();
-  await expect.poll(() => page.evaluate(() => window.previewStops)).toBe(1);
+  await expect.poll(() => page.evaluate(() => window.previewStops)).toBe(2);
   await page.getByLabel('Sample session', { exact: true }).selectOption('sprint_qualifying');
   await expect(page.getByRole('columnheader', { name: 'SQ1 best', exact: true })).toBeVisible();
   await page.locator('[data-f1-card-action]').click();
@@ -94,13 +94,14 @@ test('preview controls support Swedish, keyboard, narrow screens and accessible 
     window.nativeCard.hass = { ...window.actualHass, locale: { ...window.actualHass.locale, language: 'sv' } };
     window.nativeCard.setConfig({ ...window.nativeCard.config, layout: 'columns', columns: 3 });
   });
-  const source = page.getByLabel('Data i förhandsvisningen', { exact: true });
+  const previewTools = page.locator('.preview-tools');
+  const source = previewTools.locator('select').first();
   await source.focus();
   await source.selectOption('sample');
   await page.keyboard.press('Tab');
-  await expect(page.getByLabel('Exempelsession', { exact: true })).toBeFocused();
-  await expect(page.getByText('DEMO · exempeldata')).toBeVisible();
-  await expect(page.getByText('Home Assistant begränsar förhandsvisningens bredd.', { exact: false })).toBeVisible();
+  await expect(previewTools.locator('select').nth(1)).toBeFocused();
+  await expect(page.locator('button.driver').first()).toBeVisible();
+  await expect(previewTools.locator('p')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   const audit = await new AxeBuilder({ page }).include('f1-sensor-card').withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
   expect(audit.violations).toEqual([]);

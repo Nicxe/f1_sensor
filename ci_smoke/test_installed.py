@@ -35,8 +35,12 @@ async def test_installed_integration_lifecycle(
         },
     )
     entry.add_to_hass(hass)
+    original_data = dict(entry.data)
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
+    assert "data_choice_version" not in entry.data
+    assert entry.data["card_data_notice_version"] == 1
+    assert all(entry.data[key] == value for key, value in original_data.items())
     assert entry.state == ConfigEntryState.LOADED
     registry = hass.data[DOMAIN][entry.entry_id]
     bus = registry["live_bus"]

@@ -26,6 +26,7 @@ def _dependency(
 
 
 _DRIVER_STREAMS = (
+    "SessionInfo",
     "DriverList",
     "TimingData",
     "TimingAppData",
@@ -50,7 +51,9 @@ _INCIDENT_STREAMS = (
 FEATURE_DEPENDENCIES: dict[str, FeatureDependency] = {
     "current_session": _dependency("SessionInfo", coordinators=("session_info",)),
     "track_weather": _dependency("WeatherData", coordinators=("weather_data",)),
-    "race_lap_count": _dependency("LapCount", coordinators=("lap_count",)),
+    "race_lap_count": _dependency(
+        "LapCount", "SessionInfo", coordinators=("lap_count",)
+    ),
     "driver_list": _dependency(*_DRIVER_STREAMS, coordinators=("drivers",)),
     "current_tyres": _dependency(*_DRIVER_STREAMS, coordinators=("drivers",)),
     "tyre_statistics": _dependency(*_DRIVER_STREAMS, coordinators=("drivers",)),
@@ -121,11 +124,17 @@ FEATURE_DEPENDENCIES: dict[str, FeatureDependency] = {
         coordinators=("formation_start",),
     ),
     "top_three": _dependency("TopThree", coordinators=("top_three",)),
-    "team_radio": _dependency("TeamRadio", coordinators=("team_radio",)),
-    "pitstops": _dependency(
-        "PitStopSeries",
+    "team_radio": _dependency(
+        "TeamRadio",
         "DriverList",
-        coordinators=("pitstops",),
+        "SessionInfo",
+        coordinators=("team_radio", "session_info"),
+    ),
+    "pitstops": _dependency(
+        *_DRIVER_STREAMS,
+        "PitStopSeries",
+        "PitLaneTimeCollection",
+        coordinators=("pitstops", "drivers"),
     ),
     "championship_prediction": _dependency(
         "ChampionshipPrediction",

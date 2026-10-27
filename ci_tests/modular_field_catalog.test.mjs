@@ -10,7 +10,7 @@ import {
 
 test('generated modular field catalog matches every delivered module variant', async () => {
   const catalog = buildCatalog();
-  assert.equal(catalog.module_count, 21);
+  assert.equal(catalog.module_count, 22);
   assert.ok(catalog.field_count > 100);
   assert.ok(catalog.sources.includes('analysis'));
   assert.ok(catalog.sources.includes('history/results'));

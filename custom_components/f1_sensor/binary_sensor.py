@@ -30,6 +30,9 @@ from .const import (
     RACE_WEEK_START_SATURDAY,
     RACE_WEEK_START_SUNDAY,
 )
+from .data_helpers import (
+    _session_status_mapping_context as _get_session_status_mapping_context,
+)
 from .entity import (
     F1AuxEntity,
     F1BaseEntity,
@@ -49,14 +52,7 @@ _LOGGER = logging.getLogger(__name__)
 
 def _session_status_mapping_context(coordinator: Any) -> tuple[bool, int | None]:
     """Return qualifying context used for semantic terminal checks."""
-    is_qualifying_like = bool(getattr(coordinator, "is_qualifying_like_session", False))
-    qualifying_part = getattr(coordinator, "qualifying_part", None)
-    try:
-        if qualifying_part is not None:
-            qualifying_part = int(qualifying_part)
-    except (TypeError, ValueError):
-        qualifying_part = None
-    return is_qualifying_like, qualifying_part
+    return _get_session_status_mapping_context(coordinator, use_status_part=True)
 
 
 def _is_semantic_terminal_session(

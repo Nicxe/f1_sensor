@@ -8,6 +8,24 @@ export const array = value => Array.isArray(value) ? value : value && typeof val
 const nonempty = value => typeof value === 'string' && value.trim() && !['unknown', 'unavailable', 'none', 'no_session'].includes(value.toLowerCase()) ? value.trim() : null;
 
 export function source(hass, entry, key) {
+  if (entry?.data_api?.configuration_required) return { status: 'unavailable', state: null, attributes: {}, reason: 'configuration_required' };
+  if (entry?.data_api?.enabled?.includes(key)) {
+    const resource = entry.card_data?.[key], direct = resource?.data;
+    const connected = resource?.status === 'ready';
+    const context = entry.card_data?.session_context?.data;
+    const samePart = direct?.context?.qualifying_part === undefined || context?.context?.qualifying_part === undefined || direct.context.qualifying_part === context.context.qualifying_part;
+    const coherent = !['live', 'replay'].includes(direct?.source) || key === 'session_context' || !context || (direct.generation === context.generation && samePart);
+    const readable = connected && coherent && ['ready', 'stale'].includes(direct?.status);
+    return {
+      key, entity_id: entry.entities?.[key] ?? null,
+      status: readable ? 'available' : direct?.status === 'disabled' ? 'disabled' : 'unavailable',
+      state: readable ? direct.payload?.state ?? null : null,
+      attributes: readable ? direct.payload?.attributes ?? {} : {},
+      updated_at: direct?.timestamps?.received_at ?? null,
+      data_status: connected ? direct?.status ?? 'loading' : resource?.status ?? 'loading',
+      reason: direct?.reason ?? null, transport: 'direct',
+    };
+  }
   const entityId = entry?.entities?.[key];
   const state = entityId ? hass?.states?.[entityId] : null;
   const status = entry?.disabled_entities?.includes(key) ? 'disabled'
@@ -20,7 +38,8 @@ export function source(hass, entry, key) {
 // Keep the timestamp kind with the value; age alone is not a freshness verdict.
 export function modelTimestamp(model, now = Date.now()) {
   const context = model.context ?? {}, selected = model.source;
-  const kind = context.updatedKind ?? (selected ? 'ha_state' : 'received');
+  const declaredKind = context.updatedKind ?? (selected ? 'ha_state' : 'received');
+  const kind = selected?.transport === 'direct' && declaredKind === 'ha_state' ? 'received' : declaredKind;
   const raw = Object.hasOwn(context, 'updated') ? context.updated : selected?.updated_at;
   if (!raw && !selected && !context.updatedKind) return null;
   const valid = typeof raw === 'string' && /T.*(?:Z|[+-]\d{2}:\d{2})$/i.test(raw) && Number.isFinite(Date.parse(raw));
@@ -43,7 +62,12 @@ export function accentTeams(hass, entry) {
 }
 
 export function spoilerState(hass, entry, local = 'inherit') {
-  if (local === 'hide') return 'protected';
+  if (entry?.data_api?.configuration_required || local === 'hide') return 'protected';
+  const context = entry?.card_data?.session_context;
+  if (context?.status === 'ready' && context.data?.status === 'ready') {
+    const active = context.data.payload?.attributes?.no_spoiler;
+    if (typeof active === 'boolean') return active ? 'protected' : 'clear';
+  }
   // Absence of this discovery capability on an old backend is not proof that
   // spoilers are disabled. The UI must explain that discovery needs refreshing.
   if (!entry || !Object.hasOwn(entry, 'global_entities')) return 'unknown';
@@ -198,6 +222,12 @@ export function timingRows(hass, entry, context, sectors, module, focus = {}, mi
   const timingSource = positions.status === 'unknown' && rawDrivers.length
     ? { ...positions, status: 'available' }
     : positions;
+  // The reference is the whole session, even when a module shows one driver or
+  // team. Observed lap history cannot replace an official corrected best.
+  const practiceTimes = kind === 'practice' ? rawDrivers
+    .filter(driver => driver && typeof driver === 'object' && driver.best_lap_time_source === 'official')
+    .map(driver => seconds(driver.best_lap_time)).filter(time => time !== null) : [];
+  const fastestPracticeTime = practiceTimes.length ? Math.min(...practiceTimes) : null;
   const rows = rawDrivers.filter(driver => driver && typeof driver === 'object').map(driver => {
     const id = String(driver.racing_number ?? driver.tla ?? '');
     const person = identity.get(id) ?? {};
@@ -213,6 +243,8 @@ export function timingRows(hass, entry, context, sectors, module, focus = {}, mi
     const official = Object.hasOwn(driver, 'best_lap_time');
     const best = official ? { time: seconds(driver.best_lap_time), lap: positiveInteger(driver.best_lap_lap) }
       : laps.reduce((result, item) => !result || item.time < result.time ? item : result, null);
+    const officialBest = official && driver.best_lap_time_source === 'official' ? best.time : null;
+    const nativeBestLapGap = typeof driver.best_lap_gap === 'number' && Number.isFinite(driver.best_lap_gap) && driver.best_lap_gap >= 0 ? driver.best_lap_gap : null;
     const selectedSectors = sectors.select(context.key, driver, module.options.sectors);
     const minisectorDriver = minisectors?.status === 'ready' ? minisectors.drivers?.[id] : null;
     const strips = [0, 1, 2].map(sector => segmentStrip(minisectorDriver, sector));
@@ -236,6 +268,8 @@ export function timingRows(hass, entry, context, sectors, module, focus = {}, mi
       last_lap: last ? { ...last, source: 'completed_lap', previous_lap: !lastLapOverall && !lastLapPersonal,
         overall_fastest: lastLapOverall, personal_fastest: lastLapPersonal } : { time: null },
       best_lap: { time: best?.time ?? null, lap: best?.lap ?? null, personal_fastest: best?.time !== null && best?.time !== undefined, overall_fastest: driver.fastest_lap === true },
+      best_lap_gap: kind === 'practice' && officialBest !== null
+        ? nativeBestLapGap ?? (fastestPracticeTime !== null ? officialBest - fastestPracticeTime : null) : null,
       lap_delta: last && previous && last.lap === previous.lap + 1 ? lapChange(last.time, previous.time, last.lap, previous.lap) : null,
       sector_1: selectedSectors[0], sector_2: selectedSectors[1], sector_3: selectedSectors[2],
       minisector_1: strips[0], minisector_2: strips[1], minisector_3: strips[2],
@@ -270,13 +304,13 @@ export function timingRows(hass, entry, context, sectors, module, focus = {}, mi
 }
 
 export const SESSION_FIELDS = [
-  ['practice_1', 'first_practice', 'FirstPractice', 'Practice 1', 'Träning 1'],
-  ['practice_2', 'second_practice', 'SecondPractice', 'Practice 2', 'Träning 2'],
-  ['practice_3', 'third_practice', 'ThirdPractice', 'Practice 3', 'Träning 3'],
-  ['sprint_qualifying', 'sprint_qualifying', 'SprintQualifying', 'Sprint qualifying', 'Sprintkval'],
-  ['sprint', 'sprint', 'Sprint', 'Sprint', 'Sprint'],
-  ['qualifying', 'qualifying', 'Qualifying', 'Qualifying', 'Kval'],
-  ['race', 'race', null, 'Race', 'Race'],
+  ['practice_1', 'first_practice', 'FirstPractice', 'Practice 1'],
+  ['practice_2', 'second_practice', 'SecondPractice', 'Practice 2'],
+  ['practice_3', 'third_practice', 'ThirdPractice', 'Practice 3'],
+  ['sprint_qualifying', 'sprint_qualifying', 'SprintQualifying', 'Sprint qualifying'],
+  ['sprint', 'sprint', 'Sprint', 'Sprint'],
+  ['qualifying', 'qualifying', 'Qualifying', 'Qualifying'],
+  ['race', 'race', null, 'Race'],
 ];
 const publishedDate = value => {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
@@ -298,7 +332,7 @@ export function scheduleRows(hass, entry, module, now = Date.now()) {
   const calendar = source(hass, entry, module.options.range === 'season' ? 'current_season' : 'next_race');
   const races = module.options.range === 'season' ? array(calendar.attributes.races) : [calendar.attributes];
   const rows = [];
-  for (const race of races) for (const [id, prefix, jolpica, en, sv] of SESSION_FIELDS) {
+  for (const race of races) for (const [id, prefix, jolpica, sourceText] of SESSION_FIELDS) {
     if (!module.options.sessions.includes(id)) continue;
     const block = jolpica ? race[jolpica] : race;
     const candidate = race[`${prefix}_start_utc`] ?? race[`${prefix}_start`] ?? (block?.date && block?.time ? `${block.date}T${block.time}` : null);
@@ -306,7 +340,7 @@ export function scheduleRows(hass, entry, module, now = Date.now()) {
       && publishedDate(candidate.slice(0, 10)) && Number.isFinite(Date.parse(candidate)) ? candidate : null;
     const date = publishedDate(block?.date) ?? publishedDate(race[`${prefix}_date`]) ?? publishedDate(typeof candidate === 'string' ? candidate.slice(0, 10) : null);
     if (!start && !date) continue;
-    rows.push({ id: `${race.season ?? ''}:${race.round ?? ''}:${id}`, session: id, label: { en, sv }, meeting: race.race_name ?? race.raceName ?? null,
+    rows.push({ id: `${race.season ?? ''}:${race.round ?? ''}:${id}`, session: id, label: sourceText, meeting: race.race_name ?? race.raceName ?? null,
       start, date, timezone: race.circuit_timezone ?? null, country: race.circuit_country ?? race.Circuit?.Location?.country ?? null,
       flag: safeImageUrl(race.country_flag_url), round: race.round ?? null, circuit: race.circuit_name ?? race.Circuit?.circuitName ?? null,
       location: [race.circuit_locality ?? race.Circuit?.Location?.locality, race.circuit_country ?? race.Circuit?.Location?.country].filter(Boolean).join(', ') });
@@ -694,7 +728,7 @@ export class RetainedSources {
       this.protection, session.key, session.active, session.source.status,
       replayPhase, replay.attributes.selected_session, player.attributes.selected_session_id, this.epoch,
       source(hass, entry, 'live_delay_number').state,
-      this.nextEvent, this.part]);
+      this.nextEvent, this.part, [...new Set(Object.values(entry?.card_data ?? {}).map(resource => resource.data?.generation).filter(Boolean))]]);
     if (preview || !entry) { this.clear(); return; }
     if (this.token !== null && token !== this.token) {
       this.snapshots.clear();
@@ -719,8 +753,20 @@ export class RetainedSources {
     if (saved?.signature !== signature) { this.snapshots.delete(module.id); saved = null; }
     const sensitive = definition?.spoiler || ['timing', 'lap_chart', 'tyres', 'pit_stops', 'incidents'].includes(module.type) || primary === 'track_weather';
     if (preview || sensitive && this.protection !== 'clear' || !module.enabled || module.unavailable !== 'retain' || !selected
-      || ['missing', 'disabled'].includes(selected.status) || sessionBound && !this.liveContext) {
+      || ['missing', 'disabled'].includes(selected.status) || selected.data_status === 'blocked' || sessionBound && !this.liveContext) {
       this.snapshots.delete(module.id); return { hass, retained: false };
+    }
+    if (selected.transport === 'direct') {
+      if (selected.status === 'available' && hass.connection?.connected !== false) {
+        const resources = entry.card_data ?? {};
+        const references = Object.entries(resources).map(([key, resource]) => [key, resource.data]);
+        if (!saved || references.length !== saved.references.length || references.some(([key, value], i) => key !== saved.references[i]?.[0] || value !== saved.references[i]?.[1])) {
+          saved = { signature, references, entry: { ...entry, card_data: structuredClone(resources) }, states: structuredClone(Object.fromEntries(Object.values(entry.entities ?? {}).map(id => [id, hass.states?.[id]]))) };
+          this.snapshots.set(module.id, saved);
+        }
+        return { hass, entry, retained: false };
+      }
+      return saved?.entry ? { hass: { ...hass, states: { ...hass.states, ...saved.states } }, entry: saved.entry, retained: true } : { hass, entry, retained: false };
     }
     const primaryState = hass.states?.[selected.entity_id];
     if (selected.status === 'available' && hass.connection?.connected !== false) {

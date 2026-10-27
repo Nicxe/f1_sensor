@@ -5,6 +5,12 @@ on:
       checkout_ref:
         type: string
         default: ''
+      mode:
+        type: string
+        default: gate
+      base:
+        type: string
+        default: ''
 permissions:
   contents: read
 jobs:

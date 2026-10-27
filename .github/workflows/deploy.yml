@@ -1,21 +1,168 @@
-name: Deploy Docusaurus to GitHub Pages
+name: Publish documentation channels
 on:
   workflow_call:
+    inputs:
+      tested_sha:
+        type: string
+        required: true
+      tested_tree:
+        type: string
+        required: true
+      target_branch:
+        type: string
+        required: true
+    outputs:
+      published:
+        value: ${{ jobs.deploy.outputs.published }}
 permissions:
   contents: read
-  pages: write
-  id-token: write
 concurrency:
   group: pages
   cancel-in-progress: false
 jobs:
+  refs:
+    permissions:
+      contents: read
+      actions: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      publish: ${{ steps.refs.outputs.publish }}
+      stable_sha: ${{ steps.refs.outputs.stable_sha }}
+      beta_sha: ${{ steps.refs.outputs.beta_sha }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        id: refs
+        env:
+          TESTED_SHA: ${{ inputs.tested_sha }}
+          TESTED_TREE: ${{ inputs.tested_tree }}
+          TARGET_BRANCH: ${{ inputs.target_branch }}
+        with:
+          script: |
+            const {resolveDocumentationRefs} = require('./.github/scripts/documentation-refs.cjs');
+            const refs = await resolveDocumentationRefs({github, context, core,
+              testedSha:process.env.TESTED_SHA, testedTree:process.env.TESTED_TREE,
+              targetBranch:process.env.TARGET_BRANCH});
+            for (const [key, value] of Object.entries(refs)) core.setOutput(key, String(value));
+            if (refs.publish) await core.summary.addHeading('Pinned documentation publication')
+              .addRaw(`Stable: ${refs.stable_sha}\n\nBeta: ${refs.beta_sha}\n\nTested tree: ${process.env.TESTED_TREE}\n`)
+              .addLink('Companion channel verification', `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${refs.companion_run_id}`).write();
+  build:
+    permissions:
+      contents: read
+    needs: refs
+    if: needs.refs.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out trusted publication tools
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          path: publication-tools
+          ref: ${{ github.workflow_sha }}
+          sparse-checkout: |
+            .node-version
+            scripts/install_project_npm.cjs
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Check out the pinned stable channel
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          path: stable-docs
+          ref: ${{ needs.refs.outputs.stable_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check out the pinned beta channel
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          path: beta-docs
+          ref: ${{ needs.refs.outputs.beta_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Select the source runtime, with a pin for older verified sources
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        id: runtime
+        with:
+          script: |
+            const fs = require('node:fs');
+            for (const [channel, directory] of [['stable', 'stable-docs'], ['beta', 'beta-docs']]) {
+              const file = `${directory}/.node-version`;
+              core.setOutput(`${channel}_version_file`, fs.existsSync(file) ? file : 'publication-tools/.node-version');
+            }
+      - name: Use the pinned stable channel Node version
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: ${{ steps.runtime.outputs.stable_version_file }}
+          cache: npm
+          cache-dependency-path: stable-docs/package-lock.json
+      - name: Install and build the pinned stable documentation channel
+        run: |
+          node ../publication-tools/scripts/install_project_npm.cjs
+          npm ci --no-audit --no-fund
+          npm run build
+        working-directory: stable-docs
+        env:
+          F1_DOCS_BASE_URL: /f1_sensor/
+          F1_DOCS_CHANNEL: stable
+      - name: Use the pinned beta channel Node version
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: ${{ steps.runtime.outputs.beta_version_file }}
+          cache: npm
+          cache-dependency-path: beta-docs/package-lock.json
+      - name: Install and build the pinned beta documentation channel
+        run: |
+          node ../publication-tools/scripts/install_project_npm.cjs
+          npm ci --no-audit --no-fund
+          npm run build
+        working-directory: beta-docs
+        env:
+          F1_DOCS_BASE_URL: /f1_sensor/beta/
+          F1_DOCS_CHANNEL: beta
+      - name: Assemble the pinned documentation channels
+        run: |
+          mkdir pages-build
+          cp -R stable-docs/build/. pages-build/
+          mkdir pages-build/beta
+          cp -R beta-docs/build/. pages-build/beta/
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: pages-build
   deploy:
+    permissions:
+      contents: read
+      actions: read
+      pages: write
+      id-token: write
+    needs: [refs, build]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+    outputs:
+      published: ${{ steps.deployment.outcome == 'success' }}
     steps:
-      - name: Deploy the documentation artifact tested in this CI run
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - name: Check that this publication has not been superseded
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        id: current
+        env:
+          STABLE_SHA: ${{ needs.refs.outputs.stable_sha }}
+          BETA_SHA: ${{ needs.refs.outputs.beta_sha }}
+        with:
+          script: |
+            const {publicationStillCurrent} = require('./.github/scripts/documentation-refs.cjs');
+            core.setOutput('publish', String(await publicationStillCurrent({github, context, core,
+              stableSha:process.env.STABLE_SHA, betaSha:process.env.BETA_SHA})));
+      - name: Deploy the pinned documentation artifact
+        if: steps.current.outputs.publish == 'true'
         id: deployment
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5

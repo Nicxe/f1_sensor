@@ -26,6 +26,8 @@ These are standard entity IDs. If Home Assistant assigned a different ID, or you
 | season | string | Season year |
 | round | string | Round number |
 | race_name | string | Grand Prix name |
+| scheduled_laps | number or null | Planned race laps; `null` when Jolpica has no value or its alpha data is unavailable |
+| sprint_scheduled_laps | number or null | Planned sprint laps; `null` when there is no sprint or no alpha value is available |
 | race_url | string | Ergast race URL |
 | circuit_id | string | Circuit identifier |
 | circuit_name | string | Circuit name |
@@ -60,6 +62,8 @@ These are standard entity IDs. If Home Assistant assigned a different ID, or you
 | sprint_start_utc | string | Sprint start (UTC ISO‑8601) |
 | sprint_start | string | Sprint start in Home Assistant local time |
 | sprint_start_local | string | Sprint start in circuit local time |
+
+The planned lap counts come from Jolpica's alpha session data. They describe the scheduled distance, which can differ from the number of laps actually completed.
 
 
 ## Next steps

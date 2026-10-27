@@ -79,19 +79,44 @@ export function watchEntries(hass, callback) {
       scope.emit(entries);
     };
     if (hass.connection.subscribeEvents) {
-      const unsubscribe = await hass.connection.subscribeEvents(() => {
-        // Reload once per registry notification; overlapping responses are
-        // discarded. No timer/polling is used for stable registry data.
-        load().catch(scope.error);
-      }, 'entity_registry_updated');
-      scope.cleanup(unsubscribe);
+      for (const eventType of ['entity_registry_updated', 'f1_sensor_data_configuration']) {
+        const unsubscribe = await hass.connection.subscribeEvents(() => {
+          // Discard overlapping responses; configuration can change without an
+          // entity registry mutation (for example automatic data capabilities).
+          load().catch(scope.error);
+        }, eventType);
+        scope.cleanup(unsubscribe);
+      }
     }
     if (scope.active()) await load();
   }, callback);
 }
 
-export function watchRaceControl(hass, entityId, callback) {
-  return watchShared(hass, `race-control:${entityId}`, async scope => {
+export function watchCardData(hass, entryId, key, callback) {
+  return watchShared(hass, `card-data:${JSON.stringify([entryId, key])}`, async scope => {
+    if (!entryId || !key || !hass.connection.subscribeMessage) throw new Error('Card data subscription is unavailable');
+    let generation = null, revision = -1;
+    const retired = new Set();
+    const unsubscribe = await hass.connection.subscribeMessage(payload => {
+      if (!scope.active() || payload?.entry_id !== entryId || payload?.dataset !== key) return;
+      if (payload.protocol_version !== 1) { scope.error(new Error('Unsupported F1 card data protocol')); return; }
+      if (payload.status === 'closed') { scope.error(new Error('F1 Sensor entry was unloaded')); return; }
+      if (retired.has(payload.generation)) return;
+      if (payload.generation !== generation) { if (generation !== null) retired.add(generation); generation = payload.generation; revision = -1; }
+      if (!Number.isInteger(payload.revision) || payload.revision <= revision) return;
+      revision = payload.revision;
+      scope.emit(payload);
+    }, { type: 'f1_sensor/data/subscribe', entry_id: entryId, protocol_version: 1, data_keys: [key] }, { resubscribe: false });
+    scope.cleanup(unsubscribe);
+  }, callback);
+}
+
+export function watchRaceControl(hass, address, callback) {
+  const entryId = typeof address === 'object' ? address?.entry_id : null;
+  const entityId = typeof address === 'string' ? address : null;
+  const matches = data => entryId ? data?.entry_id === entryId : data?.entity_id === entityId;
+  const eventType = entryId && address.event_type === 'f1_sensor_race_control_data' ? 'f1_sensor_race_control_data' : 'f1_sensor_race_control_event';
+  return watchShared(hass, `race-control:${entryId ? `entry:${entryId}` : entityId}:${eventType}`, async scope => {
     let items = [], reset = 0;
     const connection = hass.connection;
     if (!connection.subscribeEvents) throw new Error('Race Control event subscription is unavailable');
@@ -100,13 +125,13 @@ export function watchRaceControl(hass, entityId, callback) {
       const data = event?.data;
       // Events without an entity cannot safely be assigned to one of several
       // integration entries. A later snapshot will recover valid persisted data.
-      if (data?.entity_id !== entityId) return;
+      if (!matches(data)) return;
       items = mergeEvents(items, [data.log_item ?? data.message]); scope.emit(items);
-    }, 'f1_sensor_race_control_event');
+    }, eventType);
     scope.cleanup(unsubscribe);
     if (!scope.active()) return;
     const resetUnsubscribe = await connection.subscribeEvents(event => {
-      if (!scope.active() || event?.data?.entity_id !== entityId) return;
+      if (!scope.active() || !matches(event?.data)) return;
       reset++; items = []; scope.emit(items);
     }, 'f1_sensor_race_control_log_reset_event');
     scope.cleanup(resetUnsubscribe);
@@ -114,7 +139,7 @@ export function watchRaceControl(hass, entityId, callback) {
     // Subscribe before requesting history so messages during the request are
     // merged. A reset during that request invalidates the old snapshot.
     const before = reset;
-    const response = await hass.callWS({ type: 'f1_sensor/race_control_log/get', entity_id: entityId });
+    const response = await hass.callWS({ type: 'f1_sensor/race_control_log/get', ...(entryId ? { entry_id: entryId } : { entity_id: entityId }) });
     if (!scope.active() || reset !== before) return;
     items = mergeEvents(response?.items, items); scope.emit(items);
   }, callback);
@@ -271,6 +296,10 @@ export async function callEntityService(hass, command, lockKey) {
   const target = lockKey ?? command.data.entity_id;
   if (active.has(target)) return false;
   active.add(target);
-  try { await hass.callService(command.domain, command.service, command.data); return true; }
+  try {
+    if (command.returnResponse === true) await hass.callService(command.domain, command.service, command.data, command.target, true, true);
+    else await hass.callService(command.domain, command.service, command.data);
+    return true;
+  }
   finally { active.delete(target); if (!active.size) entityCommands.delete(connection); }
 }

@@ -1,5 +1,6 @@
 import React from 'react';
 import Link from '@docusaurus/Link';
+import useBaseUrl from '@docusaurus/useBaseUrl';
 import styles from './styles.module.css';
 import FlagDemo from './FlagDemo';
 
@@ -12,10 +13,18 @@ const paths = [
 ];
 
 export default function Home() {
+  const homeAssistantLogoLight = useBaseUrl('/img/home-assistant-wordmark-color-on-light.svg');
+  const homeAssistantLogoDark = useBaseUrl('/img/home-assistant-wordmark-color-on-dark.svg');
+
   return (
     <div className={`f1-home ${styles.home}`}>
       <section className={styles.hero} aria-labelledby="your-home-in-sync-with-formula-1">
         <div className={styles.heroCopy}>
+          <div className={styles.platformBrand}>
+            <img className={styles.platformLogo} src={homeAssistantLogoLight} alt="Home Assistant" />
+            <img className={styles.platformLogoDark} src={homeAssistantLogoDark} alt="Home Assistant" />
+            <span>Community integration</span>
+          </div>
           <p className={styles.eyebrow}><span aria-hidden="true" /> Formula 1 meets Home Assistant</p>
           <h1 id="your-home-in-sync-with-formula-1">Your home.<br /><em>On race time.</em></h1>
           <p className={styles.lead}>The race weekend, brought home. Schedules, live timing, one configurable dashboard card and automations that follow the action.</p>
@@ -64,7 +73,7 @@ export default function Home() {
         <div><p className={styles.eyebrow}>Keep up to date</p><h2 id="version-54">What’s new?</h2><p>Find release notes, update instructions and the difference between stable, beta and development builds.</p><Link to="/getting-started/release-channels">Versions and release channels →</Link></div>
         <div><p className={styles.eyebrow}>Built for the community</p><h2 id="support">Enjoying your setup?</h2><p>Share your ideas, ask a question or help support the project’s continued development.</p><div className={styles.supportLinks}><Link to="/support">Support the project →</Link><Link href="https://community.home-assistant.io/t/formula-1-racing-sensor/880842">Join the discussion ↗</Link></div></div>
       </section>
-      <p className={styles.disclaimer}>F1 Sensor is an unofficial project and is not associated with the Formula 1 companies. F1, FORMULA ONE, FORMULA 1, FIA FORMULA ONE WORLD CHAMPIONSHIP, GRAND PRIX and related marks are trade marks of Formula One Licensing B.V.</p>
+      <p className={styles.disclaimer}>F1 Sensor is an independent community project. It is not affiliated with or endorsed by Home Assistant or the Formula 1 companies. F1, FORMULA ONE, FORMULA 1, FIA FORMULA ONE WORLD CHAMPIONSHIP, GRAND PRIX and related marks are trade marks of Formula One Licensing B.V.</p>
     </div>
   );
 }

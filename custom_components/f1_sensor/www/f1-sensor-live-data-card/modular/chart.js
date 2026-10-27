@@ -50,7 +50,7 @@ export class F1SeriesChart extends LitElement {
     this.observer.observe(this);
   }
   disconnectedCallback() { super.disconnectedCallback(); this.observer?.disconnect(); }
-  w(en, sv) { return words(this.settings?.language, en, sv); }
+  w(source, replacements = {}) { return words(this.settings?.language, source, replacements); }
   value(value) { return value === null || value === undefined ? '—' : this.model?.metric === 'lap_time' ? formatTime(value) : this.model?.metric === 'lap_change' ? `${formatDelta(value)} s` : new Intl.NumberFormat(this.settings?.language ?? 'en', { maximumFractionDigits: 2 }).format(value); }
   get metric() { return this.model?.metric === 'lap_position' ? this.w('modular.position_at_lap_completion') : this.model?.metric === 'lap_time' ? this.w('modular.lap_time') : this.model?.metric === 'lap_change' ? this.w('modular.change_from_previous_lap') : this.model?.metric === 'wins_per_round' ? this.w('modular.wins_per_round') : this.model?.metric === 'points_per_round' ? this.w('modular.points_per_round') : this.w('modular.total_points'); }
   seriesKey(item) { return `${this.module?.type ?? 'chart'}:${this.model?.teams ? 'teams' : 'drivers'}:${item?.id ?? ''}`; }

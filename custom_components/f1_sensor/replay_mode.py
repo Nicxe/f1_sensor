@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncGenerator, Callable, Iterable
+from collections.abc import AsyncGenerator, Awaitable, Callable, Iterable
 from concurrent.futures import TimeoutError as FutureTimeoutError
 from contextlib import suppress
 from copy import deepcopy
@@ -100,6 +100,9 @@ SEEK_CHECKPOINT_MIN_FORWARD_DELTA_MS = 60_000
 # the interpreter while still amortizing file writes and executor scheduling.
 REPLAY_STREAM_BATCH_LINES = 50
 REPLAY_STREAM_BATCH_BYTES = 256 * 1024
+# Catch-up runs callbacks on the event loop; bound both cheap and costly batches.
+REPLAY_CATCHUP_BATCH_FRAMES = 50
+REPLAY_CATCHUP_YIELD_INTERVAL_S = 0.01
 
 
 def _parse_replay_int(value: Any) -> int | None:
@@ -296,6 +299,7 @@ class ReplaySessionManager:
         self._download_progress: float = 0.0
         self._download_error: str | None = None
         self._fetch_task: asyncio.Task | None = None
+        self._load_generation = 0
         planned_streams = (
             set(REPLAY_STREAMS)
             if requested_streams is None
@@ -590,13 +594,26 @@ class ReplaySessionManager:
         if not self._selected_session:
             raise RuntimeError("No session selected")
 
+        session = self._selected_session
+        self._load_generation += 1
+        generation = self._load_generation
+
+        def load_is_current() -> bool:
+            return (
+                generation == self._load_generation
+                and session is self._selected_session
+                and self._state == ReplayState.LOADING
+            )
+
         self._state = ReplayState.LOADING
         self._download_progress = 0.0
         self._download_error = None
         self._notify_listeners()
 
         try:
-            index = await self._download_and_index_session(self._selected_session)
+            index = await self._download_and_index_session(session)
+            if not load_is_current():
+                return
             self._loaded_index = index
             self._state = ReplayState.READY
             _LOGGER.info(
@@ -605,6 +622,8 @@ class ReplaySessionManager:
                 index.session_started_at_ms,
             )
         except Exception as err:
+            if not load_is_current():
+                return
             _LOGGER.error("Failed to load session: %s", err)
             self._download_error = str(err)
             self._state = ReplayState.SELECTED
@@ -2728,6 +2747,8 @@ class ReplayController:
         self._playback_task: asyncio.Task | None = None
         self._listeners: list[Callable[[dict], None]] = []
         self._pending_start_ms: int | None = None
+        self._control_generation = 0
+        self._control_task: asyncio.Task[None] | None = None
 
     @property
     def session_manager(self) -> ReplaySessionManager:
@@ -2786,6 +2807,45 @@ class ReplayController:
     def _set_state(self, state: ReplayState) -> None:
         self._session_manager._state = state
         self._session_manager._notify_listeners()
+
+    def _control_is_current(self, index: ReplayIndex, generation: int) -> bool:
+        """Reject work superseded by stop, unload or another replay operation."""
+        return (
+            generation == self._control_generation
+            and self._session_manager.get_loaded_index() is index
+        )
+
+    async def _cancel_control_operation(self) -> int:
+        """Invalidate and join owned catch-up work before changing playback."""
+        self._control_generation += 1
+        generation = self._control_generation
+        task = self._control_task
+        if task is not None and task is not asyncio.current_task():
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
+        if self._control_task is task:
+            self._control_task = None
+        return generation
+
+    async def _run_control_operation(
+        self, operation: Callable[[int], Awaitable[None]]
+    ) -> None:
+        """Own catch-up independently of the service caller so stop can cancel it."""
+        generation = await self._cancel_control_operation()
+        if generation != self._control_generation:
+            return
+        task = self._hass.async_create_task(operation(generation))
+        self._control_task = task
+        try:
+            await task
+        except asyncio.CancelledError:
+            if generation == self._control_generation:
+                await self.async_stop()
+                raise
+        finally:
+            if self._control_task is task:
+                self._control_task = None
 
     def _current_or_pending_position_ms(self, index: ReplayIndex) -> int:
         if self._transport is not None:
@@ -2857,6 +2917,7 @@ class ReplayController:
     ) -> None:
         if end_inclusive_ms <= start_exclusive_ms:
             return
+        generation = self._control_generation
         frames = await self._hass.async_add_executor_job(
             partial(
                 self._read_frames_range_sync,
@@ -2866,11 +2927,22 @@ class ReplayController:
                 seek_index=index.seek_index,
             )
         )
+        if not self._control_is_current(index, generation):
+            return
         if coalesce_position_z:
             frames = self._coalesce_seek_frames(frames)
-        for frame in frames:
+        deadline = self._hass.loop.time() + REPLAY_CATCHUP_YIELD_INTERVAL_S
+        for frame_number, frame in enumerate(frames, 1):
+            if not self._control_is_current(index, generation):
+                return
             if isinstance(frame.payload, dict):
                 self._live_bus.inject_message(frame.stream, frame.payload)
+            if (
+                frame_number % REPLAY_CATCHUP_BATCH_FRAMES == 0
+                or self._hass.loop.time() >= deadline
+            ):
+                await asyncio.sleep(0)
+                deadline = self._hass.loop.time() + REPLAY_CATCHUP_YIELD_INTERVAL_S
 
     async def _run_replay_reset_callbacks(self) -> None:
         callbacks = self._get_registry().get("replay_reset_callbacks", [])
@@ -3026,10 +3098,36 @@ class ReplayController:
         if target_ms == current_ms:
             return
 
+        await self._run_control_operation(
+            partial(
+                self._async_seek,
+                index,
+                baseline_ms,
+                initial_state,
+                current_ms,
+                target_ms,
+                previous_state,
+            )
+        )
+
+    async def _async_seek(
+        self,
+        index: ReplayIndex,
+        baseline_ms: int,
+        initial_state: dict[str, Any] | None,
+        current_ms: int,
+        target_ms: int,
+        previous_state: ReplayState,
+        generation: int,
+    ) -> None:
+        if not self._control_is_current(index, generation):
+            return
         self._set_state(ReplayState.SEEKING)
         self._pending_start_ms = target_ms
 
         await self._stop_active_replay_transport()
+        if not self._control_is_current(index, generation):
+            return
 
         checkpoint: dict[str, Any] | None = None
         if (
@@ -3051,8 +3149,12 @@ class ReplayController:
         if checkpoint is not None:
             checkpoint_ms = int(checkpoint["t"])
             await self._run_replay_reset_callbacks()
+            if not self._control_is_current(index, generation):
+                return
             self._inject_initial_state(checkpoint["state"])
             await self._prepare_track_map_replay_index(index)
+            if not self._control_is_current(index, generation):
+                return
             self._inject_formation_ready_if_applicable(index)
             await self._replay_frames_range(
                 index,
@@ -3062,8 +3164,12 @@ class ReplayController:
             )
         elif target_ms < current_ms:
             await self._run_replay_reset_callbacks()
+            if not self._control_is_current(index, generation):
+                return
             self._inject_initial_state(initial_state)
             await self._prepare_track_map_replay_index(index)
+            if not self._control_is_current(index, generation):
+                return
             self._inject_formation_ready_if_applicable(index)
             await self._replay_frames_range(
                 index,
@@ -3079,12 +3185,17 @@ class ReplayController:
                 coalesce_position_z=True,
             )
 
+        await asyncio.sleep(0)
+        if not self._control_is_current(index, generation):
+            return
         await self._start_transport(
             index,
             start_from_ms=target_ms,
             include_start_frame=False,
             paused=previous_state == ReplayState.PAUSED,
         )
+        if not self._control_is_current(index, generation):
+            return
         self._pending_start_ms = None
         self._set_state(previous_state)
 
@@ -3107,6 +3218,9 @@ class ReplayController:
         if self._session_manager.state != ReplayState.SELECTED:
             raise RuntimeError("No session selected for loading")
 
+        generation = await self._cancel_control_operation()
+        if generation != self._control_generation:
+            return
         # Lock replay state first so the supervisor cannot re-arm the bus
         # while we await async_close below
         self._pending_start_ms = None
@@ -3117,6 +3231,8 @@ class ReplayController:
         # Close the old replay reader and playback monitor as well as the bus.
         # A session selection does not by itself stop its previous transport.
         await self._stop_active_replay_transport()
+        if generation != self._control_generation:
+            return
         if self._replay_active:
             self._live_bus._transport_factory = self._original_transport_factory
             self._original_transport_factory = None
@@ -3124,7 +3240,11 @@ class ReplayController:
 
         # Download and index the session
         await self._run_replay_reset_callbacks()
+        if generation != self._control_generation:
+            return
         await self._session_manager.async_load_session()
+        if generation != self._control_generation:
+            return
 
         # If loading failed (state reverted to SELECTED), release the
         # replay lock so the supervisor can resume live data
@@ -3147,14 +3267,23 @@ class ReplayController:
         if not index:
             raise RuntimeError("No replay index loaded")
 
+        await self._run_control_operation(partial(self._async_play, index))
+
+    async def _async_play(self, index: ReplayIndex, generation: int) -> None:
+        if not self._control_is_current(index, generation):
+            return
         baseline_ms, initial_state = self._resolve_playback_start(index, log=True)
         start_from_ms = self._resolve_requested_start_ms(index)
         include_start_frame = start_from_ms <= baseline_ms
-
+        self._set_state(ReplayState.SEEKING)
         self._ensure_replay_active()
         await self._run_replay_reset_callbacks()
+        if not self._control_is_current(index, generation):
+            return
         self._inject_initial_state(initial_state)
         await self._prepare_track_map_replay_index(index)
+        if not self._control_is_current(index, generation):
+            return
         self._inject_formation_ready_if_applicable(index)
         if start_from_ms > baseline_ms:
             await self._replay_frames_range(
@@ -3165,12 +3294,18 @@ class ReplayController:
             )
             include_start_frame = False
 
+        # Flush the last coalesced driver publication before playback resumes.
+        await asyncio.sleep(0)
+        if not self._control_is_current(index, generation):
+            return
         await self._start_transport(
             index,
             start_from_ms=start_from_ms,
             include_start_frame=include_start_frame,
             paused=False,
         )
+        if not self._control_is_current(index, generation):
+            return
         self._pending_start_ms = None
         self._set_state(ReplayState.PLAYING)
         _LOGGER.info("Replay playback started")
@@ -3190,6 +3325,9 @@ class ReplayController:
     async def async_stop(self) -> None:
         """Stop playback and return to idle."""
         _LOGGER.info("Stopping replay playback")
+        generation = await self._cancel_control_operation()
+        if generation != self._control_generation:
+            return
         had_replay_state = (
             self._replay_active
             or self._transport is not None
@@ -3212,8 +3350,12 @@ class ReplayController:
                 self._live_bus._transport_factory = None
             if self._transport:
                 await self._transport.close()
+                if generation != self._control_generation:
+                    return
             # Now safe to close the bus
             await self._live_bus.async_close()
+            if generation != self._control_generation:
+                return
 
         self._transport = None
 
@@ -3221,12 +3363,16 @@ class ReplayController:
             self._playback_task.cancel()
             with suppress(asyncio.CancelledError):
                 await self._playback_task
+            if generation != self._control_generation:
+                return
             self._playback_task = None
 
         self._pending_start_ms = None
         self._reset_track_map_runtime()
         if had_replay_state:
             await self._run_replay_reset_callbacks()
+            if generation != self._control_generation:
+                return
 
         # Restore live state to idle - let LiveSessionSupervisor control it
         if self._live_state is not None:

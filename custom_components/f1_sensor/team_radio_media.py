@@ -71,9 +71,19 @@ def _source_url(runtime: dict[str, Any], capture: dict[str, Any]) -> str | None:
     supervisor = runtime.get("live_supervisor")
     window = getattr(supervisor, "current_window", None)
     session_coordinator = runtime.get("session_coordinator")
+    session_path = getattr(window, "path", None)
+    if not str(session_path or "").strip():
+        session_info = getattr(runtime.get("session_info_coordinator"), "data", None)
+        window_key = getattr(window, "session_key", None)
+        if (
+            isinstance(session_info, dict)
+            and window_key is not None
+            and str(session_info.get("Key")) == str(window_key)
+        ):
+            session_path = session_info.get("Path")
     return resolve_team_radio_source_url(
         capture,
-        session_path=getattr(window, "path", None),
+        session_path=session_path,
         year=getattr(session_coordinator, "year", None),
     )
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -71,7 +72,11 @@ class FailingCreateLovelaceResources(DummyLovelaceResources):
         raise RuntimeError("resource storage unavailable")
 
 
-def _write_bundled_assets(source_dir: Path, js_source: str) -> None:
+def _write_bundled_assets(
+    source_dir: Path,
+    js_source: str,
+    locale_languages: tuple[str, ...] = ("en", "nl", "sv"),
+) -> None:
     source_dir.mkdir(parents=True)
     for filename in frontend.LIVE_DATA_CARD_ASSET_FILENAMES:
         path = source_dir / filename
@@ -80,12 +85,28 @@ def _write_bundled_assets(source_dir: Path, js_source: str) -> None:
             path.write_text(js_source, encoding="utf-8")
         else:
             path.write_bytes(filename.encode())
+    locales_dir = source_dir / frontend.LIVE_DATA_CARD_LOCALES_DIR
+    locales_dir.mkdir(parents=True)
+    for language in locale_languages:
+        (locales_dir / f"{language}.json").write_text(
+            json.dumps({"card.language": language}), encoding="utf-8"
+        )
 
 
 def _stale_resource_issue(hass):
     return ir.async_get(hass).async_get_issue(
         DOMAIN, frontend.STALE_LIVE_DATA_CARD_RESOURCES_ISSUE_ID
     )
+
+
+def test_sync_bundled_assets_delivers_every_javascript_module(tmp_path: Path) -> None:
+    """A new imported module must also be available on a fresh installation."""
+    frontend._sync_bundled_live_data_card_assets(tmp_path)
+
+    for source in frontend.BUNDLED_LIVE_DATA_CARD_DIR.rglob("*.js"):
+        destination = tmp_path / source.relative_to(frontend.BUNDLED_LIVE_DATA_CARD_DIR)
+        assert destination.is_file(), f"Missing runtime module: {destination.name}"
+        assert destination.read_bytes() == source.read_bytes()
 
 
 def test_sync_bundled_assets_copies_card_files_and_changes_cache_key(
@@ -99,9 +120,16 @@ def test_sync_bundled_assets_copies_card_files_and_changes_cache_key(
 
     first = frontend._sync_bundled_live_data_card_assets(runtime_dir)
 
-    assert first.copied_files == len(frontend.LIVE_DATA_CARD_ASSET_FILENAMES)
+    assert first.copied_files == len(frontend.LIVE_DATA_CARD_ASSET_FILENAMES) + 4
     for filename in frontend.LIVE_DATA_CARD_ASSET_FILENAMES:
         assert (runtime_dir / filename).is_file()
+    assert json.loads(
+        (runtime_dir / frontend.LIVE_DATA_CARD_LOCALE_MANIFEST).read_text()
+    ) == ["en", "nl", "sv"]
+    for language in ("en", "nl", "sv"):
+        assert (
+            runtime_dir / frontend.LIVE_DATA_CARD_LOCALES_DIR / f"{language}.json"
+        ).is_file()
 
     (source_dir / "f1-sensor-live-data-card.js").write_text(
         "console.log('v2');",
@@ -111,6 +139,23 @@ def test_sync_bundled_assets_copies_card_files_and_changes_cache_key(
 
     assert second.cache_key != first.cache_key
     assert second.copied_files == 1
+
+
+def test_sync_bundled_assets_discovers_new_locale_without_code_change(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_dir = tmp_path / "bundled"
+    runtime_dir = tmp_path / "runtime"
+    _write_bundled_assets(source_dir, "console.log('available');", ("da", "en"))
+    monkeypatch.setattr(frontend, "BUNDLED_LIVE_DATA_CARD_DIR", source_dir)
+
+    frontend._sync_bundled_live_data_card_assets(runtime_dir)
+
+    assert json.loads(
+        (runtime_dir / frontend.LIVE_DATA_CARD_LOCALE_MANIFEST).read_text()
+    ) == ["da", "en"]
+    assert (runtime_dir / frontend.LIVE_DATA_CARD_LOCALES_DIR / "da.json").is_file()
 
 
 def test_sync_bundled_assets_copies_modular_localization_dependency(

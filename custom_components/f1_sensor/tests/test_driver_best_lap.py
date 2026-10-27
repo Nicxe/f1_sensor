@@ -215,12 +215,169 @@ async def test_restored_driver_keeps_stable_best_attributes(live_driver):
     assert driver["best_lap_time"] is None
     assert driver["best_lap_time_secs"] is None
     assert driver["best_lap_lap"] is None
+    assert driver["best_lap_time_source"] is None
+    assert driver["best_lap_gap"] is None
     assert driver["last_lap_status"] == {
         "time": None,
         "lap": None,
         "overall_fastest": False,
         "personal_fastest": False,
     }
+
+
+def _send_driver_lines(live_driver, lines):
+    """Keep realistic multi-driver source updates on the actual bus path."""
+    coordinator, sensor, _ = live_driver
+    coordinator._bus._dispatch("TimingData", {"Lines": lines})
+    sensor._update_from_coordinator()
+    return {
+        driver["racing_number"]: driver
+        for driver in sensor.extra_state_attributes["drivers"]
+    }
+
+
+def _practice_gap_snapshot():
+    # Reduced US FP1 2026 stream state after the corrected fastest lap at
+    # 00:52:13.409: native practice gaps accompany the official best times.
+    return {
+        "16": {
+            "Position": "1",
+            "BestLapTime": {"Value": "1:36.052"},
+            "TimeDiffToFastest": "",
+        },
+        "3": {
+            "Position": "2",
+            "BestLapTime": {"Value": "1:36.136"},
+            "TimeDiffToFastest": "+0.084",
+        },
+        "1": {
+            "Position": "3",
+            "BestLapTime": {"Value": "1:36.297"},
+            "TimeDiffToFastest": "+0.245",
+        },
+    }
+
+
+async def test_native_practice_gaps_survive_omitted_deltas(live_driver):
+    drivers = _send_driver_lines(live_driver, _practice_gap_snapshot())
+    assert drivers["16"]["best_lap_gap"] == 0.0
+    assert drivers["3"]["best_lap_gap"] == pytest.approx(0.084)
+    assert drivers["1"]["best_lap_gap"] == pytest.approx(0.245)
+    assert all(
+        driver["best_lap_time_source"] == "official" for driver in drivers.values()
+    )
+    assert all(driver["gap_to_leader"] is None for driver in drivers.values())
+
+    drivers = _send_driver_lines(
+        live_driver, {"3": {"InPit": True, "BestLapTime": {"Lap": 13}}}
+    )
+    assert drivers["3"]["best_lap_gap"] == pytest.approx(0.084)
+
+
+@pytest.mark.parametrize("raw", [None, "", "NaN", "inf", "-0.1", "1 LAP", True, {}, []])
+async def test_invalid_or_nonleader_empty_native_gap_is_unknown(live_driver, raw):
+    _send_driver_lines(live_driver, _practice_gap_snapshot())
+    drivers = _send_driver_lines(live_driver, {"3": {"TimeDiffToFastest": raw}})
+    assert drivers["3"]["best_lap_gap"] is None
+
+
+async def test_native_gap_requires_official_best_and_known_leader(live_driver):
+    _, _, send = live_driver
+    driver = send({"Position": "1", "TimeDiffToFastest": ""})
+    assert driver["best_lap_gap"] is None
+    driver = send({"LastLapTime": {"Value": "1:30.000"}})
+    assert driver["best_lap_time_source"] == "observed"
+    assert driver["best_lap_gap"] is None
+    driver = send({"BestLapTime": {"Value": "1:30.000"}, "TimeDiffToFastest": ""})
+    assert driver["best_lap_time_source"] == "official"
+    assert driver["best_lap_gap"] == 0.0
+    driver = send({"Position": "2"})
+    assert driver["best_lap_gap"] is None
+
+
+async def test_own_best_correction_and_deletion_invalidate_native_gap(live_driver):
+    _send_driver_lines(live_driver, _practice_gap_snapshot())
+    drivers = _send_driver_lines(
+        live_driver, {"3": {"BestLapTime": {"Value": "1:36.500"}}}
+    )
+    assert drivers["3"]["best_lap_gap"] is None
+    assert drivers["1"]["best_lap_gap"] == pytest.approx(0.245)
+    drivers = _send_driver_lines(live_driver, {"3": {"TimeDiffToFastest": "+0.448"}})
+    assert drivers["3"]["best_lap_gap"] == pytest.approx(0.448)
+    drivers = _send_driver_lines(live_driver, {"3": {"BestLapTime": {"Value": ""}}})
+    assert drivers["3"]["best_lap_gap"] is None
+    assert drivers["3"]["best_lap_time_source"] is None
+    drivers = _send_driver_lines(
+        live_driver, {"3": {"LastLapTime": {"Value": "1:35.000"}}}
+    )
+    assert drivers["3"]["best_lap_time"] is None
+    assert drivers["3"]["best_lap_gap"] is None
+
+
+@pytest.mark.parametrize("leader_best", ["1:35.000", "1:37.000", ""])
+async def test_changed_fastest_reference_invalidates_omitted_source_gaps(
+    live_driver, leader_best
+):
+    _send_driver_lines(live_driver, _practice_gap_snapshot())
+    new_leader = "16" if leader_best == "1:35.000" else "3"
+    changed = {"16": {"BestLapTime": {"Value": leader_best}}}
+    changed.setdefault(new_leader, {}).update(
+        {"Position": "1", "TimeDiffToFastest": ""}
+    )
+    drivers = _send_driver_lines(live_driver, changed)
+    assert drivers[new_leader]["best_lap_gap"] == 0.0
+    assert drivers["1"]["best_lap_gap"] is None
+
+
+async def test_source_gap_before_new_best_does_not_survive_changed_reference(
+    live_driver,
+):
+    _send_driver_lines(live_driver, _practice_gap_snapshot())
+    # The source can send new gaps 32 ms before the corresponding leader time.
+    _send_driver_lines(live_driver, {"3": {"TimeDiffToFastest": "+0.436"}})
+    drivers = _send_driver_lines(
+        live_driver, {"16": {"BestLapTime": {"Value": "1:35.700"}}}
+    )
+    assert drivers["3"]["best_lap_gap"] is None
+    drivers = _send_driver_lines(live_driver, {"3": {"TimeDiffToFastest": "+0.436"}})
+    assert drivers["3"]["best_lap_gap"] == pytest.approx(0.436)
+
+
+@pytest.mark.parametrize("session_type", ["Race", "Qualifying"])
+async def test_practice_gap_does_not_change_race_or_qualifying(
+    live_driver, session_type
+):
+    _, sensor, send = live_driver
+    sensor._session_info_coordinator.data = {"Type": session_type, "Name": session_type}
+    driver = send(
+        {
+            "Position": "2",
+            "BestLapTime": {"Value": "1:30.000"},
+            "TimeDiffToFastest": "+0.500",
+            "GapToLeader": "+12.345",
+            "IntervalToPositionAhead": {"Value": "+1.234"},
+        }
+    )
+    assert driver["best_lap_time_source"] == "official"
+    assert driver["best_lap_gap"] is None
+    assert driver["gap_to_leader"] == "+12.345"
+    assert driver["interval_to_position_ahead"] == "+1.234"
+
+
+@pytest.mark.parametrize("reset", ["live_window", "replay", "session_info"])
+async def test_practice_native_gap_resets_with_session(live_driver, reset):
+    coordinator, _, send = live_driver
+    _send_driver_lines(live_driver, _practice_gap_snapshot())
+    if reset == "replay":
+        _reset_replay_sensitive_coordinator_state(coordinator)
+    elif reset == "session_info":
+        coordinator._bus._dispatch("SessionInfo", {"Key": "practice-1"})
+        coordinator._bus._dispatch("SessionInfo", {"Key": "practice-2"})
+    else:
+        coordinator._handle_live_state(False, "window-ended")
+        coordinator._handle_live_state(True, "live_window")
+    driver = send({"Position": "2", "BestLapTime": {"Value": "1:40.000"}})
+    assert driver["best_lap_gap"] is None
 
 
 @pytest.mark.parametrize("delay", [0, 30])
@@ -237,6 +394,7 @@ async def test_registered_driver_entity_delivers_best_at_existing_delay(
         version=4,
         data={
             "sensor_name": "F1",
+            "data_choice_version": 1,
             CONF_LIVE_TIMING_AUTH_HEADER: (
                 f"Bearer {_jwt({'exp': int((datetime.now(UTC) + timedelta(days=2)).timestamp())})}"
             ),
@@ -259,7 +417,10 @@ async def test_registered_driver_entity_delivers_best_at_existing_delay(
         registry["live_state"].set_state(True, "live-Practice")
         await controller.async_set_delay(0)
         bus._dispatch("SessionInfo", {"Key": "practice", "Type": "Practice"})
-        bus._dispatch("TimingData", {"Lines": {"1": _partial_snapshot()}})
+        bus._dispatch(
+            "TimingData",
+            {"Lines": {"1": {**_partial_snapshot(), "TimeDiffToFastest": "+0.750"}}},
+        )
         await asyncio.sleep(1.05)  # Preserve the sensor's existing 1 Hz write limit.
         await hass.async_block_till_done()
         entity_id = er.async_get(hass).async_get_entity_id(
@@ -270,6 +431,9 @@ async def test_registered_driver_entity_delivers_best_at_existing_delay(
             return hass.states.get(entity_id).attributes["drivers"][0]["best_lap_time"]
 
         assert best() == "1:22.345"
+        assert hass.states.get(entity_id).attributes["drivers"][0][
+            "best_lap_gap"
+        ] == pytest.approx(0.750)
         clock = SimpleNamespace(value=100.0)
         monkeypatch.setattr(f1, "time", SimpleNamespace(monotonic=lambda: clock.value))
         await controller.async_set_delay(delay)
@@ -280,6 +444,9 @@ async def test_registered_driver_entity_delivers_best_at_existing_delay(
         await hass.async_block_till_done()
         if delay:
             assert best() == "1:22.345"
+            assert hass.states.get(entity_id).attributes["drivers"][0][
+                "best_lap_gap"
+            ] == pytest.approx(0.750)
             clock.value = 129.9
             f1._drain_delayed_ingest_queue(coordinator)
             await hass.async_block_till_done()
@@ -289,6 +456,9 @@ async def test_registered_driver_entity_delivers_best_at_existing_delay(
         await asyncio.sleep(1.05)
         await hass.async_block_till_done()
         assert best() == "1:25.678"
+        assert (
+            hass.states.get(entity_id).attributes["drivers"][0]["best_lap_gap"] is None
+        )
         assert not coordinator._delay_queue
         entity = hass.data["sensor"].get_entity(entity_id)
         assert not entity._pending_write

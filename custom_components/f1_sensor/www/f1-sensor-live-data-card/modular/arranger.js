@@ -39,7 +39,7 @@ export class F1ModuleArranger extends LitElement {
     this.cancel = () => this.finish(false);
     this.escape = event => { if (event.key === 'Escape' && this.gesture) { event.preventDefault(); event.stopPropagation(); this.finish(false); } };
   }
-  w(en, sv) { return words(this.language, en, sv); }
+  w(source, replacements = {}) { return words(this.language, source, replacements); }
   get columns() { return this.config.layout === 'columns' ? this.config.columns : 1; }
   get modules() { return this.draft ?? this.config.modules; }
   willUpdate(changed) { if (changed.has('config') && this.gesture && this.config !== this.gesture.config) this.finish(false); }

@@ -6,6 +6,15 @@ const pages = [
   'cards/modular', 'entities/track-status', 'help/overview',
 ];
 
+async function fillSearch(page, query) {
+  // The server-rendered textbox is visible before hydration. Focusing starts
+  // the index load; autocomplete exposes a combobox only once it is ready.
+  await page.getByLabel('Search', {exact: true}).click();
+  const input = page.getByRole('combobox', {name: 'Search', exact: true});
+  await expect(input).toHaveAttribute('aria-autocomplete', 'list', {timeout: 15000});
+  await input.fill(query);
+}
+
 for (const [query, title, route] of [
   ['track map', /Track Map/i, /\/(cards|features)\/track-map/],
   ['live delay', /Live Delay/i, /\/(features\/live-delay|reference\/live-delay-controls)/],
@@ -17,8 +26,7 @@ for (const [query, title, route] of [
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.goto('');
-    const input = page.getByRole('textbox', {name: 'Search', exact: true});
-    await input.fill(query);
+    await fillSearch(page, query);
     const suggestion = page.locator('[class*="suggestion_"]').filter({hasText: title}).first();
     await expect(suggestion).toBeVisible({timeout: 15000});
     await suggestion.click();
@@ -28,6 +36,39 @@ for (const [query, title, route] of [
     expect(errors).toEqual([]);
   });
 }
+
+test('production search waits for hydration on a cold load', async ({page, context}) => {
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  let releaseScripts;
+  const scriptsReleased = new Promise(resolve => { releaseScripts = resolve; });
+  await context.route(/\/assets\/js\/.*\.js(?:\?.*)?$/, async route => {
+    await scriptsReleased;
+    await route.continue();
+  });
+  try {
+    // Expose the real server-rendered page while its JavaScript is still held.
+    await page.goto('', {waitUntil: 'commit'});
+    const input = page.getByLabel('Search', {exact: true});
+    await Promise.all([
+      fillSearch(page, 'team radio'),
+      (async () => {
+        await expect(input).toBeFocused();
+        await expect(input).not.toHaveAttribute('role', 'combobox');
+        await expect(input).toHaveValue('');
+        releaseScripts();
+      })(),
+    ]);
+    const suggestion = page.locator('[class*="suggestion_"]').filter({hasText: /Team Radio/i}).first();
+    await expect(suggestion).toBeVisible({timeout: 15000});
+    await suggestion.click();
+    await expect(page).toHaveURL(/\/f1_sensor\/entities\/team-radio/);
+    await expect(page.locator('main')).toBeVisible();
+    expect(errors).toEqual([]);
+  } finally {
+    releaseScripts();
+  }
+});
 
 for (const theme of ['light', 'dark']) {
   test(`documentation is accessible and reflows in ${theme} mode`, async ({page}) => {
@@ -40,7 +81,10 @@ for (const theme of ['light', 'dark']) {
       await page.evaluate(() => document.fonts.ready);
       const violations = (await new AxeBuilder({page}).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations;
       expect(violations.map(({id, nodes}) => ({id, elements: nodes.map(n => n.target)})), route).toEqual([]);
-      const images = page.locator('main img[src^="/f1_sensor/"]');
+      if (route === '') {
+        await expect(page.locator('main img[alt="Home Assistant"]:visible')).toHaveCount(1);
+      }
+      const images = page.locator('main img[src^="/f1_sensor/"]:visible');
       for (const img of await images.all()) {
         await img.scrollIntoViewIfNeeded();
         await expect.poll(() => img.evaluate(el => el.complete && el.naturalWidth > 0)).toBe(true);
@@ -96,9 +140,7 @@ test('pairing query and fragment survive loading and reloading the helper', asyn
 test('mobile search remains usable with a collapsed navbar', async ({page}) => {
   await page.setViewportSize({width: 390, height: 844});
   await page.goto('');
-  const input = page.getByRole('textbox', {name: 'Search', exact: true});
-  await input.click();
-  await input.fill('live delay');
+  await fillSearch(page, 'live delay');
   const result = page.locator('[class*="suggestion_"]').filter({hasText: /Live Delay: sync with your TV/i}).first();
   await expect(result).toBeVisible({timeout: 15000});
   await result.click();

@@ -16,6 +16,7 @@ JOBS = (
     "lint",
     "backend",
     "frontend",
+    "translations",
     "documentation",
     "validation",
     "package",
@@ -23,10 +24,80 @@ JOBS = (
     "blueprints",
     "automation",
 )
-RUNTIME = {"lint", "backend", "frontend", "validation", "package"}
+RUNTIME = {"lint", "backend", "frontend", "translations", "validation", "package"}
+SHARED_POLICY = {
+    "scripts/ci_policy.py",
+    "scripts/ci_reuse.py",
+    "scripts/verification.py",
+    "scripts/verify_dev.py",
+    "scripts/run_check.py",
+    "scripts/ci_environment.py",
+    "scripts/setup_ci_environment.py",
+    "ci_tests/test_ci_policy.py",
+    "ci_tests/test_ci_reuse.py",
+    "ci_tests/test_verify_dev.py",
+    ".github/workflows/ci-checks.yml",
+    ".github/workflows/ci.yml",
+    ".github/workflows/development.yml",
+    ".github/workflows/release-pipeline.yml",
+}
+AUDIT_POLICY = {
+    "quality/npm-audit-policy.json",
+    "quality/npm-audit-allowlist.json",
+    "scripts/check_npm_audit.py",
+    "scripts/run_npm_audit.py",
+    "scripts/npm_audit_semver.cjs",
+    ".github/workflows/audit.yml",
+    ".github/workflows/security-health.yml",
+    ".github/workflows/security-snapshot.yml",
+}
+DOCUMENTATION_WORKFLOWS = {
+    ".github/workflows/documentation.yml",
+    ".github/workflows/documentation-publication.yml",
+    ".github/workflows/deploy.yml",
+}
+AUTOMATION_WORKFLOWS = {
+    ".github/workflows/automation-tests.yml",
+    ".github/workflows/cleanup-merged-branches.yml",
+    ".github/workflows/issue-component-labeler.yml",
+    ".github/workflows/issue-release-comment.yml",
+    ".github/workflows/issue-version-check.yml",
+    ".github/workflows/maintenance.yml",
+    ".github/workflows/pr-target-check.yml",
+    ".github/workflows/release.yml",
+    ".github/workflows/sync-after-release.yml",
+}
+TARGET_TRANSLATION = re.compile(
+    r"^custom_components/f1_sensor/(?:translations/|"
+    r"www/f1-sensor-live-data-card/localization/locales/)"
+    r"(?!en\.json$)[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*\.json$"
+)
 STABLE_RELEASE_TAG = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
-RELEASE_TRIGGER = re.compile(r"^(?:feat|fix)(?:\([^)]+\))?!?:")
+RELEASE_TRIGGER = re.compile(r"^(?:feat|fix|perf)(?:\([^)]+\))?!?:")
 RELEASE_POLICY_PATH = Path(__file__).parents[1] / "semantic-release-policy.json"
+DEVELOPMENT_DEPENDENCY_INPUTS = {
+    "package.json",
+    "package-lock.json",
+    "requirements-dev.txt",
+    "requirements/ha-current.txt",
+    "requirements/ha-minimum.txt",
+}
+PACKAGE_DEPENDENCY_FIELDS = {
+    "dependencies",
+    "devDependencies",
+    "optionalDependencies",
+    "peerDependencies",
+    "peerDependenciesMeta",
+    "overrides",
+}
+
+
+def breaking_commit_message(message: str) -> bool:
+    """Recognize breaking declarations regardless of the conventional commit type."""
+    return bool(
+        re.match(r"^\w+(?:\([^\n)]*\))?!:", message)
+        or re.search(r"(?im)^\s*BREAKING(?: CHANGE|-CHANGE)\s*:", message)
+    )
 
 
 def selected_checks(selected: set[str], *, audit: bool = True) -> dict[str, bool]:
@@ -153,30 +224,115 @@ def non_releasing_commit_headers() -> set[str]:
 
 
 def release_triggering_commits(commit_range: str) -> list[tuple[str, str]]:
-    """List feat/fix commits in a range, as semantic-release would consider them."""
-    result = subprocess.run(
-        ["git", "log", "--format=%H%x00%s", commit_range],
-        capture_output=True,
-        check=False,
-        text=True,
-    )
+    """Read full release-relevant messages, including performance and breaking changes."""
+    try:
+        result = subprocess.run(
+            ["git", "log", "-z", "--format=%H%x00%B", commit_range],
+            capture_output=True,
+            check=False,
+            text=True,
+        )
+    except (OSError, UnicodeError) as error:
+        raise RuntimeError("could not inspect release commits") from error
     if result.returncode:
         raise RuntimeError("could not inspect release commits")
     excluded_headers = non_releasing_commit_headers()
+    if not result.stdout:
+        return []
+    records = result.stdout.split("\0")
+    if records[-1] != "" or len(records) % 2 != 1:
+        raise RuntimeError("could not parse release commits")
     commits = []
-    for line in result.stdout.splitlines():
-        sha, separator, subject = line.partition("\x00")
-        if (
-            separator
-            and RELEASE_TRIGGER.match(subject)
-            and subject not in excluded_headers
+    for sha, message in zip(records[:-1:2], records[1:-1:2], strict=True):
+        if not re.fullmatch(r"[0-9a-f]{40}", sha):
+            raise RuntimeError("could not parse release commits")
+        subject = message.split("\n", 1)[0]
+        if subject not in excluded_headers and (
+            RELEASE_TRIGGER.match(subject) or breaking_commit_message(message)
         ):
             commits.append((sha, subject))
     return commits
 
 
+def dependency_maintenance_commit(sha: str) -> bool:
+    """Identify existing development dependency updates from immutable Git content.
+
+    This permission concerns promotion safety only. The commit still participates
+    in semantic-release analysis, and normal dependency/security checks still run.
+    """
+    if not re.fullmatch(r"[0-9a-f]{40}", sha):
+        return False
+
+    def read_git(*arguments: str) -> str:
+        try:
+            result = subprocess.run(
+                ["git", *arguments], capture_output=True, check=False, text=True
+            )
+        except (OSError, UnicodeError) as error:
+            raise RuntimeError("could not inspect dependency maintenance") from error
+        if result.returncode:
+            raise RuntimeError("could not inspect dependency maintenance")
+        return result.stdout
+
+    metadata = read_git("show", "-s", "--format=%P%x00%B", sha)
+    parents, separator, message = metadata.partition("\0")
+    if not separator or len(parents.split()) != 1:
+        return False
+    if breaking_commit_message(message):
+        return False
+    parent = parents.strip()
+    changes = read_git(
+        "diff-tree", "--no-commit-id", "--raw", "-r", "-z", "--no-renames", parent, sha
+    ).split("\0")
+    if changes[-1] != "" or len(changes) < 3 or len(changes) % 2 != 1:
+        return False
+    paths = []
+    for metadata, path in zip(changes[:-1:2], changes[1:-1:2], strict=True):
+        fields = metadata.split()
+        if (
+            len(fields) != 5
+            or fields[0] != ":100644"
+            or fields[1] != "100644"
+            or fields[4] != "M"
+            or path not in DEVELOPMENT_DEPENDENCY_INPUTS
+        ):
+            return False
+        paths.append(path)
+    for path in paths:
+        before = read_git("show", f"{parent}:{path}")
+        after = read_git("show", f"{sha}:{path}")
+        if not path.endswith(".json"):
+            continue
+        try:
+            previous, updated = json.loads(before), json.loads(after)
+        except (ValueError, TypeError):
+            return False
+        if not isinstance(previous, dict) or not isinstance(updated, dict):
+            return False
+        if path == "package.json":
+            if any(
+                field in package and not isinstance(package[field], dict)
+                for package in (previous, updated)
+                for field in PACKAGE_DEPENDENCY_FIELDS
+            ):
+                return False
+            outside_dependencies = [
+                {
+                    key: value
+                    for key, value in package.items()
+                    if key not in PACKAGE_DEPENDENCY_FIELDS
+                }
+                for package in (previous, updated)
+            ]
+            if json.dumps(outside_dependencies[0], sort_keys=True) != json.dumps(
+                outside_dependencies[1], sort_keys=True
+            ):
+                return False
+    return True
+
+
 def main_promotion_release_error(event: dict) -> str:
-    """Reject a beta promotion when main already has unreleased feat/fix history.
+    """Reject unreleased product history while allowing development dependency fixes.
 
     semantic-release analyzes all commits since its latest stable tag, not only
     the pull request diff. A reverted accidental merge remains in Git history,
@@ -194,7 +350,11 @@ def main_promotion_release_error(event: dict) -> str:
         tag = latest_stable_release_tag(base["sha"])
         if tag is None:
             return "Main has no stable semantic-release baseline tag."
-        inherited = release_triggering_commits(f"{tag}..{base['sha']}")
+        inherited = [
+            (sha, subject)
+            for sha, subject in release_triggering_commits(f"{tag}..{base['sha']}")
+            if not dependency_maintenance_commit(sha)
+        ]
     except RuntimeError as error:
         return f"Could not verify the semantic-release boundary: {error}."
     if not inherited:
@@ -202,7 +362,7 @@ def main_promotion_release_error(event: dict) -> str:
     subjects = ", ".join(f"{sha[:7]} {subject}" for sha, subject in inherited[:3])
     extra = "" if len(inherited) <= 3 else f" (+{len(inherited) - 3} more)"
     return (
-        f"Main already has {len(inherited)} unreleased feat/fix commit(s) since {tag} "
+        f"Main already has {len(inherited)} unreleased release-relevant commit(s) since {tag} "
         f"before this beta promotion: {subjects}{extra}. Establish or repair the "
         "semantic-release baseline before merging so the draft contains only the "
         "intended release changes."
@@ -310,38 +470,83 @@ def branch_error(event: dict, files: list[str]) -> str:
 def select_jobs(
     files: list[str] | None, event: dict, event_name: str, branch: str
 ) -> dict[str, bool]:
-    pr = event.get("pull_request", {})
-    # Registry advisories belong to maintenance, not contributor verification.
-    # Keep stable/beta release verification and maintenance behavior unchanged.
-    audit = not (
-        pr
-        or event_name == "pull_request"
-        or (event_name == "push" and branch in ("dev", "content"))
-    )
-    promotion = (
-        pr.get("base", {}).get("ref") in ("beta", "main")
-        and pr.get("head", {}).get("ref") != "content"
-    )
-    if (
-        files is None
-        or event_name in ("workflow_dispatch", "schedule")
-        or promotion
-        or (event_name == "push" and branch in ("beta", "main"))
-    ):
-        return selected_checks(set(JOBS), audit=audit)
-    selected = {"automation"}
+    if files is None or event_name in ("workflow_dispatch", "schedule"):
+        return selected_checks(set(JOBS))
+    if files and all(TARGET_TRANSLATION.fullmatch(path) for path in files):
+        return selected_checks({"translations"})
+    selected: set[str] = set()
     for path in files:
-        if path.startswith(
-            (".github/", "scripts/", "ci_tests/", "quality/", "requirements")
-        ) or path in (
-            "package.json",
-            "package-lock.json",
-            "pyproject.toml",
-            "conftest.py",
-            "release.config.js",
-            "release.config.cjs",
+        if (
+            path in SHARED_POLICY
+            or path.startswith("requirements/")
+            or path
+            in (
+                "package.json",
+                "package-lock.json",
+                "pyproject.toml",
+                "conftest.py",
+                ".node-version",
+                ".python-version",
+                ".npmrc",
+            )
         ):
             selected.update(JOBS)
+        elif path in AUDIT_POLICY:
+            selected.update(("lint", "automation", "audit"))
+        elif (
+            path in DOCUMENTATION_WORKFLOWS
+            or path == "ci_tests/documentation_channels.test.mjs"
+            or path.startswith(
+                (".github/scripts/documentation-", "ci_tests/documentation-")
+            )
+        ):
+            selected.update(("automation", "documentation"))
+        elif path in ("scripts/check_coverage.py", "quality/coverage-ratchet.json"):
+            selected.update(("lint", "backend", "automation"))
+        elif path in (
+            "scripts/run_ci_tests.py",
+            "scripts/run_tests.sh",
+            "scripts/test_installed_release.py",
+            ".github/workflows/tests.yml",
+        ) or path.startswith(("tests/", "ci_smoke/")):
+            selected.update(("lint", "backend", "validation", "package"))
+        elif path in (
+            "scripts/check_translations.py",
+            ".github/workflows/translations.yml",
+        ):
+            selected.update(("lint", "translations", "automation"))
+        elif path in (
+            "scripts/check_manifest.py",
+            "scripts/check_localization.py",
+            "scripts/check_release_build.py",
+            "scripts/build_release.py",
+            ".github/workflows/package.yml",
+        ):
+            selected.update(("lint", "package", "automation"))
+        elif path == ".github/workflows/ruff.yml":
+            selected.update(("lint", "automation"))
+        elif path == ".github/workflows/validate.yml":
+            selected.update(("validation", "automation"))
+        elif path == ".github/workflows/frontend.yml":
+            selected.update(("frontend", "automation"))
+        elif path in (
+            "release.config.js",
+            "release.config.cjs",
+            "semantic-release-policy.json",
+        ):
+            selected.update(("automation", "package", "audit"))
+        elif (
+            path in AUTOMATION_WORKFLOWS
+            or path == ".github/PULL_REQUEST_TEMPLATE.md"
+            or path.startswith(
+                (".github/scripts/", ".github/ISSUE_TEMPLATE/", "ci_tests/")
+            )
+        ):
+            # Issue/PR metadata, branch synchronization and release automation
+            # have executable contract tests, but do not change HA or browsers.
+            selected.add("automation")
+            if path.endswith(".py"):
+                selected.add("lint")
         elif path.startswith("blueprints/"):
             selected.update(("blueprints", "documentation"))
         elif (
@@ -358,7 +563,54 @@ def select_jobs(
             selected.update(JOBS)
         elif path not in ("LICENSE", ".gitignore"):
             selected.update(JOBS)
-    return selected_checks(selected, audit=audit)
+    return selected_checks(selected)
+
+
+def audit_context(
+    event: dict, event_name: str, branch: str, files: list[str] | None = None
+) -> tuple[str, str]:
+    """Ordinary changes block new risks; complete release readiness is separate."""
+    if files is None:
+        return "gate", ""
+    if files and any(path in AUDIT_POLICY for path in files):
+        return "gate", ""
+    pr = event.get("pull_request")
+    if pr:
+        return "introduced", pr["base"]["sha"]
+    if event_name == "push" and branch in ("dev", "content", "beta", "main"):
+        base = event.get("before", "")
+        if re.fullmatch(r"[0-9a-f]{40}", base) and set(base) != {"0"}:
+            return "introduced", base
+    return "gate", ""
+
+
+def release_product_checks(
+    selected: dict[str, bool],
+    *,
+    separate_delivery: bool,
+    event_name: str,
+    branch: str,
+    verification_only: bool = False,
+) -> dict[str, bool]:
+    """Delegate delivery for release branches or an explicit dev-only dry run."""
+    selected = dict(selected)
+    if separate_delivery:
+        release_target = event_name in ("push", "workflow_dispatch") and branch in (
+            "beta",
+            "main",
+        )
+        dev_dry_run = (
+            event_name == "workflow_dispatch"
+            and branch == "dev"
+            and verification_only is True
+        )
+        if not (release_target or dev_dry_run):
+            raise ValueError(
+                "Separate delivery requires a trusted beta/main execution or an explicit dev verification-only dispatch"
+            )
+        selected["documentation"] = False
+        selected["audit"] = False
+    return selected
 
 
 def gate_errors(selected: dict, results: dict, reused=()) -> list[str]:
@@ -397,6 +649,9 @@ def main() -> int:
     if args.mode == "gate":
         results = json.loads(os.environ["CI_NEEDS"])
         if results.get("plan", {}).get("result") != "success":
+            if os.environ.get("GITHUB_OUTPUT"):
+                with Path(os.environ["GITHUB_OUTPUT"]).open("a") as output:
+                    output.write("result=failure\n")
             print("CI selection/branch policy failed")
             return 1
         evidence = json.loads(results["plan"]["outputs"].get("reused", "{}"))
@@ -415,7 +670,21 @@ def main() -> int:
             results,
             evidence.get("checks", []),
         )
+        summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+        if summary_path:
+            with Path(summary_path).open("a") as summary:
+                summary.write("## Verification result\n\n")
+                summary.write(
+                    "All selected checks passed.\n"
+                    if not errors
+                    else "The following checks need attention; aggregate failures are consequences of these results.\n\n"
+                    + "\n".join(f"- {error}" for error in errors)
+                    + "\n"
+                )
         print("\n".join(errors) if errors else "All applicable checks passed")
+        if os.environ.get("GITHUB_OUTPUT"):
+            with Path(os.environ["GITHUB_OUTPUT"]).open("a") as output:
+                output.write(f"result={'failure' if errors else 'success'}\n")
         return int(bool(errors))
     event = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text())
     name = os.environ["GITHUB_EVENT_NAME"]
@@ -447,8 +716,38 @@ def main() -> int:
         print(error)
         return 1
     selected = select_jobs(files, event, name, os.environ.get("GITHUB_REF_NAME", ""))
+    selected = release_product_checks(
+        selected,
+        separate_delivery=os.environ.get("CI_SEPARATE_DELIVERY") == "true",
+        event_name=name,
+        branch=os.environ.get("GITHUB_REF_NAME", ""),
+        verification_only=(
+            name == "workflow_dispatch"
+            and isinstance(event.get("inputs"), dict)
+            and (
+                event["inputs"].get("release") is False
+                or event["inputs"].get("release") == "false"
+            )
+        ),
+    )
+    audit_mode, audit_base = audit_context(
+        event, name, os.environ.get("GITHUB_REF_NAME", ""), files
+    )
+    tested_sha = subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], text=True
+    ).strip()
+    tested_tree = subprocess.check_output(
+        ["git", "rev-parse", "HEAD^{tree}"], text=True
+    ).strip()
     print(json.dumps({"files": files, "checks": selected}, indent=2))
     with Path(os.environ["GITHUB_OUTPUT"]).open("a") as output:
+        output.write(f"tested_sha={tested_sha}\n")
+        output.write(f"tested_tree={tested_tree}\n")
+        if event.get("pull_request"):
+            output.write(f"tested_base={event['pull_request']['base']['sha']}\n")
+            output.write(f"tested_head={event['pull_request']['head']['sha']}\n")
+        output.write(f"audit_mode={audit_mode}\n")
+        output.write(f"audit_base={audit_base}\n")
         output.write(
             f"deploy={str(should_deploy(files, name, os.environ.get('GITHUB_REF_NAME', ''))).lower()}\n"
         )

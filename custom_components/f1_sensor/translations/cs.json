@@ -1,0 +1,331 @@
+{
+  "device_automation": {
+    "trigger_type": {
+      "race_week_started": "Začal závodní týden",
+      "race_week_ended": "Závodní týden skončil",
+      "safety_car_deployed": "Safety car na trati",
+      "safety_car_cleared": "Safety car ukončen",
+      "on_track_incident_detected": "Nehoda na trati zaznamenána",
+      "on_track_incident_cleared": "Nehoda na trati vyklizena",
+      "formation_start_ready": "Záváděcí kolo připraveno",
+      "overtake_mode_enabled": "Overtake mode povolen",
+      "overtake_mode_disabled": "Overtake mode zakázán",
+      "session_live": "Session začala",
+      "track_status_clear": "Stav tratě: Volno",
+      "track_status_yellow": "Stav tratě: Žluté vlajky",
+      "track_status_safety_car": "Stav tratě: Safety car",
+      "track_status_vsc": "Stav tratě: Virtuální safety car",
+      "track_status_red_flag": "Stav tratě: Červené vlajky",
+      "new_race_control_message": "Nová zpráva z vedení závodu",
+      "new_fia_document": "FIA zveřejnila nový dokument",
+      "investigation_changed": "Stav vyšetřovanání byl změněn",
+      "new_team_radio": "Nová týmová radiová zpráva",
+      "favorite_driver_position_gained": "Oblíbený jezdec vylepšil svojí pozici",
+      "favorite_driver_position_lost": "Oblíbený jezdec ztratil pozici",
+      "favorite_driver_entered_pits": "Oblíbený jezdec vjel do boxů",
+      "favorite_driver_exited_pits": "Oblíbený jezdec opustil boxy",
+      "favorite_driver_retired": "Oblíbený jezdec odstoupil",
+      "live_timing_online": "Live timing živě",
+      "live_timing_offline": "Live timing offine",
+      "possible_on_track_incident_detected": "Zaznamenána možná nehoda na trati",
+      "possible_on_track_incident_cleared": "Možná nehoda na trati vyklizena"
+    }
+  },
+  "config": {
+    "step": {
+      "user": {
+        "title": "Nastavení F1 Sensoru",
+        "data": {
+          "sensor_name": "Název zařízení",
+          "enabled_sensors": "Povolené sensory",
+          "operation_mode": "Funkční režim",
+          "replay_file": "Cesta souboru pro přehrání",
+          "enable_race_control": "Povolit online/live F1 API (Vedení závodu/Trať/Session)",
+          "install_dashboard_cards": "Nainstalovat hromadné karty na dashboard",
+          "race_week_start_day": "První den závodního týdne",
+          "live_timing_auth_header": "Ruční záloha: F1TV autorizační hodnota",
+          "clear_live_timing_auth_header": "Smazat F1TV autorizační hodnotu",
+          "start_f1tv_pairing": "Doporučeno: Připojit F1TV přístup pomocí Token Helperu",
+          "install_legacy_cards": "Nainstalovat původní karty na dashboard"
+        },
+        "data_description": {
+          "operation_mode": "Zvolte Live k připojení Formula 1 SignalR nebo Development pro přehrávání uloženého záznamu z místního zdroje",
+          "replay_file": "Absolutní cesta k nahrávce SignalR‚ Vyžadováno pouze v Development režimu",
+          "enable_race_control": "Připojit se k Formula 1 Live Timingu přes SignalR pro příjem živých aktualizací, pokud není povoleno, nebudou tyto senzory vytvořeny.",
+          "install_dashboard_cards": "Zaregistruje hromadné F1 Sensor karty v Home Assistantu. Zakázaní omezí používání pouze na entity a automatizace. Existující F1 dashboard karty přestanou fungovat dokud nedojde k novému načtení prohlížeče.",
+          "race_week_start_day": "Výběr prvního dne závodního dne. Sobota, Neděle nebo Pondělí.",
+          "live_timing_auth_header": "Ruční záloha pro případ, kdy párování Token Helperem nefunguje. Vložte celý Bearer token z F1TV Token Helperu jen jako pokročilou zálohu. Ponechte prázdné pro použití veřejného Live Timingu bez režimu přehrávání nebo při spuštění archivního záznamu.",
+          "start_f1tv_pairing": "Doporučená cesta. Připojte aktivní placené předplatné F1TV pro použití režimu přehrávání, archivovaných záznamů a rozšířených živých dat. Veřejný Live Timing funguje i bez placeného účtu.",
+          "install_legacy_cards": "Zaregistrovat také vyřazené F1 karty. Nová instalace je vynechává; existující instalace zachovává předchozí nastavení. Vyžaduje instalaci dashboard karet . Obnovte okno svého prohlížeče po změnách nastavení. Zakázání znemožní fungování starých karet pokud je sami nepřevedete do nové F1 Sensor karty. Pokud je F1 Sensor nainstalován vícekrát, staré karty zůstanou dostupné pro libovolnou instalaci, která je používá."
+        }
+      },
+      "reconfigure": {
+        "title": "Přenastavit F1 Sensor",
+        "data": {
+          "sensor_name": "Název zařízení",
+          "enabled_sensors": "Povolené senzory",
+          "operation_mode": "Režim fungování",
+          "replay_file": "Cesta k záznamu",
+          "enable_race_control": "Povolit online F1 API",
+          "install_dashboard_cards": "Nainstalovat hromadné karty na dashboard",
+          "race_week_start_day": "První den závodního týdne",
+          "live_timing_auth_header": "Ruční záloha: F1TV autorizační hodnota",
+          "clear_live_timing_auth_header": "Smazat F1TV autorizační hodnotu",
+          "start_f1tv_pairing": "Doporučeno: Připojit F1TV přes Token Helper",
+          "install_legacy_cards": "Instalovat původní karty na dashboard"
+        }
+      }
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "formation_start": {
+        "name": "Zaváděcí kolo zahájeno"
+      },
+      "overtake_mode": {
+        "name": "Overtake režim"
+      },
+      "possible_on_track_incident": {
+        "name": "Zaznamenán incident možné nehody na trati"
+      },
+      "race_week": {
+        "name": "Závodní týden"
+      },
+      "live_timing_online": {
+        "name": "Live timing je online"
+      },
+      "safety_car": {
+        "name": "Safety car"
+      },
+      "on_track_incident": {
+        "name": "Incident na trati"
+      }
+    },
+    "calendar": {
+      "season_calendar": {
+        "name": "Kalendář sezóny"
+      }
+    },
+    "button": {
+      "refresh_f1tv_access": {
+        "name": "Obnovit přístup F1TV"
+      },
+      "delay_calibration_match": {
+        "name": "Synchronizovat zpoždění přenosu"
+      },
+      "replay_load": {
+        "name": "Nahrát session"
+      },
+      "replay_play": {
+        "name": "Přehrát"
+      },
+      "replay_pause": {
+        "name": "Pozastavit"
+      },
+      "replay_back_30": {
+        "name": "Vrátit 30 sekund"
+      },
+      "replay_forward_30": {
+        "name": "30 sekund vpřed"
+      },
+      "replay_stop": {
+        "name": "Zastavit"
+      },
+      "replay_refresh": {
+        "name": "Obnovit session"
+      },
+      "jolpica_ua_test": {
+        "name": "Uživatelský test Jolpica"
+      },
+      "clear_f1tv_access": {
+        "name": "Smazat přístup F1TV"
+      }
+    },
+    "switch": {
+      "delay_calibration": {
+        "name": "Kalibrace zpoždění"
+      },
+      "no_spoiler_mode": {
+        "name": "Režim Bez Spoilerů"
+      }
+    },
+    "number": {
+      "live_delay": {
+        "name": "Zpoždění živého přenosu"
+      }
+    },
+    "media_player": {
+      "replay_player": {
+        "name": "Přehrávač záznamů"
+      }
+    },
+    "select": {
+      "favorite_driver": {
+        "name": "Oblíbený jezdec"
+      },
+      "live_delay_reference": {
+        "name": "Referenční bod zpoždění"
+      },
+      "replay_year": {
+        "name": "Ročník záznamu"
+      },
+      "replay_session": {
+        "name": "Session záznamu"
+      },
+      "replay_start_reference": {
+        "name": "Reference začátku záznamu"
+      }
+    },
+    "sensor": {
+      "team_radio": {
+        "name": "Týmové radio"
+      },
+      "race_lap_count": {
+        "name": "Počet závodních kol"
+      },
+      "driver_points_progression": {
+        "name": "Vývoj bodů pilota"
+      },
+      "constructor_points_progression": {
+        "name": "Vývoj bodů konstruktora"
+      },
+      "replay_status": {
+        "name": "Stav záznamu"
+      },
+      "track_limits": {
+        "name": "Traťové limity"
+      },
+      "investigations": {
+        "name": "Vyšetřování a penalizace"
+      },
+      "straight_mode": {
+        "name": "Straight režim",
+        "state": {
+          "normal_grip": "Běžný grip",
+          "low_grip": "Nízký grip",
+          "disabled": "Zakázáno"
+        }
+      },
+      "track_status": {
+        "name": "Stav trati"
+      },
+      "session_status": {
+        "name": "Stav session"
+      },
+      "session_time_remaining": {
+        "name": "Zbývající čas session"
+      },
+      "session_time_elapsed": {
+        "name": "Uplynulý čas session"
+      },
+      "race_time_to_three_hour_limit": {
+        "name": "Zbývající čas do 3-hodinového limitu"
+      },
+      "driver_list": {
+        "name": "Seznam pilotů"
+      },
+      "current_tyres": {
+        "name": "Aktuální pneumatiky"
+      },
+      "tyre_statistics": {
+        "name": "Statistiky pneumatik"
+      },
+      "pitstops": {
+        "name": "Zastávky v boxech"
+      },
+      "championship_prediction_drivers": {
+        "name": "Předpověď šampionátu (piloti)"
+      },
+      "championship_prediction_teams": {
+        "name": "Předpověď šampionátu (týmy)"
+      },
+      "fia_documents": {
+        "name": "Rozhodnutí FIA"
+      },
+      "live_timing_mode": {
+        "name": "Režim Live timingu"
+      },
+      "f1tv_token_status": {
+        "name": "Stav tokenu F1TV",
+        "state": {
+          "not_configured": "Není nakonfigurováno",
+          "valid": "Platné",
+          "expiring_soon": "Brzy expiruje",
+          "expired": "Expirováno",
+          "invalid": "Neplatné",
+          "rejected": "Odmítnuté"
+        }
+      },
+      "f1tv_token_expires_at": {
+        "name": "F1TV token expiruje"
+      },
+      "driver_positions": {
+        "name": "Pozice pilotů"
+      },
+      "favorite_driver": {
+        "name": "Oblíbený pilot"
+      },
+      "starting_grid": {
+        "name": "Startovní rošt"
+      },
+      "current_season": {
+        "name": "Současná sezóna"
+      },
+      "driver_standings": {
+        "name": "Pozice pilotů"
+      },
+      "constructor_standings": {
+        "name": "Pozice konstuktérů"
+      },
+      "weather": {
+        "name": "Počasí"
+      },
+      "track_weather": {
+        "name": "Počasí na trati"
+      },
+      "current_session": {
+        "name": "Aktuální session"
+      },
+      "last_race_results": {
+        "name": "Výsledky posledního závodu"
+      },
+      "season_results": {
+        "name": "Výsledky sezóny"
+      },
+      "sprint_results": {
+        "name": "Výsledky sprintu"
+      },
+      "lap_position_progression": {
+        "name": "Vývoj pozice v kole"
+      },
+      "race_control": {
+        "name": "Řízení závodu"
+      },
+      "top_three_p1": {
+        "name": "Top trojka (P1)"
+      },
+      "top_three_p2": {
+        "name": "Top trojka (P2)"
+      },
+      "top_three_p3": {
+        "name": "Top trojka (P3)"
+      },
+      "next_race": {
+        "name": "Příští závod"
+      },
+      "track_time": {
+        "name": "Čas na trati"
+      }
+    },
+    "weather": {
+      "weather": {
+        "name": "Počasí"
+      }
+    }
+  },
+  "issues": {
+    "f1tv_token_attention_required": {
+      "title": "Token F1TV live timingu vyžaduje pozornost"
+    }
+  }
+}

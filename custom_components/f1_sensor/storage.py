@@ -19,6 +19,7 @@ def entry_storage_keys(entry_id: str) -> tuple[str, ...]:
         f"{DOMAIN}_{entry_id}_replay_start_reference_v1",
         f"{DOMAIN}_{entry_id}_race_control_log_v1",
         f"{DOMAIN}_{entry_id}_favorite_driver_v1",
+        f"{DOMAIN}_{entry_id}_card_data_v1",
     )
 
 

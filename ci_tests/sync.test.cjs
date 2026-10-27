@@ -78,15 +78,17 @@ test('published stable releases only reconcile content',async()=>{
   await synchronize(env);
   assert.deepEqual(refs,['heads/content']);
 });
-test('published beta releases do not create an automatic synchronization PR',async()=>{
-  const env=environment('diverged'),refs=[],messages=[];
-  env.core.info=message=>messages.push(message);
-  env.context.payload.release={draft:false,prerelease:true,target_commitish:'beta',tag_name:'v5.8.0-beta.6'};
-  env.github.rest.git.getRef=async({ref})=>{refs.push(ref);return {data:{object:{sha:source}}};};
-  await synchronize(env);
-  assert.deepEqual(refs,[]);
-  assert.deepEqual(env.writes,[]);
-  assert.match(messages.join('\n'),/does not require automatic synchronization/);
+test('published beta and RC releases do not create an automatic synchronization PR',async()=>{
+  for (const tag of ['v5.8.0-beta.6', 'v5.8.0-rc.1']) {
+    const env=environment('diverged'),refs=[],messages=[];
+    env.core.info=message=>messages.push(message);
+    env.context.payload.release={draft:false,prerelease:true,target_commitish:'beta',tag_name:tag};
+    env.github.rest.git.getRef=async({ref})=>{refs.push(ref);return {data:{object:{sha:source}}};};
+    await synchronize(env);
+    assert.deepEqual(refs,[]);
+    assert.deepEqual(env.writes,[]);
+    assert.match(messages.join('\n'),/does not require automatic synchronization/);
+  }
 });
 test('manual synchronization requires an explicit supported pair',async()=>{
   const env=environment('identical');
