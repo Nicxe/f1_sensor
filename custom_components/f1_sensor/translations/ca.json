@@ -1,1 +1,472 @@
-{}
+{
+  "device_automation": {
+    "trigger_type": {
+      "race_week_started": "Ha començat la setmana de cursa",
+      "race_week_ended": "Ha acabat la setmana de cursa",
+      "safety_car_deployed": "Safety Car desplegat",
+      "safety_car_cleared": "Safety Car retirat",
+      "possible_on_track_incident_detected": "Possible incident a la pista detectat",
+      "possible_on_track_incident_cleared": "Possible incident a la pista resolt",
+      "on_track_incident_detected": "Incident a la pista detectat",
+      "on_track_incident_cleared": "Incident a la pista resolt",
+      "formation_start_ready": "Sortida llançada a punt",
+      "overtake_mode_enabled": "Mode avançament activat",
+      "overtake_mode_disabled": "Mode avançament desactivat",
+      "session_live": "La sessió ha començat en directe",
+      "track_status_clear": "Estat de la pista: Lliure",
+      "track_status_yellow": "Estat de la pista: Bandera groga",
+      "track_status_safety_car": "Estat de la pista: Safety Car",
+      "track_status_vsc": "Estat de la pista: Safety Car virtual",
+      "track_status_red_flag": "Estat de la pista: Bandera vermella",
+      "new_race_control_message": "Nou missatge de la Direcció de cursa",
+      "new_fia_document": "Nou document de la FIA publicat",
+      "investigation_changed": "L'estat de la investigació ha canviat",
+      "new_team_radio": "Nou missatge de ràdio d'equip",
+      "favorite_driver_position_gained": "El pilot preferit ha guanyat una posició",
+      "favorite_driver_position_lost": "El pilot preferit ha perdut una posició",
+      "favorite_driver_entered_pits": "El pilot preferit ha entrat a boxes",
+      "favorite_driver_exited_pits": "El pilot preferit ha sortit de boxes",
+      "favorite_driver_retired": "El pilot preferit s'ha retirat",
+      "live_timing_online": "Els temps en directe estan en línia",
+      "live_timing_offline": "Els temps en directe estan fora de línia"
+    }
+  },
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configuració de F1 Sensor",
+        "data": {
+          "sensor_name": "Nom del dispositiu",
+          "enabled_sensors": "Sensors activats",
+          "operation_mode": "Mode de funcionament",
+          "replay_file": "Ruta del fitxer de repetició",
+          "enable_race_control": "Activa l'API de F1 en directe (Direcció de cursa/Pista/Sessió)",
+          "install_dashboard_cards": "Instal·la les targetes de tauler incloses",
+          "race_week_start_day": "Primer dia de la setmana de cursa",
+          "live_timing_auth_header": "Còpia manual: valor d'autorització de F1TV",
+          "clear_live_timing_auth_header": "Esborra el valor d'autorització de F1TV",
+          "start_f1tv_pairing": "Recomanat: connecta l'accés a F1TV amb Token Helper",
+          "install_legacy_cards": "Instal·la les targetes de tauler antigues"
+        },
+        "data_description": {
+          "operation_mode": "Tria En directe per connectar-te a Formula 1 SignalR, o Desenvolupament per reproduir localment un volcat desat.",
+          "replay_file": "Ruta absoluta d'un fitxer de volcat de SignalR enregistrat. Només és necessària en mode Desenvolupament.",
+          "enable_race_control": "Es connecta a Formula 1 Live Timing mitjançant SignalR per rebre actualitzacions en directe. Si es desactiva, aquests sensors en directe no es creen.",
+          "install_dashboard_cards": "Registra les targetes de F1 Sensor incloses a Home Assistant. Desactiva-ho si només uses entitats i automatitzacions. Les targetes de F1 existents als taulers deixaran de funcionar després de tornar a carregar el navegador.",
+          "race_week_start_day": "Tria si la setmana de cursa comença en dissabte, diumenge o dilluns.",
+          "live_timing_auth_header": "Còpia manual si l'emparellament amb Token Helper no funciona. Enganxa el token Bearer complet de F1TV Token Helper només com a alternativa avançada. Deixa-ho en blanc per usar els temps en directe públics sense mode Repetició ni contingut d'arxiu.",
+          "start_f1tv_pairing": "Opció recomanada. Connecta el teu compte de Formula 1 per al mode Repetició i les dades d'arxiu. Un compte gratuït és suficient per a la repetició; les dades en directe addicionals depenen dels permisos del compte i de la disponibilitat de la sessió. Els temps en directe públics continuen funcionant sense això.",
+          "install_legacy_cards": "Registra també les targetes de F1 obsoletes. Les instal·lacions noves ho deixen desactivat; les instal·lacions existents conserven les targetes anteriors. Requereix la instal·lació de targetes de tauler. Torna a carregar el navegador després de canviar aquesta opció. Si es desactiva, les targetes antigues existents deixen de funcionar tret que les migris a la targeta F1 Sensor. Si hi ha diverses instal·lacions de F1 Sensor, les targetes antigues continuen disponibles mentre alguna instal·lació activada les demani."
+        },
+        "description": "La targeta F1 Sensor obté les dades automàticament. Sensors activats només controla les entitats exposades a Home Assistant. Conserva els sensors usats per targetes, plantilles o automatitzacions antigues. Els temps en directe i l'accés a F1TV segueixen els seus propis ajustos."
+      },
+      "reconfigure": {
+        "title": "Reconfigura F1 Sensor",
+        "data": {
+          "sensor_name": "Nom del dispositiu",
+          "enabled_sensors": "Sensors activats",
+          "operation_mode": "Mode de funcionament",
+          "replay_file": "Ruta del fitxer de repetició",
+          "enable_race_control": "Activa l'API de F1 en directe",
+          "install_dashboard_cards": "Instal·la les targetes de tauler incloses",
+          "race_week_start_day": "Primer dia de la setmana de cursa",
+          "live_timing_auth_header": "Còpia manual: valor d'autorització de F1TV",
+          "clear_live_timing_auth_header": "Esborra el valor d'autorització de F1TV",
+          "start_f1tv_pairing": "Recomanat: connecta l'accés a F1TV amb Token Helper",
+          "install_legacy_cards": "Instal·la les targetes de tauler antigues"
+        },
+        "data_description": {
+          "operation_mode": "Tria En directe per connectar-te a Formula 1 SignalR, o Desenvolupament per reproduir localment un volcat desat.",
+          "replay_file": "Ruta absoluta d'un fitxer de volcat de SignalR enregistrat. Només és necessària en mode Desenvolupament.",
+          "enable_race_control": "Es connecta a Formula 1 Live Timing per rebre actualitzacions en directe. Si es desactiva, aquests sensors en directe no es creen.",
+          "install_dashboard_cards": "Registra les targetes de F1 Sensor incloses a Home Assistant. Desactiva-ho si només uses entitats i automatitzacions. Les targetes de F1 existents als taulers deixaran de funcionar després de tornar a carregar el navegador.",
+          "race_week_start_day": "Tria si la setmana de cursa comença en dissabte, diumenge o dilluns.",
+          "live_timing_auth_header": "Còpia manual si l'emparellament amb Token Helper no funciona. Enganxa un nou token Bearer complet només com a alternativa avançada. Deixa-ho en blanc per mantenir el valor actual.",
+          "clear_live_timing_auth_header": "Elimina el valor d'autorització de F1TV desat i continua amb els temps en directe públics. El mode Repetició i el contingut d'arxiu no estaran disponibles.",
+          "start_f1tv_pairing": "Opció recomanada. Connecta el teu compte de Formula 1 per al mode Repetició i les dades d'arxiu. Un compte gratuït és suficient per a la repetició; les dades en directe addicionals depenen dels permisos del compte i de la disponibilitat de la sessió. Els temps en directe públics continuen funcionant sense això.",
+          "install_legacy_cards": "Registra també les targetes de F1 obsoletes. Les instal·lacions noves ho deixen desactivat; les instal·lacions existents conserven les targetes anteriors. Requereix la instal·lació de targetes de tauler. Torna a carregar el navegador després de canviar aquesta opció. Si es desactiva, les targetes antigues existents deixen de funcionar tret que les migris a la targeta F1 Sensor. Si hi ha diverses instal·lacions de F1 Sensor, les targetes antigues continuen disponibles mentre alguna instal·lació activada les demani."
+        },
+        "description": "La targeta F1 Sensor obté les dades automàticament. Sensors activats només controla les entitats exposades a Home Assistant. Conserva els sensors usats per targetes, plantilles o automatitzacions antigues. Els temps en directe i l'accés a F1TV segueixen els seus propis ajustos."
+      },
+      "reauth_confirm": {
+        "title": "Actualitza l'autorització de F1TV per als temps en directe",
+        "data": {
+          "live_timing_auth_header": "Còpia manual: valor d'autorització de F1TV",
+          "clear_live_timing_auth_header": "Esborra el valor d'autorització de F1TV",
+          "start_f1tv_pairing": "Recomanat: connecta l'accés a F1TV amb Token Helper"
+        },
+        "data_description": {
+          "live_timing_auth_header": "Còpia manual si l'emparellament amb Token Helper no funciona. Enganxa un nou token Bearer complet només com a alternativa avançada.",
+          "clear_live_timing_auth_header": "Elimina el valor d'autorització de F1TV desat i continua amb els temps en directe públics. El mode Repetició i el contingut d'arxiu no estaran disponibles.",
+          "start_f1tv_pairing": "Opció recomanada. Connecta el teu compte de Formula 1 per al mode Repetició i les dades d'arxiu. Un compte gratuït és suficient per a la repetició; les dades en directe addicionals depenen dels permisos del compte i de la disponibilitat de la sessió. Els temps en directe públics continuen funcionant sense això."
+        }
+      },
+      "f1tv_pairing": {
+        "title": "Connecta l'accés a F1TV",
+        "description": "Usa F1TV Token Helper per connectar el teu compte de Formula 1. Un compte gratuït és suficient per al mode Repetició; les dades en directe addicionals depenen dels permisos del compte i de la disponibilitat de la sessió. Els temps en directe públics continuen funcionant sense token. Aquest emparellament caduca a les {expires_at}."
+      },
+      "sensor_review": {
+        "title": "Revisa els canvis de sensors",
+        "description": "Sensors eliminats de la selecció anterior: {removed_sensors}. Les targetes, plantilles i automatitzacions antigues que usin aquestes entitats poden deixar de funcionar. Desactivar-los normalment a Home Assistant conserva les metadades del registre. Eliminar sensors mitjançant la selecció d'aquesta integració pot eliminar-ne les entrades del registre; si els tornes a crear més endavant, els noms personalitzats i els identificadors d'entitat poden canviar. La resta d'ajustos i les dades desades es conserven.",
+        "data": {
+          "confirm": "Confirma els canvis de sensors"
+        }
+      }
+    },
+    "abort": {
+      "reconfigure_successful": "F1 Sensor s'ha reconfigurat correctament.",
+      "f1tv_pairing_unavailable": "L'emparellament amb F1TV no està disponible en aquesta versió.",
+      "f1tv_pairing_failed": "L'emparellament amb F1TV no s'ha completat. Inicia una nova sessió d'emparellament i torna-ho a provar."
+    },
+    "error": {
+      "replay_required": "Selecciona un fitxer de volcat de repetició quan el mode Desenvolupament està activat.",
+      "replay_missing": "El fitxer de volcat de repetició no s'ha trobat o no es pot llegir.",
+      "auth_header_required": "Introdueix el valor d'autorització de F1TV o selecciona esborrar.",
+      "invalid_auth_header": "Introdueix un valor de token Bearer vàlid.",
+      "auth_token_missing_exp": "El token no inclou cap data de caducitat.",
+      "auth_token_expired": "El token ha caducat.",
+      "auth_token_expiring_soon": "El token caduca massa aviat. Genera'n un de nou i torna-ho a provar.",
+      "invalid_choice": "Tria una configuració vàlida.",
+      "confirmation_required": "Confirma les opcions revisades abans de desar."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Configura les funcions de F1 Sensor",
+        "data": {
+          "enabled_sensors": "Sensors activats",
+          "enable_race_control": "Activa l'API de F1 en directe",
+          "install_dashboard_cards": "Instal·la les targetes de tauler incloses",
+          "race_week_start_day": "Primer dia de la setmana de cursa",
+          "operation_mode": "Mode de funcionament",
+          "replay_file": "Ruta del fitxer de repetició",
+          "install_legacy_cards": "Instal·la les targetes de tauler antigues"
+        },
+        "data_description": {
+          "enable_race_control": "Connecta't a Formula 1 Live Timing només quan les funcions en directe estiguin activades.",
+          "install_dashboard_cards": "Registra les targetes de F1 Sensor incloses a Home Assistant. Desactiva-ho si només uses entitats i automatitzacions. Les targetes de F1 existents als taulers deixaran de funcionar després de tornar a carregar el navegador.",
+          "race_week_start_day": "Tria si la setmana de cursa comença en dissabte, diumenge o dilluns.",
+          "operation_mode": "Tria el mode En directe o el mode local de repetició Desenvolupament.",
+          "replay_file": "Ruta absoluta d'un volcat de repetició usat només en mode Desenvolupament.",
+          "install_legacy_cards": "Registra també les targetes de F1 obsoletes. Les instal·lacions noves ho deixen desactivat; les instal·lacions existents conserven les targetes anteriors. Requereix la instal·lació de targetes de tauler. Torna a carregar el navegador després de canviar aquesta opció. Si es desactiva, les targetes antigues existents deixen de funcionar tret que les migris a la targeta F1 Sensor. Si hi ha diverses instal·lacions de F1 Sensor, les targetes antigues continuen disponibles mentre alguna instal·lació activada les demani."
+        },
+        "description": "La targeta F1 Sensor obté les dades automàticament. Sensors activats només controla les entitats exposades a Home Assistant. Conserva els sensors usats per targetes, plantilles o automatitzacions antigues. Els temps en directe i l'accés a F1TV segueixen els seus propis ajustos."
+      },
+      "sensor_review": {
+        "title": "Revisa els canvis de sensors",
+        "description": "Sensors eliminats de la selecció anterior: {removed_sensors}. Les targetes, plantilles i automatitzacions antigues que usin aquestes entitats poden deixar de funcionar. Desactivar-los normalment a Home Assistant conserva les metadades del registre. Eliminar sensors mitjançant la selecció d'aquesta integració pot eliminar-ne les entrades del registre; si els tornes a crear més endavant, els noms personalitzats i els identificadors d'entitat poden canviar. La resta d'ajustos i les dades desades es conserven.",
+        "data": {
+          "confirm": "Confirma els canvis de sensors"
+        }
+      }
+    },
+    "error": {
+      "replay_required": "Selecciona un fitxer de volcat de repetició quan el mode Desenvolupament està activat.",
+      "replay_missing": "El fitxer de volcat de repetició no s'ha trobat o no es pot llegir.",
+      "invalid_choice": "Tria una configuració vàlida.",
+      "confirmation_required": "Confirma les opcions revisades abans de desar."
+    }
+  },
+  "issues": {
+    "stale_live_data_card_resources": {
+      "description": "Home Assistant encara té entrades de recursos de Lovelace obsoletes de l'antiga targeta F1 independent ({stale_resource_count} detectades). Poden provocar targetes duplicades o mantenir visibles les targetes de F1 després de desactivar les targetes de tauler incloses. Elimina l'antic repositori de tauler independent de HACS i les seves entrades de recursos de Lovelace obsoletes, i després reinicia Home Assistant o torna a carregar els recursos de Lovelace i actualitza el navegador forçant la recàrrega.",
+      "title": "S'han detectat recursos de l'antiga targeta independent de dades en directe de F1"
+    },
+    "f1tv_token_attention_required": {
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "data": {
+              "start_f1tv_pairing": "Recomanat: connecta l'accés a F1TV amb Token Helper",
+              "live_timing_auth_header": "Valor d'autorització de F1TV",
+              "clear_live_timing_auth_header": "Esborra el valor d'autorització de F1TV"
+            },
+            "data_description": {
+              "start_f1tv_pairing": "Opció recomanada. Inicia una sessió d'emparellament de curta durada i envia el token des de l'extensió del navegador sense copiar-lo manualment.",
+              "live_timing_auth_header": "Enganxa un nou valor de token Bearer de F1TV Token Helper per a l'accés a F1TV.",
+              "clear_live_timing_auth_header": "Elimina el token de F1TV desat i continua amb els temps en directe públics. El mode Repetició i el contingut d'arxiu no estaran disponibles."
+            },
+            "description": "El token de F1TV desat per a {name} requereix atenció. Els temps en directe públics continuen funcionant, però el mode Repetició, el contingut d'arxiu i les dades en directe addicionals de F1TV necessiten un token nou.",
+            "title": "Actualitza el token de F1TV per als temps en directe"
+          },
+          "f1tv_pairing": {
+            "title": "Connecta l'accés a F1TV",
+            "description": "Usa F1TV Token Helper per connectar el teu compte de Formula 1. Un compte gratuït és suficient per al mode Repetició; les dades en directe addicionals depenen dels permisos del compte i de la disponibilitat de la sessió. Els temps en directe públics continuen funcionant sense token. Aquest emparellament caduca a les {expires_at}."
+          }
+        }
+      },
+      "title": "El token de F1TV per als temps en directe requereix atenció"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "next_race": {
+        "name": "Propera cursa"
+      },
+      "track_time": {
+        "name": "Hora a la pista"
+      },
+      "current_season": {
+        "name": "Temporada actual"
+      },
+      "driver_standings": {
+        "name": "Classificació de pilots"
+      },
+      "constructor_standings": {
+        "name": "Classificació de constructors"
+      },
+      "weather": {
+        "name": "Meteorologia"
+      },
+      "track_weather": {
+        "name": "Meteorologia de la pista"
+      },
+      "current_session": {
+        "name": "Sessió actual"
+      },
+      "last_race_results": {
+        "name": "Resultats de l'última cursa"
+      },
+      "season_results": {
+        "name": "Resultats de la temporada"
+      },
+      "sprint_results": {
+        "name": "Resultats de l'esprint"
+      },
+      "lap_position_progression": {
+        "name": "Progressió de posicions per volta"
+      },
+      "race_control": {
+        "name": "Direcció de cursa"
+      },
+      "top_three_p1": {
+        "name": "Top tres (P1)"
+      },
+      "top_three_p2": {
+        "name": "Top tres (P2)"
+      },
+      "top_three_p3": {
+        "name": "Top tres (P3)"
+      },
+      "pitstops": {
+        "name": "Parades a boxes"
+      },
+      "championship_prediction_drivers": {
+        "name": "Previsió del campionat (pilots)"
+      },
+      "championship_prediction_teams": {
+        "name": "Previsió del campionat (equips)"
+      },
+      "fia_documents": {
+        "name": "Decisions de la FIA"
+      },
+      "live_timing_mode": {
+        "name": "Mode de temps en directe"
+      },
+      "f1tv_token_status": {
+        "name": "Estat del token de F1TV",
+        "state": {
+          "not_configured": "No configurat",
+          "valid": "Vàlid",
+          "expiring_soon": "Caduca aviat",
+          "expired": "Caducat",
+          "invalid": "No vàlid",
+          "rejected": "Rebutjat"
+        }
+      },
+      "f1tv_token_expires_at": {
+        "name": "Caducitat del token de F1TV"
+      },
+      "driver_positions": {
+        "name": "Posicions dels pilots"
+      },
+      "favorite_driver": {
+        "name": "Pilot preferit"
+      },
+      "starting_grid": {
+        "name": "Graella de sortida"
+      },
+      "track_limits": {
+        "name": "Límits de pista"
+      },
+      "investigations": {
+        "name": "Investigacions i sancions"
+      },
+      "straight_mode": {
+        "name": "Mode recta",
+        "state": {
+          "normal_grip": "Adherència normal",
+          "low_grip": "Adherència baixa",
+          "disabled": "Desactivat"
+        }
+      },
+      "track_status": {
+        "name": "Estat de la pista"
+      },
+      "session_status": {
+        "name": "Estat de la sessió"
+      },
+      "session_time_remaining": {
+        "name": "Temps restant de la sessió"
+      },
+      "session_time_elapsed": {
+        "name": "Temps transcorregut de la sessió"
+      },
+      "race_time_to_three_hour_limit": {
+        "name": "Temps fins al límit de 3 hores"
+      },
+      "driver_list": {
+        "name": "Llista de pilots"
+      },
+      "current_tyres": {
+        "name": "Pneumàtics actuals"
+      },
+      "tyre_statistics": {
+        "name": "Estadístiques de pneumàtics"
+      },
+      "team_radio": {
+        "name": "Ràdio d'equip"
+      },
+      "race_lap_count": {
+        "name": "Voltes de la cursa"
+      },
+      "driver_points_progression": {
+        "name": "Progressió de punts dels pilots"
+      },
+      "constructor_points_progression": {
+        "name": "Progressió de punts dels constructors"
+      },
+      "replay_status": {
+        "name": "Estat de la repetició"
+      }
+    },
+    "weather": {
+      "weather": {
+        "name": "Meteorologia"
+      }
+    },
+    "button": {
+      "delay_calibration_match": {
+        "name": "Iguala el retard en directe"
+      },
+      "replay_load": {
+        "name": "Carrega la sessió"
+      },
+      "replay_play": {
+        "name": "Reprodueix"
+      },
+      "replay_pause": {
+        "name": "Pausa"
+      },
+      "replay_back_30": {
+        "name": "Retrocedeix 30 segons"
+      },
+      "replay_forward_30": {
+        "name": "Avança 30 segons"
+      },
+      "replay_stop": {
+        "name": "Atura"
+      },
+      "replay_refresh": {
+        "name": "Actualitza les sessions"
+      },
+      "jolpica_ua_test": {
+        "name": "Prova de user-agent de Jolpica"
+      },
+      "clear_f1tv_access": {
+        "name": "Esborra l'accés a F1TV"
+      },
+      "refresh_f1tv_access": {
+        "name": "Actualitza l'accés a F1TV"
+      }
+    },
+    "switch": {
+      "delay_calibration": {
+        "name": "Calibratge del retard"
+      },
+      "no_spoiler_mode": {
+        "name": "Mode sense espòilers"
+      }
+    },
+    "number": {
+      "live_delay": {
+        "name": "Retard en directe"
+      }
+    },
+    "media_player": {
+      "replay_player": {
+        "name": "Reproductor de repetició"
+      }
+    },
+    "select": {
+      "favorite_driver": {
+        "name": "Pilot preferit"
+      },
+      "live_delay_reference": {
+        "name": "Referència del retard en directe"
+      },
+      "replay_year": {
+        "name": "Any de la repetició"
+      },
+      "replay_session": {
+        "name": "Sessió de la repetició"
+      },
+      "replay_start_reference": {
+        "name": "Referència d'inici de la repetició"
+      }
+    },
+    "binary_sensor": {
+      "race_week": {
+        "name": "Setmana de cursa"
+      },
+      "live_timing_online": {
+        "name": "Temps en directe en línia"
+      },
+      "safety_car": {
+        "name": "Safety Car"
+      },
+      "on_track_incident": {
+        "name": "Incident a la pista"
+      },
+      "possible_on_track_incident": {
+        "name": "Possible incident a la pista"
+      },
+      "formation_start": {
+        "name": "Sortida llançada"
+      },
+      "overtake_mode": {
+        "name": "Mode avançament"
+      }
+    },
+    "calendar": {
+      "season_calendar": {
+        "name": "Calendari de la temporada"
+      }
+    }
+  },
+  "exceptions": {
+    "card_data_notification_title": {
+      "message": "F1 Sensor: dades automàtiques de la targeta"
+    },
+    "card_data_notification": {
+      "message": "{name} ara proporciona les dades automàticament a la targeta F1 Sensor. Els teus sensors, ajustos i automatitzacions existents continuen funcionant. Opcionalment pots reduir els sensors exposats a Home Assistant a [Configuració de F1 Sensor]({integration_url}) → Configura. Conserva els sensors usats per targetes, plantilles o automatitzacions antigues. No cal cap configuració. Pots descartar aquest missatge; no tornarà a aparèixer després de reiniciar o tornar a carregar."
+    }
+  },
+  "services": {
+    "clear_race_control_log": {
+      "name": "Esborra el registre de la Direcció de cursa",
+      "description": "Esborra els missatges desats de la Direcció de cursa d'una instal·lació de F1 Sensor. Indica una entitat de sensor o una entrada de configuració.",
+      "fields": {
+        "entity_id": {
+          "name": "Entitat de la Direcció de cursa",
+          "description": "Sensor de la Direcció de cursa d'aquesta instal·lació. Omet-ho si uses entry_id."
+        },
+        "entry_id": {
+          "name": "Entrada de configuració de F1 Sensor",
+          "description": "Usa-ho en lloc d'entity_id quan no hi ha cap sensor de la Direcció de cursa exposat. Indica una sola adreça."
+        }
+      }
+    }
+  }
+}
