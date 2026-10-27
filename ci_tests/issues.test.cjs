@@ -102,7 +102,38 @@ test('issue form fields support CRLF, hashes and empty responses', () => {
   assert.deepEqual(componentLabels('### Component\n\nBoth integration and card'), ['integration', 'card']);
   assert.equal(dashboardCardVersion('### Dashboard Card Version\n\nModular F1 Sensor Live Data Card'), 'modular');
   assert.equal(dashboardCardVersion('### Dashboard Card Version\n\nLegacy standalone F1 Sensor card (deprecated)'), 'legacy');
+  assert.equal(componentLabels('### Component\n\nNew modular Live Data Card').includes('card'), true);
+  assert.equal(componentLabels('### Component\n\nLegacy standalone F1 Sensor card (deprecated)').includes('card'), true);
+  assert.equal(dashboardCardVersion('### Component\n\nNew modular Live Data Card'), 'modular');
+  assert.equal(dashboardCardVersion('### Component\n\nLegacy standalone F1 Sensor card (deprecated)'), 'legacy');
   assert.equal(dashboardCardVersion('### Dashboard Card Version\n\nNot sure'), 'unknown');
+});
+
+test('legacy card reports receive migration guidance', async () => {
+  const comments = [];
+  const github = {
+    paginate: async () => [],
+    rest: {issues: {
+      get: async () => ({data: {
+        body: '### Component\n\nLegacy standalone F1 Sensor card (deprecated)',
+        labels: [],
+      }}),
+      getLabel: async () => ({data: {}}),
+      addLabels: async () => {},
+      listComments() {},
+      createComment: async ({body}) => comments.push(body),
+    }},
+  };
+  const context = {
+    repo: {owner:'Nicxe', repo:'f1_sensor'},
+    payload: {issue: {number: 42}},
+  };
+
+  await updateIssue({github, context}, 'component');
+
+  assert.equal(comments.length, 1);
+  assert.match(comments[0], /<!-- f1-deprecated-card -->/);
+  assert.match(comments[0], /\[new modular F1 Sensor Live Data Card\]\(https:\/\/nicxe\.github\.io\/f1_sensor\/cards\/modular-migration\)/);
 });
 
 test('only older stable versions are outdated', () => {
