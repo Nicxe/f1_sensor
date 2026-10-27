@@ -1,1 +1,45 @@
-{}
+{
+  "device_automation": {
+    "trigger_type": {
+      "race_week_started": "Pretekový týždeň sa začal",
+      "race_week_ended": "Pretekový týždeň skončil",
+      "safety_car_deployed": "Výjazd bezpečnostného vozidla",
+      "safety_car_cleared": "Koniec výjazdu bezpečnostného vozidla",
+      "possible_on_track_incident_detected": "Možný incident na trati",
+      "on_track_incident_detected": "Incident na trati",
+      "possible_on_track_incident_cleared": "Koniec možného incidentu na trati",
+      "on_track_incident_cleared": "Koniec incidentu na trati",
+      "formation_start_ready": "Začiatok zahrievacieho kola pripravený",
+      "overtake_mode_enabled": "Povolený predbiehací režim",
+      "overtake_mode_disabled": "Zakázaný predbiehací režim",
+      "session_live": "Začala traťová aktivita",
+      "track_status_clear": "Trať je čistá",
+      "track_status_yellow": "Na trati je žltá vlajka",
+      "track_status_safety_car": "Na trati je bezpečnostné vozidlo",
+      "track_status_vsc": "Na trati je virtuálne bezpečnostné vozidlo",
+      "track_status_red_flag": "Na trati je červená vlajka",
+      "new_race_control_message": "Nová správa z riaditeľstva pretekov",
+      "new_fia_document": "FIA zverejnila nový dokument",
+      "investigation_changed": "Zmena vo vyšetrovaní",
+      "new_team_radio": "Zverejnená tímová vysielačka",
+      "favorite_driver_position_gained": "Obľúbený jazdec získal pozíciu",
+      "favorite_driver_position_lost": "Obľúbený jazdec sa prepadol v poradí",
+      "favorite_driver_entered_pits": "Obľúbený jazdec vošiel do boxov",
+      "favorite_driver_exited_pits": "Obľúbený jazdec vyšiel z boxov",
+      "favorite_driver_retired": "Obľúbený jazdec odstúpil z pretekov",
+      "live_timing_online": "Začiatok merania časov",
+      "live_timing_offline": "Koniec merania časov"
+    }
+  },
+  "config": {
+    "step": {
+      "user": {
+        "title": "Nastavenie F1 senzora",
+        "data": {
+          "sensor_name": "Názov zariadenia",
+          "enabled_sensors": "Zapnuté senzory"
+        }
+      }
+    }
+  }
+}
