@@ -17,7 +17,7 @@ jobs:
           persist-credentials: false
           ref: ${{ inputs.checkout_ref || github.sha }}
       - name: hassfest
-        uses: home-assistant/actions/hassfest@58bff37c8947f690ace498be413a9b78d6f30f93
+        uses: home-assistant/actions/hassfest@86d4564712fa02543c808e3a693dd04f9d3f8361
       - name: HACS validation
         uses: hacs/action@1ebf01c408f29afcb6406bd431bc98fd8cbb15aa
         with:
