@@ -39,7 +39,7 @@ function componentLabels(body) {
 }
 
 function dashboardCardVersion(body) {
-  const value = extractField(body, 'Dashboard Card Version').toLowerCase();
+  const value = (extractField(body, 'Dashboard Card Version') || extractField(body, 'Component')).toLowerCase();
   if (value.includes('deprecated') || value.includes('legacy')) return 'legacy';
   if (value.includes('modular')) return 'modular';
   return 'unknown';

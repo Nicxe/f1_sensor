@@ -3,21 +3,12 @@ on:
   schedule:
     - cron: '11 5 * * *'
   workflow_dispatch:
-  workflow_call:
-    inputs:
-      tools_ref:
-        description: Immutable reviewed evaluator commit for a default-branch launcher
-        type: string
-        default: ''
-      target_ref:
-        description: Optional immutable dependency snapshot instead of the daily branch matrix
-        type: string
-        default: ''
 permissions:
   contents: read
 jobs:
-  audit:
-    uses: ./.github/workflows/security-snapshot.yml
+  security-health:
+    # Use the reviewed immutable CI evaluator and its matching trusted tools.
+    # Only its evaluator runs; branch dependency snapshots are never installed.
+    uses: Nicxe/f1_sensor/.github/workflows/security-snapshot.yml@5184cedf1ca388135df0597a631d92478f212074
     with:
-      tools_ref: ${{ inputs.tools_ref || github.workflow_sha }}
-      target_ref: ${{ inputs.target_ref || '' }}
+      tools_ref: '5184cedf1ca388135df0597a631d92478f212074'

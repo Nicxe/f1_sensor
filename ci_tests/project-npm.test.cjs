@@ -33,7 +33,7 @@ test('missing, ranged or non-npm declarations cannot silently select another pac
 
 test('check and release wrappers consume the checkout Node and npm pins', () => {
   const workflow = name => yaml.load(fs.readFileSync(path.join(__dirname, '../.github/workflows', name), 'utf8'));
-  for (const name of ['frontend.yml', 'translations.yml', 'automation-tests.yml', 'audit.yml', 'release.yml']) {
+  for (const name of ['frontend.yml', 'translations.yml', 'automation-tests.yml', 'security-snapshot.yml', 'release.yml']) {
     const job = Object.values(workflow(name).jobs)[0];
     const node = job.steps.find(step => step.uses?.startsWith('actions/setup-node@'));
     assert.equal(node.with['node-version-file'], '.node-version', name);
@@ -57,7 +57,7 @@ test('check and release wrappers consume the checkout Node and npm pins', () => 
 });
 
 test('all shared Python check wrappers and release tooling consume the repository Python pin', () => {
-  for (const name of ['frontend.yml', 'translations.yml', 'automation-tests.yml', 'audit.yml', 'release.yml', 'ci-checks.yml', 'tests.yml', 'package.yml', 'ruff.yml', 'documentation.yml']) {
+  for (const name of ['frontend.yml', 'translations.yml', 'automation-tests.yml', 'security-snapshot.yml', 'release.yml', 'ci-checks.yml', 'tests.yml', 'package.yml', 'ruff.yml', 'documentation.yml']) {
     const workflow = yaml.load(fs.readFileSync(path.join(__dirname, '../.github/workflows', name), 'utf8'));
     for (const job of Object.values(workflow.jobs).filter(job => job.steps)) {
       const setup = job.steps.find(step => step.uses?.startsWith('actions/setup-python@'));
