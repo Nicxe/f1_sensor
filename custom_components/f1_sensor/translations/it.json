@@ -419,7 +419,8 @@
     "error": {
       "replay_required": "Seleziona un file scaricato del replay quando la modalità di Sviluppo è abilitata.",
       "replay_missing": "File scaricato del replay non trovato o illeggibile.",
-      "invalid_choice": "Scegli una configurazione valida."
+      "invalid_choice": "Scegli una configurazione valida.",
+      "confirmation_required": "Conferma le scelte effettuate prima di salvare."
     }
   }
 }
