@@ -137,18 +137,28 @@
           "confirm": {
             "data": {
               "live_timing_auth_header": "Valore di autorizzazione F1TV",
-              "clear_live_timing_auth_header": "Rimuovi valore di autorizzazione F1TV"
+              "clear_live_timing_auth_header": "Rimuovi valore di autorizzazione F1TV",
+              "start_f1tv_pairing": "Consigliato: Connetti l'accesso a F1TV con Token Helper"
             },
             "data_description": {
               "live_timing_auth_header": "Incolla un nuovo token Bearer da F1TV Token Helper per l’accesso F1TV.",
-              "clear_live_timing_auth_header": "Rimuovi il token F1TV salvato e continua solo con la telemetria pubblica."
+              "clear_live_timing_auth_header": "Rimuovi il token F1TV salvato e continua solo con la telemetria pubblica.",
+              "start_f1tv_pairing": "Procedura consigliata. Avvia una sessione di associazione temporanea e invia il token dall’estensione del browser senza doverlo copiare manualmente."
             },
             "description": "Il token F1TV salvato per {name} ha bisogno di attenzione. La telemetria pubblica continua a funzionare, ma i dati live F1TV non saranno usati finché il token non verrà sostituito.",
             "title": "Aggiorna il token F1TV"
+          },
+          "f1tv_pairing": {
+            "title": "Collega l'accesso a F1TV",
+            "description": "Utilizza F1TV Token Helper per collegare il tuo account Formula 1. L'account gratuito è sufficiente per il Replay Mode; i dati Live addizionali dipendono dai permessi dell'account e dalla disponibilità della sessione. Questa associazione scade il {expires_at}."
           }
         }
       },
       "title": "Il token F1TV ha bisogno di attenzione"
+    },
+    "stale_live_data_card_resources": {
+      "description": "Home Assistant contiene ancora voci di risorse Lovelace obsolete relative alla vecchia scheda F1 indipendente ({stale_resource_count} rilevate). Tali elementi possono causare la duplicazione delle schede o mantenere visibili le schede F1 anche dopo che le schede integrate nella dashboard sono state disabilitate. Rimuovi il vecchio repository della dashboard F1 (installato tramite HACS) e le relative voci di risorse Lovelace non più valide; dopodiché, riavvia Home Assistant oppure ricarica le risorse Lovelace ed esegui un aggiornamento completo (hard refresh) del browser.",
+      "title": "Rilevate vecchie risorse della scheda dati live F1 standalone"
     }
   },
   "entity": {
@@ -285,6 +295,12 @@
       },
       "replay_status": {
         "name": "Stato replay"
+      },
+      "favorite_driver": {
+        "name": "Pilota preferito"
+      },
+      "starting_grid": {
+        "name": "Griglia di partenza"
       }
     },
     "weather": {
@@ -322,6 +338,9 @@
       },
       "clear_f1tv_access": {
         "name": "Rimuovi accesso F1TV"
+      },
+      "refresh_f1tv_access": {
+        "name": "Aggiorna l'accesso a F1TV"
       }
     },
     "switch": {
@@ -354,6 +373,9 @@
       },
       "replay_start_reference": {
         "name": "Riferimento avvio sessione"
+      },
+      "favorite_driver": {
+        "name": "Pilota preferito"
       }
     },
     "binary_sensor": {
@@ -421,6 +443,28 @@
       "replay_missing": "File scaricato del replay non trovato o illeggibile.",
       "invalid_choice": "Scegli una configurazione valida.",
       "confirmation_required": "Conferma le scelte effettuate prima di salvare."
+    }
+  },
+  "exceptions": {
+    "card_data_notification_title": {
+      "message": "F1 Sensor: dati automatici per la scheda"
+    },
+    "card_data_notification": {
+      "message": "{name} ora fornisce automaticamente i dati alla scheda F1 Sensor. I sensori, le impostazioni e le automazioni già esistenti continueranno a funzionare. Se lo desideri, puoi ridurre il numero di sensori esposti in Home Assistant accedendo a [Impostazioni di F1 Sensor]({integration_url}) → Configura. Assicurati di mantenere i sensori utilizzati da schede, template o automazioni precedenti. Non è richiesta alcuna configurazione. Puoi ignorare questo messaggio; non verrà più visualizzato dopo un riavvio o un ricaricamento."
+    }
+  },
+  "services": {
+    "clear_race_control_log": {
+      "fields": {
+        "entity_id": {
+          "name": "Entità Race Control",
+          "description": "Sensore Race Control per questa installazione. Ignora se si utilizza entry_id."
+        },
+        "entry_id": {
+          "name": "Voce di configurazione di F1 Sensor",
+          "description": "Utilizzare questo parametro al posto di entity_id quando non è esposto alcun sensore Race Control. Fornire un indirizzo."
+        }
+      }
     }
   }
 }
