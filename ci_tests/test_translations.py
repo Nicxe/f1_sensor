@@ -110,6 +110,30 @@ class TranslationValidationTests(unittest.TestCase):
 
         self.assertIn("pt_BR.json: filename must use a BCP47 language tag", failures)
 
+    def test_ha_script_and_region_catalogs_accept_canonical_language_codes(
+        self,
+    ) -> None:
+        for code in ("zh-Hans", "zh-Hant", "sr-Latn", "pt-BR", "es-419"):
+            with self.subTest(code=code):
+                failures, _ = self._validate(
+                    {
+                        "en.json": {"config": {"title": "Setup"}},
+                        f"{code}.json": {"config": {"title": "Translation"}},
+                    }
+                )
+                self.assertEqual(failures, [])
+
+    def test_weblate_posix_script_code_requires_ha_filename_mapping(self) -> None:
+        for code, expected in (("zh_Hans", True), ("zh-Hans", False)):
+            with self.subTest(code=code):
+                failures, _ = self._validate(
+                    {
+                        "en.json": {"config": {"title": "Setup"}},
+                        f"{code}.json": {"config": {"title": "Translation"}},
+                    }
+                )
+                self.assertEqual(bool(failures), expected)
+
     def test_rewording_sparse_new_languages_and_repeated_placeholders_are_safe(
         self,
     ) -> None:
