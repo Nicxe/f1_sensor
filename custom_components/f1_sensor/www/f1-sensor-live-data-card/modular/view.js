@@ -205,6 +205,11 @@ export const sharedStyles = css`
   .details dl { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:12px; margin:0; }
   .details dd { margin:2px 0 0; }
   .timing-detail-actions { display:flex; justify-content:flex-end; margin-bottom:8px; }
+  .push-label { display:block; font-size:.8em; font-weight:650; white-space:nowrap; }
+  .push-result { display:block; font-variant-numeric:tabular-nums; }
+  tr[data-push-group=active] > td:first-child { border-left:3px solid var(--f1-focus,#56aaff); }
+  .push-group th { text-align:left; background:var(--f1-panel); padding:8px 12px; font-size:.85em; white-space:normal; }
+  .push-group .provenance { display:block; font-weight:400; }
   .timing-detail-row > td { padding:0; white-space:normal; background:var(--f1-panel); }
   .timing-detail { min-width:0; padding:14px; border-left:4px solid var(--team-color,var(--f1-border)); }
   .timing-detail-heading { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:12px; }
@@ -712,10 +717,15 @@ export class F1ModuleView extends LitElement {
     const open = this.module.type === 'timing' ? this.timingExpanded.includes(row.id) : this.expanded === row.id;
     const content = html`
       ${headshot ? html`<img class="driver-headshot" src=${headshot} alt="" width=${dimensions.frame} height=${dimensions.frame} @error=${event => { event.target.hidden = true; event.target.nextElementSibling.hidden = false; }}><f1-team-logo hidden aria-hidden="true" .team=${row.team} .variant=${appearance.logo_style} .mode=${this.settings.mode} .size=${appearance.logo_size}></f1-team-logo>` : appearance.logos ? html`<f1-team-logo aria-hidden="true" .team=${row.team} .variant=${appearance.logo_style} .mode=${this.settings.mode} .size=${appearance.logo_size}></f1-team-logo>` : ''}
-      <span>${appearance.full_names ? row.name : row.driver}<span class="sr"> · ${row.name} · ${row.team ?? ''}${interactive ? ` · ${this.w('modular.details')}` : ''}</span></span>`;
+      <span>${appearance.full_names ? row.name : row.driver}<span class="sr"> · ${row.name} · ${row.team ?? ''}${interactive ? ` · ${this.w('modular.details')}` : ''}</span>${this.pushLapMarker(row)}</span>`;
     const style = `--team-color:${color};--f1-logo-frame:${dimensions.frame}px;--f1-logo-image:${dimensions.image}px`;
     if (!interactive) return html`<span class="driver" style=${style}>${content}</span>`;
     return html`<button class="driver" data-focus=${`driver-${row.id}`} style=${style} aria-expanded=${open ? 'true' : 'false'} aria-controls=${this.module.type === 'timing' && open ? `driver-detail-${row.id}` : ''} @click=${() => { if (this.module.type === 'timing') this.toggleTimingDriver(row.id); else this.expanded = open ? '' : row.id; }}>${content}</button>`;
+  }
+  pushLapMarker(row) {
+    if (!this.model.pushMode || this.model.pushMode === 'off' || !['active', 'completed'].includes(row.push_group)) return '';
+    const key = row.push_lap.state === 'completed' ? 'modular.push_lap_complete' : row.push_lap.state === 'probable_push' ? 'modular.possible_push' : 'modular.push';
+    return html`<span class="push-label" part="push-lap-status">${this.w(key)}${row.push_lap.completed ? html`<span class="push-result"> · ${formatTime(row.push_lap.last_lap_time)}</span>` : ''}</span>`;
   }
   toggleTimingDriver(id) {
     this.timingExpanded = this.timingExpanded.includes(id) ? this.timingExpanded.filter(value => value !== id) : [...this.timingExpanded, id];
@@ -799,7 +809,14 @@ export class F1ModuleView extends LitElement {
       const insertion = configuredFields.slice(0, firstGap).filter(id => !['gap', 'interval'].includes(id)).length;
       fields.splice(insertion, 0, this.timingGapMode === 'leader' ? 'gap' : 'interval');
     }
-    if (!rows.length) return this.empty(this.model.filtered ? this.w('modular.no_drivers_match_this_selection') : this.w('modular.timing_will_appear_when_session_data_is_available'));
+    if (!rows.length) {
+      if (this.model.pushMode === 'only') {
+        const key = ({ waiting: 'modular.push_laps_waiting', unavailable: 'modular.push_laps_unavailable', unsupported: 'modular.push_laps_unsupported' })[this.model.pushStatus]
+          ?? (this.model.filtered ? 'modular.push_laps_no_match' : 'modular.push_laps_none');
+        return this.empty(this.w(key));
+      }
+      return this.empty(this.model.filtered ? this.w('modular.no_drivers_match_this_selection') : this.w('modular.timing_will_appear_when_session_data_is_available'));
+    }
     if (!fields.length) return this.empty(this.w('modular.choose_columns_in_the_editor'));
     const historyLimit = this.module.options.history;
     const detailFields = this.module.type === 'timing' && this.module.options.show_driver_details !== false
@@ -815,7 +832,7 @@ export class F1ModuleView extends LitElement {
     return html`${gapToggle}${closeAll}<div class="table-scroll" part="table-container" tabindex="0" role="region" aria-label=${this.w('modular.timing_table_scroll_horizontally_for_more_columns')}><table part="table">
       <caption class="sr">${this.module.title || this.model.title}</caption>
       ${this.timingHeader(fields, lapNumbers)}
-      <tbody>${repeat(rows, row => row.id, row => html`<tr part="table-row" data-driver=${row.id}>${repeat(fields, id => id, id => html`<td part="table-cell">${this.cell(row, id)}</td>`)}${repeat(lapNumbers, lap => lap, (lap, index) => {
+      <tbody>${repeat(rows, row => row.id, (row, index) => html`${this.model.pushMode !== 'off' && row.push_group && (index === 0 || row.push_group !== rows[index - 1].push_group) ? html`<tr class="push-group" data-group=${row.push_group}><th colspan=${fields.length + lapNumbers.length} scope="colgroup">${this.w(({ active: 'modular.push_laps', completed: 'modular.completed_attempts', other: 'modular.other_drivers' })[row.push_group])}${row.push_group === 'active' ? html`<span class="provenance">${this.w(this.model.pushOrderUnknown ? 'modular.push_laps_order_incomplete' : 'modular.push_laps_order')}</span>` : ''}</th></tr>` : ''}<tr part="table-row" data-driver=${row.id} data-push-group=${row.push_group ?? ''}>${repeat(fields, id => id, id => html`<td part="table-cell">${this.cell(row, id)}${!fields.includes('driver') && id === fields[0] ? this.pushLapMarker(row) : ''}</td>`)}${repeat(lapNumbers, lap => lap, (lap, index) => {
         const value = row.history.find(item => item.lap === lap);
         return html`<td part="table-cell" class=${`recent-lap ${index === 0 ? 'lap-start' : ''}`}>${this.timeCell(value ? { ...value, source: 'completed_lap', previous_lap: true } : { time: null, lap })}</td>`;
       })}</tr>

@@ -17,7 +17,11 @@ jobs:
   audit:
     # Use the reviewed immutable CI evaluator and its matching trusted tools.
     # Evaluate this exact snapshot with trusted tools, not its executable code.
-    uses: Nicxe/f1_sensor/.github/workflows/security-snapshot.yml@5184cedf1ca388135df0597a631d92478f212074
+    # The allowlist comes from tools_ref, not from the scanned snapshot.
+    # After policy changes are committed and reviewed, update both uses and
+    # tools_ref here and in security-health.yml to the same reviewed commit SHA.
+    # Commit that pin refresh locally before pushing either commit.
+    uses: Nicxe/f1_sensor/.github/workflows/security-snapshot.yml@147de742d7f30fe0738e96960cdf82419926e61a
     with:
-      tools_ref: '5184cedf1ca388135df0597a631d92478f212074'
+      tools_ref: '147de742d7f30fe0738e96960cdf82419926e61a'
       target_ref: ${{ inputs.checkout_ref || (github.event.inputs.pull_request && format('refs/pull/{0}/merge', github.event.inputs.pull_request)) || github.sha }}

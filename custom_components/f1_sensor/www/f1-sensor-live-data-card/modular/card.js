@@ -106,6 +106,7 @@ export class F1SensorCard extends LitElement {
     super(); this.entries = []; this.revision = 0; this.frozen = false; this.tab = ''; this.focus = {}; this.groupContext = {};
     this.sampleKey = '';
     this.savedSources = new data.RetainedSources();
+    this.pushLapOrders = new Map();
     this.history = new HistoryResources(() => { this.revision++; });
     this.telemetry = new HistoryResources(() => { this.revision++; }); this.telemetryRequests = new Map();
     this.viewingRequest = null; this.raceControlRequest = null; this.replayRequests = new Map(); this.teamRadioRequests = new Map(); this.sectors = new SectorStore(); this.choices = new Map(); this.moduleNodes = new Map(); this.cardDataResources = new Map(); this.minisectorResources = new Map(); this.eventState = { data: [], status: 'loading' }; this.analysisState = { data: null, status: 'loading' }; this.mapState = { data: null, status: 'loading' };
@@ -741,7 +742,7 @@ export class F1SensorCard extends LitElement {
       }
       if (module.type === 'timing') {
         const minisectors = minisectorData.usesMinisectors(module, this.moduleNodes.get(module.id)?.timingExpanded?.length > 0) ? this.minisectorState(effective) : null;
-        Object.assign(model, data.timingRows(viewHass, viewEntry, moduleSession, this.sectors, module, focus, minisectors));
+        Object.assign(model, data.timingRows(viewHass, viewEntry, { ...moduleSession, retained: saved.retained }, this.sectors, module, focus, minisectors, this.pushLapOrders));
         model.context = { meeting: moduleSession.meeting, session: moduleSession.name, key: moduleSession.key, source: 'TimingData', updated: model.source.updated_at, updatedKind: 'ha_state' };
         model.selectionGeneration = this.savedSources.viewGeneration;
         if (model.currentPart && ['qualifying', 'sprint_qualifying'].includes(model.sessionKind)) model.badge = `${model.sessionKind === 'sprint_qualifying' ? 'SQ' : 'Q'}${model.currentPart}`;

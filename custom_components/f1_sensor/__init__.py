@@ -173,6 +173,7 @@ from .minisector_websocket import (
 from .minisectors import MiniSectorStateStore
 from .no_spoiler import NoSpoilerModeManager
 from .providers import ProviderRegistry
+from .push_laps import PushLapTracker, empty_push_lap
 from .race_weather import F1RaceWeatherCoordinator
 from .replay import ReplaySignalRClient
 from .replay_mode import ReplayController, ReplayState
@@ -5802,6 +5803,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         self._replay_mode = False
         entry_id = config_entry.entry_id if config_entry is not None else None
         self._minisectors = MiniSectorStateStore(entry_id=entry_id)
+        self._push_laps = PushLapTracker()
         if delay_controller is not None:
             self._delay_listener = delay_controller.add_listener(self.set_delay)
         self.available = True
@@ -5884,6 +5886,9 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         self._reset_session_state("replay_reset")
 
     def _on_sessioninfo(self, payload: dict) -> None:
+        self._push_laps.update("SessionInfo", payload)
+        if self._publish_push_laps():
+            self._schedule_deliver()
         session_key = _stream_session_key(payload)
         if session_key is None or session_key == self._live_session_key:
             return
@@ -5901,6 +5906,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             reason,
             source="replay" if self._replay_mode else "live",
         )
+        self._push_laps.reset()
         self._state = {
             "drivers": {},
             "leader_rn": None,
@@ -5913,6 +5919,33 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             "fastest_lap": self._empty_fastest_lap(),
         }
         self.async_set_updated_data(self._state)
+
+    def _publish_push_laps(self, *, update_stream_time: bool = True) -> bool:
+        """Update the bounded effort projection alongside existing driver timing."""
+        changed = False
+        for rn, driver in self._state.get("drivers", {}).items():
+            value = self._push_laps.driver_snapshot(rn)
+            if driver.get("push_lap", empty_push_lap()) != value:
+                changed = True
+            driver["push_lap"] = value
+        status = self._push_laps.status if self.available else "unavailable"
+        values = {"push_laps_status": status}
+        if update_stream_time:
+            values["push_laps_stream_time"] = (
+                self._push_laps.stream_time if status == "available" else None
+            )
+        for key, value in values.items():
+            default = "waiting" if key == "push_laps_status" else None
+            if self._state.get(key, default) != value:
+                changed = True
+            self._state[key] = value
+        return changed
+
+    def _on_push_lap_clock(self, payload: dict) -> None:
+        """Expire activity using the delayed provider clock, including replay pause."""
+        self._push_laps.update("Heartbeat", payload)
+        if self._publish_push_laps(update_stream_time=False):
+            self._schedule_deliver()
 
     def _merge_driverlist(self, payload: dict) -> bool:
         # payload: { rn: {Tla, FullName, TeamName, TeamColour, ...}, ... }
@@ -6212,6 +6245,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
     def _merge_timingdata(self, payload: dict) -> bool:
         # payload: {"Lines": { rn: {...timing...} } }
         self._minisectors.merge_timing_data(payload)
+        self._push_laps.update("TimingData", payload)
         lines = (payload or {}).get("Lines", {})
         if not isinstance(lines, dict):
             return False
@@ -6430,7 +6464,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                                 self._reset_sector_state(s, reset_best=True)
         if position_changed:
             self._recompute_leader_from_state()
-        return changed
+        return self._publish_push_laps() or changed
 
     def _official_best_lap_reference(self) -> float | None:
         """Return the current corrected best, without using observed lap history."""
@@ -6791,6 +6825,8 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         status = str((payload or {}).get("Status", "1"))
         prev = self._state.get("track_status")
         self._state["track_status"] = status
+        self._push_laps.update("TrackStatus", payload)
+        push_changed = self._publish_push_laps()
 
         # Only clear on transition INTO an SC/VSC period
         if status in _SC_VSC and prev not in _SC_VSC:
@@ -6800,11 +6836,16 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 if isinstance(s, dict):
                     self._reset_sector_state(s, reset_best=False)
             self._schedule_deliver()
+        elif push_changed:
+            self._schedule_deliver()
 
     def set_delay(self, seconds: int) -> None:
         new_delay = max(0, int(seconds or 0))
         if new_delay != self._delay:
             self._minisectors.reset("live_delay_change")
+            self._push_laps.reset()
+            if self._publish_push_laps():
+                self._schedule_deliver()
         _apply_delay_with_queue(self, seconds)
 
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
@@ -6813,12 +6854,14 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         replay_mode = _is_replay_delay_reason(reason)
         if replay_mode != self._replay_mode:
             self._minisectors.set_source("replay" if replay_mode else "live")
+            self._push_laps.reset()
         self._replay_mode = replay_mode
         if self._replay_mode:
             _clear_delayed_ingest_state(self)
         if _is_no_spoiler_live_state(reason):
             _clear_delayed_ingest_state(self)
             self._minisectors.reset("spoiler_protected")
+            self._push_laps.reset()
             return
         self.available = is_live
         self._tyre_live_started_mono = None
@@ -6829,6 +6872,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             # show stale driver/timing information before the first live frames.
             _clear_delayed_ingest_state(self)
             self._minisectors.reset("source_unavailable")
+            self._push_laps.reset()
             with suppress(Exception):
                 self._state = {
                     "drivers": {},
@@ -7662,6 +7706,8 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             }
 
     def _merge_sessionstatus(self, payload: dict) -> None:
+        self._push_laps.update("SessionStatus", payload)
+        self._publish_push_laps()
         previous = self._state.get("session_status")
         was_running = self._session_status_is_running(previous)
         was_terminal = self._session_status_is_terminal(previous)
@@ -7895,6 +7941,11 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         except Exception:
             bus = None
         if bus is not None:
+            self._unsubs.append(
+                bus.subscribe(
+                    "Heartbeat", _wrap_delayed_handler(self, self._on_push_lap_clock)
+                )
+            )
             with suppress(Exception):
                 self._unsubs.append(
                     bus.subscribe(
