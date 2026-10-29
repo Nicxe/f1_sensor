@@ -1,1 +1,12 @@
-{}
+{
+  "a11y.open_details": "Apri i dettagli per {title}",
+  "card.calendar.description": "Calendario completo della stagione di Formula 1",
+  "card.calendar.name": "Calendario della stagione F1",
+  "card.driver_laps.description": "Tabella dei giri del pilota con il più recente, il migliore e cronologia giri configurabile",
+  "card.driver_laps.name": "Tempi sul giro del pilota F1",
+  "card.driver_standings.description": "Classifica del campionato piloti con proiezione della gara",
+  "card.driver_standings.name": "Classifica Piloti del campionato F1",
+  "card.fia.name": "Documenti FIA F1",
+  "card.investigations.description": "Monitoraggio delle investigazioni e delle penalità, raggruppato per pilota",
+  "card.investigations.name": "F1 Investigazioni & Penalità"
+}

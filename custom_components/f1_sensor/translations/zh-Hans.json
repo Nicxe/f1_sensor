@@ -1,0 +1,472 @@
+{
+  "device_automation": {
+    "trigger_type": {
+      "race_week_started": "比赛周开始了",
+      "race_week_ended": "比赛周结束了",
+      "safety_car_deployed": "实体安全车出动",
+      "possible_on_track_incident_detected": "发现疑似赛道事故",
+      "possible_on_track_incident_cleared": "疑似的赛道事故清理完成",
+      "on_track_incident_detected": "发现赛道事故",
+      "safety_car_cleared": "实体安全车结束",
+      "on_track_incident_cleared": "赛道事故清理完成",
+      "formation_start_ready": "编队圈准备好了",
+      "overtake_mode_enabled": "超车模式可用",
+      "overtake_mode_disabled": "超车模式禁用",
+      "track_status_clear": "赛道状态：绿旗",
+      "track_status_yellow": "赛道状态：黄旗",
+      "track_status_safety_car": "赛道状态：实体安全车",
+      "track_status_vsc": "赛道状态：虚拟安全车",
+      "track_status_red_flag": "赛道状态：红旗",
+      "new_race_control_message": "新赛会控制指令信息",
+      "new_fia_document": "新FIA文件公布",
+      "investigation_changed": "调查状态改变",
+      "new_team_radio": "新车队无线电消息",
+      "favorite_driver_position_gained": "喜爱车手提升一个名次",
+      "favorite_driver_position_lost": "喜爱车手丢掉了一个名次",
+      "favorite_driver_entered_pits": "喜爱车手进站",
+      "favorite_driver_exited_pits": "喜爱车手出站",
+      "favorite_driver_retired": "喜爱车手退赛",
+      "live_timing_online": "实时计时系统上线",
+      "live_timing_offline": "实时计时系统下线",
+      "session_live": "环节直播开始"
+    }
+  },
+  "config": {
+    "step": {
+      "user": {
+        "title": "F1 Senser 设置",
+        "data": {
+          "sensor_name": "设备名称",
+          "enabled_sensors": "传感器启用",
+          "operation_mode": "操作模式",
+          "replay_file": "回放转储路径",
+          "enable_race_control": "启用F1直播接口（赛会控制消息/赛道/环节）",
+          "install_dashboard_cards": "安装内置仪表板卡片",
+          "race_week_start_day": "比赛周的第一天",
+          "install_legacy_cards": "安装旧版仪表板卡片",
+          "live_timing_auth_header": "手动备份：F1TV 鉴权值",
+          "clear_live_timing_auth_header": "清除 F1TV 鉴权值",
+          "start_f1tv_pairing": "推荐：使用令牌助手启用 F1TV 连接"
+        },
+        "data_description": {
+          "race_week_start_day": "选择比赛周的开始日：周六、周日还是周一。",
+          "replay_file": "录制的 SignalR 转储文件的绝对路径。仅在开发模式下需要。",
+          "enable_race_control": "通过 SignalR 连接 Formula 1 Live Timing 以接收实时更新。若禁用，则不会创建这些实时传感器。",
+          "operation_mode": "选择 Live 以连接到 Formula 1 SignalR，或选择 Development 在本地重放已保存的转储。",
+          "install_dashboard_cards": "在 Home Assistant 中注册捆绑的 F1 Sensor 卡片。若您仅使用实体和自动化，请禁用此项。重新加载浏览器后，现有的 F1 仪表板卡片将无法使用。",
+          "live_timing_auth_header": "如果令牌助手配对失败，请手动备份。仅在作为高级回退方案时粘贴来自 F1TV 令牌助手的完整 Bearer token。留空以使用公开的实时计时（不含回放模式或归档媒体）。",
+          "start_f1tv_pairing": "推荐做法：连接您的 Formula 1 帐户以启用回放模式 并存档数据。回放仅需免费帐户；额外的实时数据则取决于帐户权限和环节 的可用性。未连接仍可使用公共实时计时系统。",
+          "install_legacy_cards": "同时注册已弃用的 F1 卡片。新安装请保持关闭；现有安装将保留其先前的卡片。需要安装仪表板卡片。更改此选项后请重新加载浏览器。禁用此项会导致现有旧版卡片停止工作，除非将它们迁移到 F1 Sensor 卡片。如果存在多个 F1 Sensor 安装，只要任一启用的安装请求这些旧版卡片，它们就会继续可用。"
+        },
+        "description": "F1 Sensor 卡片会自动获取数据。已启用的传感器仅控制在 Home Assistant 中暴露的实体。请保留旧卡片、模板或自动化使用的传感器。实时计时系统 和 F1TV 的访问遵循各自的设置。"
+      },
+      "reconfigure": {
+        "data": {
+          "sensor_name": "设备名称",
+          "live_timing_auth_header": "手动备份：F1TV 鉴权值",
+          "clear_live_timing_auth_header": "清除 F1TV 鉴权值",
+          "operation_mode": "操作模式",
+          "enabled_sensors": "启用的传感器",
+          "replay_file": "回放转储路径",
+          "enable_race_control": "启用F1直播接口",
+          "install_legacy_cards": "安装旧版仪表板卡片",
+          "race_week_start_day": "比赛周的第一天",
+          "install_dashboard_cards": "安装内置仪表板卡片",
+          "start_f1tv_pairing": "推荐：使用令牌助手启用 F1TV 连接"
+        },
+        "data_description": {
+          "clear_live_timing_auth_header": "移除保存的 F1TV 鉴权值并改用公开实时计时系统。回放模式和归档媒体将不可用。",
+          "operation_mode": "选择 Live 以连接到 Formula 1 SignalR，或选择 Development 在本地回放已保存的转储。",
+          "replay_file": "录制的 SignalR 转储文件的绝对路径。仅在开发模式下需要。",
+          "enable_race_control": "连接到 Formula 1 实时计时系统以接收实时更新。若禁用，则不会创建这些实时传感器。",
+          "race_week_start_day": "选择比赛周的开始日：周六、周日还是周一。",
+          "live_timing_auth_header": "如果令牌助手配对失败，请手动备份。仅在作为高级回退方案时粘贴新的完整 Bearer token。留空以保留当前值。",
+          "start_f1tv_pairing": "推荐做法：连接您的 Formula 1 帐户以启用回放模式 并存档数据。回放仅需免费帐户；额外的实时数据则取决于帐户权限和环节 的可用性。未连接仍可使用公共实时计时系统。",
+          "install_dashboard_cards": "在 Home Assistant 中注册捆绑的 F1 Sensor 卡片。若您仅使用实体和自动化，请禁用此项。重新加载浏览器后，现有的 F1 仪表板卡片将无法使用。",
+          "install_legacy_cards": "同时注册已弃用的 F1 卡片。新安装请保持关闭；现有安装将保留其先前的卡片。需要安装仪表板卡片。更改此选项后请重新加载浏览器。禁用此项会导致现有旧版卡片停止工作，除非将它们迁移到 F1 Sensor 卡片。如果存在多个 F1 Sensor 安装，只要任一启用的安装请求这些旧版卡片，它们就会继续可用。"
+        },
+        "title": "重新配置F1 Sensor",
+        "description": "F1 Sensor 卡片会自动获取数据。已启用的传感器仅控制在 Home Assistant 中暴露的实体。请保留旧卡片、模板或自动化使用的传感器。实时计时系统 和 F1TV 的访问遵循各自的设置。"
+      },
+      "reauth_confirm": {
+        "data": {
+          "live_timing_auth_header": "手动备份：F1TV 鉴权值",
+          "clear_live_timing_auth_header": "清除 F1TV 鉴权值",
+          "start_f1tv_pairing": "推荐：使用令牌助手启用 F1TV 连接"
+        },
+        "data_description": {
+          "clear_live_timing_auth_header": "移除保存的 F1TV 鉴权值并改用公开实时计时系统。回放模式和归档媒体将不可用。",
+          "start_f1tv_pairing": "推荐做法：连接您的 Formula 1 帐户以启用回放模式 并存档数据。回放仅需免费帐户；额外的实时数据则取决于帐户权限和环节 的可用性。未连接仍可使用公共实时计时系统。",
+          "live_timing_auth_header": "如果令牌助手配对失败，请手动备份。仅在作为高级回退时粘贴新的完整 Bearer token。"
+        },
+        "title": "更新 F1TV 实时计时系统授权"
+      },
+      "sensor_review": {
+        "data": {
+          "confirm": "确认传感器更改"
+        },
+        "title": "查看传感器更改",
+        "description": "从您之前的选择中移除了传感器：{removed_sensors}。使用这些实体的旧卡片、模板和自动化可能会停止工作。在 Home Assistant 中正常禁用会保留注册表元数据。通过此集成选择移除传感器可能会删除它们的注册表条目；之后重新创建可能会更改自定义名称和实体 ID。您的其他设置和存储数据将被保留。"
+      },
+      "f1tv_pairing": {
+        "title": "连接 F1TV 访问",
+        "description": "使用 F1TV 令牌助手连接您的 Formula 1 帐户。免费帐户即可用于回放模式；更多实时数据取决于帐户权限和环节的可用性。公共实时计时系统在无令牌时仍然可用。此配对将于 {expires_at} 到期。"
+      }
+    },
+    "error": {
+      "auth_header_required": "输入F1TV 鉴权值或选择清空。",
+      "auth_token_expiring_soon": "令牌将很快过期。请生成新的令牌并重试。",
+      "invalid_choice": "选择有效的配置。",
+      "confirmation_required": "保存前请确认已审核的选择。",
+      "replay_required": "启用开发者模式后请选择回放转储文件。",
+      "replay_missing": "未找到回放转储文件或无法读取。",
+      "invalid_auth_header": "请输入有效的 Bearer token 值。",
+      "auth_token_missing_exp": "该令牌不包含过期时间。",
+      "auth_token_expired": "该令牌已过期。"
+    },
+    "abort": {
+      "reconfigure_successful": "F1 Sensor 已成功重新配置。",
+      "f1tv_pairing_unavailable": "此构建不支持 F1TV 配对。",
+      "f1tv_pairing_failed": "F1TV 配对未完成。请开始新的配对环节并重试。"
+    }
+  },
+  "issues": {
+    "f1tv_token_attention_required": {
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "data": {
+              "live_timing_auth_header": "F1TV 鉴权值",
+              "clear_live_timing_auth_header": "清除 F1TV 鉴权值",
+              "start_f1tv_pairing": "推荐：使用令牌助手启用 F1TV 连接"
+            },
+            "title": "更新 F1TV 实时计时系统令牌",
+            "data_description": {
+              "live_timing_auth_header": "从 F1TV 令牌助手粘贴新的 Bearer 令牌值以访问 F1TV。",
+              "clear_live_timing_auth_header": "删除已保存的 F1TV 令牌，并继续使用公共实时计时系统。回放模式和归档媒体将不可用。",
+              "start_f1tv_pairing": "推荐路径。启动一个短期配对环节，并通过浏览器扩展直接发送令牌，无需手动复制。"
+            },
+            "description": "{name} 的已保存 F1TV 令牌需要注意。公共实时计时系统仍可使用，但回放模式、归档媒体以及额外的 F1TV 实时数据需要更换令牌。"
+          },
+          "f1tv_pairing": {
+            "title": "连接 F1TV 访问",
+            "description": "使用 F1TV 令牌助手连接您的 Formula 1 帐户。免费帐户即可用于回放模式；更多实时数据取决于帐户权限和环节的可用性。公共实时计时系统在无令牌时仍然可用。此配对将于 {expires_at} 到期。"
+          }
+        }
+      },
+      "title": "F1TV 实时计时系统令牌需要关注"
+    },
+    "stale_live_data_card_resources": {
+      "title": "检测到旧的独立 F1 实时数据卡资源",
+      "description": "Home Assistant 仍然存在旧独立 F1 卡的过期 Lovelace 资源条目（检测到 {stale_resource_count} 个）。这些条目可能导致卡片重复，或在内置仪表板卡片被禁用后仍然显示 F1 卡。请删除旧的独立 HACS 仪表板仓库及其过期的 Lovelace 资源条目，然后重启 Home Assistant，或重新加载 Lovelace 资源并强制刷新浏览器。"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "data": {
+          "operation_mode": "操作模式",
+          "replay_file": "回放转储路径",
+          "install_legacy_cards": "安装旧版仪表板卡片",
+          "enabled_sensors": "启用的传感器",
+          "enable_race_control": "启用F1直播接口",
+          "install_dashboard_cards": "安装内置仪表板卡片",
+          "race_week_start_day": "比赛周的第一天"
+        },
+        "title": "配置 F1 Sensor 功能",
+        "data_description": {
+          "enable_race_control": "仅在启用直播功能时才连接到 Formula 1 实时计时系统。",
+          "race_week_start_day": "选择比赛周的开始日：周六、周日还是周一。",
+          "operation_mode": "选择“实时”或“本地回放”开发模式。",
+          "replay_file": "仅在开发模式下使用的回放转储文件的绝对路径。",
+          "install_dashboard_cards": "在 Home Assistant 中注册捆绑的 F1 Sensor 卡片。若您仅使用实体和自动化，请禁用此项。重新加载浏览器后，现有的 F1 仪表板卡片将无法使用。",
+          "install_legacy_cards": "同时注册已弃用的 F1 卡片。新安装请保持关闭；现有安装将保留其先前的卡片。需要安装仪表板卡片。更改此选项后请重新加载浏览器。禁用此项会导致现有旧版卡片停止工作，除非将它们迁移到 F1 Sensor 卡片。如果存在多个 F1 Sensor 安装，只要任一启用的安装请求这些旧版卡片，它们就会继续可用。"
+        },
+        "description": "F1 Sensor 卡片会自动获取数据。已启用的传感器仅控制在 Home Assistant 中暴露的实体。请保留旧卡片、模板或自动化使用的传感器。实时计时系统 和 F1TV 的访问遵循各自的设置。"
+      },
+      "sensor_review": {
+        "title": "查看传感器更改",
+        "data": {
+          "confirm": "确认传感器更改"
+        },
+        "description": "从您之前的选择中移除了传感器：{removed_sensors}。使用这些实体的旧卡片、模板和自动化可能会停止工作。在 Home Assistant 中正常禁用会保留注册表元数据。通过此集成选择移除传感器可能会删除它们的注册表条目；之后重新创建可能会更改自定义名称和实体 ID。您的其他设置和存储数据将被保留。"
+      }
+    },
+    "error": {
+      "replay_required": "启用开发者模式后请选择回放转储文件。",
+      "replay_missing": "未找到回放转储文件或无法读取。",
+      "invalid_choice": "选择有效的配置。",
+      "confirmation_required": "保存前请确认已审核的选择。"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "next_race": {
+        "name": "下一场比赛"
+      },
+      "track_time": {
+        "name": "赛道时间"
+      },
+      "current_season": {
+        "name": "当前赛季"
+      },
+      "driver_standings": {
+        "name": "车手积分榜排名"
+      },
+      "constructor_standings": {
+        "name": "车队积分排名"
+      },
+      "weather": {
+        "name": "天气"
+      },
+      "track_weather": {
+        "name": "赛道天气"
+      },
+      "current_session": {
+        "name": "当前环节"
+      },
+      "last_race_results": {
+        "name": "上一站结果"
+      },
+      "season_results": {
+        "name": "赛季成绩"
+      },
+      "sprint_results": {
+        "name": "冲刺赛结果"
+      },
+      "lap_position_progression": {
+        "name": "每圈排名变化"
+      },
+      "race_control": {
+        "name": "赛事控制"
+      },
+      "top_three_p1": {
+        "name": "前三名（第一名）"
+      },
+      "top_three_p2": {
+        "name": "前三名（第二名）"
+      },
+      "top_three_p3": {
+        "name": "前三名（第三名）"
+      },
+      "pitstops": {
+        "name": "进站次数"
+      },
+      "championship_prediction_drivers": {
+        "name": "车手冠军预测"
+      },
+      "championship_prediction_teams": {
+        "name": "车队冠军预测"
+      },
+      "fia_documents": {
+        "name": "FIA 决定"
+      },
+      "live_timing_mode": {
+        "name": "实时计时系统模式"
+      },
+      "f1tv_token_status": {
+        "name": "F1TV 令牌状态",
+        "state": {
+          "not_configured": "未配置",
+          "valid": "有效",
+          "expiring_soon": "即将过期",
+          "expired": "已过期",
+          "invalid": "无效",
+          "rejected": "已拒绝"
+        }
+      },
+      "f1tv_token_expires_at": {
+        "name": "F1TV 令牌到期于"
+      },
+      "driver_positions": {
+        "name": "车手排名"
+      },
+      "favorite_driver": {
+        "name": "喜爱车手"
+      },
+      "starting_grid": {
+        "name": "发车格"
+      },
+      "track_limits": {
+        "name": "赛道限制"
+      },
+      "investigations": {
+        "name": "调查与处罚"
+      },
+      "straight_mode": {
+        "name": "直道模式",
+        "state": {
+          "normal_grip": "正常抓地力",
+          "low_grip": "低抓地力",
+          "disabled": "已禁用"
+        }
+      },
+      "track_status": {
+        "name": "赛道状态"
+      },
+      "session_status": {
+        "name": "环节状态"
+      },
+      "session_time_remaining": {
+        "name": "环节剩余时间"
+      },
+      "session_time_elapsed": {
+        "name": "环节已用时间"
+      },
+      "race_time_to_three_hour_limit": {
+        "name": "距3小时上限的剩余时间"
+      },
+      "driver_list": {
+        "name": "车手列表"
+      },
+      "current_tyres": {
+        "name": "当前轮胎"
+      },
+      "tyre_statistics": {
+        "name": "轮胎统计"
+      },
+      "team_radio": {
+        "name": "车队无线电"
+      },
+      "race_lap_count": {
+        "name": "比赛圈数"
+      },
+      "driver_points_progression": {
+        "name": "车手积分走势"
+      },
+      "constructor_points_progression": {
+        "name": "车队积分走势"
+      },
+      "replay_status": {
+        "name": "回放状态"
+      }
+    },
+    "weather": {
+      "weather": {
+        "name": "天气"
+      }
+    },
+    "button": {
+      "delay_calibration_match": {
+        "name": "匹配直播延迟"
+      },
+      "replay_load": {
+        "name": "加载环节"
+      },
+      "replay_play": {
+        "name": "播放"
+      },
+      "replay_pause": {
+        "name": "暂停"
+      },
+      "replay_back_30": {
+        "name": "后退30秒"
+      },
+      "replay_forward_30": {
+        "name": "快进30秒"
+      },
+      "replay_stop": {
+        "name": "停止"
+      },
+      "replay_refresh": {
+        "name": "刷新赛段"
+      },
+      "jolpica_ua_test": {
+        "name": "Jolpica 用户代理测试"
+      },
+      "clear_f1tv_access": {
+        "name": "清除 F1TV 访问权限"
+      },
+      "refresh_f1tv_access": {
+        "name": "刷新 F1TV 访问权限"
+      }
+    },
+    "switch": {
+      "delay_calibration": {
+        "name": "延迟校准"
+      },
+      "no_spoiler_mode": {
+        "name": "无剧透模式"
+      }
+    },
+    "number": {
+      "live_delay": {
+        "name": "直播延迟"
+      }
+    },
+    "media_player": {
+      "replay_player": {
+        "name": "回放播放器"
+      }
+    },
+    "select": {
+      "favorite_driver": {
+        "name": "喜爱车手"
+      },
+      "live_delay_reference": {
+        "name": "直播延迟参考"
+      },
+      "replay_year": {
+        "name": "回放年份"
+      },
+      "replay_session": {
+        "name": "回放环节"
+      },
+      "replay_start_reference": {
+        "name": "回放起跑参考"
+      }
+    },
+    "binary_sensor": {
+      "race_week": {
+        "name": "比赛周"
+      },
+      "live_timing_online": {
+        "name": "实时计时系统上线"
+      },
+      "safety_car": {
+        "name": "实体安全车"
+      },
+      "on_track_incident": {
+        "name": "赛道事故"
+      },
+      "possible_on_track_incident": {
+        "name": "疑似赛道事故"
+      },
+      "formation_start": {
+        "name": "编队圈开始"
+      },
+      "overtake_mode": {
+        "name": "超车模式"
+      }
+    },
+    "calendar": {
+      "season_calendar": {
+        "name": "赛季日历"
+      }
+    }
+  },
+  "exceptions": {
+    "card_data_notification_title": {
+      "message": "F1 Sensor: 自动卡片数据"
+    },
+    "card_data_notification": {
+      "message": "{name} 现在会自动向 F1 Sensor 卡片提供数据。您现有的传感器、设置和自动化将继续正常运行。您可以在 Home Assistant 的 [F1 Sensor 设置]({integration_url}) → 配置 中选择性减少暴露的传感器。请保留旧卡片、模板或自动化使用的传感器。不需要任何配置。您可以关闭此消息；重启或重新加载后不会再次显示。"
+    }
+  },
+  "services": {
+    "clear_race_control_log": {
+      "name": "清除赛事控制日志",
+      "fields": {
+        "entity_id": {
+          "name": "赛事控制实体",
+          "description": "用于此安装的赛事控制传感器。使用 entry_id 时可省略。"
+        },
+        "entry_id": {
+          "name": "F1 Sensor 配置项",
+          "description": "当未暴露赛事控制传感器时，请使用此项替代 entity_id。只需提供一个地址。"
+        }
+      },
+      "description": "清除为单个 F1 Sensor 安装保存的赛事控制消息。提供一个传感器实体或一个配置项。"
+    }
+  }
+}
