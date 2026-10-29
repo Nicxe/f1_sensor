@@ -172,6 +172,93 @@ class AuditTests(unittest.TestCase):
             evaluate_audit(payload, allow, date(2026, 10, 24))[0],
         )
 
+    def test_new_bundled_undici_findings_require_their_own_approval(self):
+        bundled = "node_modules/npm/node_modules/undici"
+        payload = report(
+            {
+                "undici": {
+                    "via": [{"source": item} for item in (1243114, 1243476, 1243479)],
+                    "nodes": [bundled],
+                }
+            }
+        )
+        historical_approval = {
+            "entries": [
+                {
+                    "package": "undici",
+                    "advisory_ids": [1243114],
+                    "allowed_nodes": [bundled],
+                    "expires": "2026-10-31",
+                }
+            ]
+        }
+        failures = evaluate_audit(payload, historical_approval, date(2026, 10, 29))
+        self.assertEqual(len(failures), 2)
+        for advisory in (1243476, 1243479):
+            self.assertTrue(
+                any(f"{advisory} is not allowed" in item for item in failures)
+            )
+
+    def test_explicit_undici_approval_fixture_stays_scoped_expiring_and_removable(self):
+        bundled = "node_modules/npm/node_modules/undici"
+        advisories = (1243114, 1243476, 1243479)
+        # Independent fixture, not approval or a requirement on the live policy.
+        approval = {
+            "entries": [
+                {
+                    "package": "undici",
+                    "advisory_ids": list(advisories),
+                    "allowed_nodes": [bundled],
+                    "expires": "2026-10-31",
+                }
+            ]
+        }
+        for name, sources, nodes, today, expected in (
+            ("approved", advisories, [bundled], date(2026, 10, 31), []),
+            (
+                "expired",
+                advisories,
+                [bundled],
+                date(2026, 11, 1),
+                ["expired exception"] * 3,
+            ),
+            (
+                "ordinary dependency",
+                advisories,
+                [bundled, "node_modules/undici"],
+                date(2026, 10, 29),
+                ["outside allowed nodes"] * 3,
+            ),
+            (
+                "new advisory",
+                (*advisories, 1243480),
+                [bundled],
+                date(2026, 10, 29),
+                ["1243480 is not allowed"],
+            ),
+            ("fixed dependencies", (), [], date(2100, 1, 1), []),
+        ):
+            with self.subTest(name=name):
+                payload = (
+                    report(
+                        {
+                            "undici": {
+                                "via": [{"source": item} for item in sources],
+                                "nodes": nodes,
+                            }
+                        }
+                    )
+                    if sources
+                    else report()
+                )
+                failures = evaluate_audit(payload, approval, today)
+                self.assertEqual(len(failures), len(expected))
+                for failure, fragment in zip(failures, expected, strict=True):
+                    self.assertIn(fragment, failure)
+        self.assertEqual(
+            evaluate_audit(report(), {"entries": []}, date(2100, 1, 1)), []
+        )
+
     def test_live_exceptions_remain_explained_narrow_and_removable(self):
         allow = json.loads(
             (

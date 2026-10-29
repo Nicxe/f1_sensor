@@ -9,6 +9,10 @@ jobs:
   security-health:
     # Use the reviewed immutable CI evaluator and its matching trusted tools.
     # Only its evaluator runs; branch dependency snapshots are never installed.
+    # The allowlist comes from tools_ref, not from the scanned snapshot.
+    # After policy changes are committed and reviewed, update both uses and
+    # tools_ref here and in audit.yml to the same reviewed commit SHA.
+    # Commit that pin refresh locally before pushing either commit.
     uses: Nicxe/f1_sensor/.github/workflows/security-snapshot.yml@5184cedf1ca388135df0597a631d92478f212074
     with:
       tools_ref: '5184cedf1ca388135df0597a631d92478f212074'

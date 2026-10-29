@@ -39,7 +39,7 @@ test('push rows rise above the cap in track order and keep opened driver details
   await driver.click();
   await driver.focus();
   await page.evaluate(() => window.setPushFixture('available', { '4': { progress: .95 } }));
-  expect(await module.locator('tr[data-driver]').evaluateAll(rows => rows.map(row => row.dataset.driver))).toEqual(['4', '63']);
+  await expect.poll(() => module.locator('tr[data-driver]').evaluateAll(rows => rows.map(row => row.dataset.driver))).toEqual(['4', '63']);
   await expect(driver).toBeFocused();
   await expect(driver).toHaveAttribute('aria-expanded', 'true');
   await expect(module.locator('#driver-detail-63')).toBeVisible();
