@@ -1724,5 +1724,21 @@
   "modular.pit_lane_without_stationary": "Pit lane timing is available for some records. Stationary time has not been received for those records.",
   "modular.pit_total_without_driver_records": "Reported pit visits: {count}. Per-driver counts and detailed stop records are not available.",
   "modular.reported_pit_visits": "Reported pit visits",
-  "modular.recorded_stop_details": "Recorded stop details"
+  "modular.recorded_stop_details": "Recorded stop details",
+  "modular.completed_attempts": "Completed attempts",
+  "modular.other_drivers": "Other drivers",
+  "modular.possible_push": "Possible push",
+  "modular.push": "Push",
+  "modular.push_lap_complete": "Lap complete",
+  "modular.push_laps": "Push laps",
+  "modular.push_laps_first": "Push laps first",
+  "modular.push_laps_help": "During practice and qualifying, highlight likely push laps in track order, nearest the finish line first. Duplicate Timing and choose Push laps only for a separate panel.",
+  "modular.push_laps_no_match": "No push laps match this selection",
+  "modular.push_laps_none": "No push laps identified",
+  "modular.push_laps_only": "Push laps only",
+  "modular.push_laps_order": "Nearest the finish line first",
+  "modular.push_laps_unavailable": "Push-lap timing is unavailable",
+  "modular.push_laps_unsupported": "Push laps are available during practice and qualifying",
+  "modular.push_laps_waiting": "Waiting for enough timing data to identify push laps",
+  "modular.push_laps_order_incomplete": "Track order is incomplete"
 }

@@ -70,6 +70,7 @@ async def test_driver_identity_merge_fastest_link_and_subscription_cleanup(
 
     await coordinator.async_config_entry_first_refresh()
     assert set(bus.callbacks) == {
+        "Heartbeat",
         "SessionInfo",
         "DriverList",
         "TimingData",

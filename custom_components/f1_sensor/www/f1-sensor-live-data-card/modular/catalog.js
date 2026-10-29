@@ -253,6 +253,7 @@ export const MODULES = {
   }, ['next_race', 'current_season']),
   timing: module('timing', 'Timing', TIMING_FIELDS.map(field => field.id), {
     profile: { type: 'enum', values: ['custom', 'auto', 'practice', 'qualifying', 'sprint_qualifying', 'sprint', 'race'], default: 'custom', label: 'Column profile' },
+    push_laps: { type: 'enum', values: ['off', 'first', 'only'], default: 'off', label: 'Push laps' },
     sort: { type: 'enum', values: ['position', 'best_lap', 'driver'], default: 'position', label: 'Sort by' },
     direction: { type: 'enum', values: ['asc', 'desc'], default: 'asc', label: 'Direction' },
     rows: { type: 'integer', min: 1, max: 100, default: 30, label: 'Maximum drivers' },

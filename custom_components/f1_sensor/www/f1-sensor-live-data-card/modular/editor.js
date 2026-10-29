@@ -415,6 +415,7 @@ export class F1SensorCardEditor extends LitElement {
           if (value && !choices.some(([id]) => id === value)) choices.unshift([value, `${value} · ${this.w('modular.saved_selection')}`]);
           return this.select(title, value, [['', this.w('modular.latest_published')], ...choices], value => this.setOption(key, value));
         }
+        if (module.type === 'timing' && key === 'push_laps') return html`${this.select(this.w('modular.push_laps'), value, [['off', this.w('modular.off')], ['first', this.w('modular.push_laps_first')], ['only', this.w('modular.push_laps_only')]], value => this.setOption(key, value))}<p class="muted">${this.w('modular.push_laps_help')}</p>`;
         if (option.type === 'enum') return this.select(title, value, option.values.map(value => [value, this.optionName(value)]), value => this.setOption(key, value));
         if (option.type === 'boolean') return this.check(title, value, value => this.setOption(key, value));
         if (option.type === 'entity') return this.entitySelect(title, value, value => this.setOption(key, value), option.domain);

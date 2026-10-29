@@ -69,6 +69,41 @@ Data availability depends on the source and session. Adding a module does not cr
 
 Timing can follow a session profile or use your selected columns. Choosing your own timing columns keeps them as a custom selection. A module pinned to a driver keeps that driver when you change the card's general focus.
 
+### Follow push laps
+
+In a **Timing** module, open **Module options** and choose **Push laps** to
+follow drivers making a likely fast attempt during practice, qualifying or
+sprint qualifying.
+
+| Setting | What you see |
+| --- | --- |
+| Off | Your usual timing table and sorting. This is the default. |
+| Push laps first | Likely push laps appear in a group above the other drivers. The remaining rows keep your selected sorting. |
+| Push laps only | Only likely push laps and their briefly retained results appear. Duplicate a Timing module to create a separate compact panel. |
+
+Push laps are ordered by progress around the current lap, with the driver
+nearest the next finish-line crossing first. The position column still shows
+the driver's classification. Timing and minisector passages provide an
+approximate track order; it is not an exact position measurement. Driver and
+team selections still apply, and push laps are selected before the row limit.
+
+The card distinguishes a possible push lap from a stronger pace assessment.
+Highlighted attempts show only received sectors from the current attempt;
+earlier lap times do not fill the remaining sectors.
+After a highlighted lap finishes, its result stays visible briefly. A driver
+who slows down or enters the pits leaves the active group. If there are no
+current attempts, the card explains this separately from missing timing data.
+
+The assessment uses fresh timing progress and comparable recent sector pace.
+It cannot establish a driver's intention, fuel load or practice programme.
+Early attempts, changing weather and incomplete data can make the assessment
+less certain. A push lap does not need a green or purple sector.
+
+Live Delay, No Spoiler and replay apply to the assessment and the displayed
+timing together. After seeking or reconnecting, the assessment may need fresh
+lap evidence before it can highlight a driver. The push setting does not change
+race or sprint-race sorting.
+
 ### Show Pit stops
 
 Add **Pit stops** to follow reported pit visits and any timed stop records available for the current session. The module distinguishes counts from details: an available count does not establish the lap or duration of an individual stop.

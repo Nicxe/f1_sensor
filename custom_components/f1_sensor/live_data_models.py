@@ -36,6 +36,7 @@ from .entity import (
 from .helpers import (
     normalize_track_status,
 )
+from .push_laps import empty_push_lap
 from .static_data_models import ProjectionModel
 from .stream_state import StreamStateMixin
 from .team_radio_common import team_radio_clip_id
@@ -2707,6 +2708,8 @@ class DriverPositionsModel(LiveProjectionModel):
             "drivers": [],
             "total_laps": None,
             "fastest_lap": None,
+            "push_laps_status": "waiting",
+            "push_laps_stream_time": None,
         }
         self._last_write_ts: float | None = None
         self._pending_write: bool = False
@@ -2858,11 +2861,14 @@ class DriverPositionsModel(LiveProjectionModel):
         attrs.setdefault("total_laps", None)
         attrs.setdefault("fastest_lap", None)
         attrs.setdefault("current_qualifying_part", None)
+        attrs["push_laps_status"] = "waiting"
+        attrs["push_laps_stream_time"] = None
         drivers = attrs.get("drivers")
         if isinstance(drivers, list):
             for drv in drivers:
                 if not isinstance(drv, dict):
                     continue
+                drv["push_lap"] = empty_push_lap()
                 drv.setdefault("best_lap_time", None)
                 drv.setdefault("best_lap_time_secs", None)
                 drv.setdefault("best_lap_lap", None)
@@ -3065,6 +3071,7 @@ class DriverPositionsModel(LiveProjectionModel):
                     "completed_laps", lap_history.get("last_recorded_lap", 0)
                 ),
                 "status": status,
+                "push_lap": deepcopy(info.get("push_lap") or empty_push_lap()),
                 "gap_to_leader": timing.get("gap_to_leader"),
                 "interval_to_position_ahead": timing.get("interval"),
                 "best_lap_time": best_lap_time,
@@ -3158,6 +3165,8 @@ class DriverPositionsModel(LiveProjectionModel):
             "total_laps": lap_total,
             "fastest_lap": fastest_out,
             "current_qualifying_part": current_q_part,
+            "push_laps_status": data.get("push_laps_status", "waiting"),
+            "push_laps_stream_time": data.get("push_laps_stream_time"),
         }
         return True
 
@@ -3241,6 +3250,8 @@ class DriverPositionsModel(LiveProjectionModel):
             "drivers": [],
             "total_laps": None,
             "fastest_lap": None,
+            "push_laps_status": "unavailable",
+            "push_laps_stream_time": None,
         }
 
     @property
