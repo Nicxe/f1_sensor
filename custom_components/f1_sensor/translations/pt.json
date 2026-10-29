@@ -248,7 +248,11 @@
       "track_status_vsc": "Status da pista: Safety car virtual",
       "track_status_red_flag": "Status da pista: Bandeira vermelha",
       "new_race_control_message": "Nova mensagem do controle de prova",
-      "new_team_radio": "Nova mensagem de rádio da equipe"
+      "new_team_radio": "Nova mensagem de rádio da equipe",
+      "new_fia_document": "Novo documento publicado pela FIA",
+      "investigation_changed": "Estado da investigação alterado",
+      "favorite_driver_position_gained": "O piloto favorito ganhou uma posição",
+      "favorite_driver_position_lost": "O piloto favorito perdeu uma posição"
     }
   }
 }
