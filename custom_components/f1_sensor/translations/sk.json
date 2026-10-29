@@ -37,7 +37,14 @@
         "title": "Nastavenie F1 senzora",
         "data": {
           "sensor_name": "Názov zariadenia",
-          "enabled_sensors": "Zapnuté senzory"
+          "enabled_sensors": "Zapnuté senzory",
+          "operation_mode": "Režim",
+          "replay_file": "Cesta pre záznamy",
+          "enable_race_control": "Použit F1 API pre živé vysielanie (riaditeľstvo, stav trate, jazdy)",
+          "install_dashboard_cards": "Nainštalovať pribalené karty pre panely",
+          "race_week_start_day": "Prvý deň pretekového týždňa",
+          "live_timing_auth_header": "Ručná záloha: Autorizačná hodnota F1",
+          "clear_live_timing_auth_header": "VYmazať autorizačnú hodnotu F1TV"
         }
       }
     }
