@@ -11,7 +11,7 @@ test.beforeEach(async ({ page }) => {
       window.originalConfig = structuredClone(config); window.migrationEvents = []; window.migrationRequests = []; window.migrationActions = [];
       const node = customElements.get(config.type.replace('custom:', '')).getConfigElement();
       window.mountModular({ scene });
-      node.hass = { ...window.fixtureDemo.hass, connection: { subscribeEvents: async () => () => {} }, callWS: async request => { window.migrationRequests.push(request.type); return window.fixtureDemo.preview.entries; }, callService: (...args) => window.migrationActions.push(args) };
+      node.hass = { ...window.fixtureDemo.hass, connection: { subscribeEvents: async () => () => {}, subscribeMessage: async () => () => {} }, callWS: async request => { window.migrationRequests.push(request.type); return window.fixtureDemo.preview.entries; }, callService: (...args) => window.migrationActions.push(args) };
       node.setConfig(config);
       node.addEventListener('config-changed', event => window.migrationEvents.push(structuredClone(event.detail.config)));
       document.querySelector('#root').replaceChildren(node); window.migrationEditor = node;

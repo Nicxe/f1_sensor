@@ -9,7 +9,7 @@ test('two replay cards share a pending command and permit an explicit retry afte
     demo.hass.states[entry.entities.replay_status].state = 'selected';
     demo.hass.states[entry.entities.replay_status].attributes.selected_session = 'Demo Grand Prix · Race';
     window.replayCalls = [];
-    const hass = { ...demo.hass, connection: { connected: true, subscribeEvents: async () => () => {} }, callWS: async () => demo.preview.entries, callService: (...args) => {
+    const hass = { ...demo.hass, connection: { connected: true, subscribeEvents: async () => () => {}, subscribeMessage: async () => () => {} }, callWS: async () => demo.preview.entries, callService: (...args) => {
       window.replayCalls.push(args);
       return new Promise((resolve, reject) => { window.finishReplay = resolve; window.failReplay = reject; });
     } };

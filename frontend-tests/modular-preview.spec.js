@@ -11,6 +11,7 @@ test.beforeEach(async ({ page }) => {
     window.previewRequests = []; window.previewStops = 0; window.previewActions = [];
     window.actualHass = { ...demo.hass, connection: {
       connected: true, subscribeEvents: async () => () => window.previewStops++,
+      subscribeMessage: async () => () => window.previewStops++,
     }, callWS: async message => { window.previewRequests.push(message.type); return demo.preview.entries; },
     callService: async (...args) => window.previewActions.push(args) };
     window.originalStates = JSON.stringify(window.actualHass.states);

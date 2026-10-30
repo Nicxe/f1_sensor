@@ -12,7 +12,7 @@ test('independent modules retain all drivers or their own filters while group fo
     ] };
     window.mountModular({ config });
     const demo = window.fixtureDemo, card = window.fixtureCard;
-    const hass = { ...demo.hass, connection: { connected: true, subscribeEvents: async () => () => {} }, callWS: async () => demo.preview.entries, callService: () => { throw new Error('Focus cannot write to HA'); } };
+    const hass = { ...demo.hass, connection: { connected: true, subscribeEvents: async () => () => {}, subscribeMessage: async () => () => {} }, callWS: async () => demo.preview.entries, callService: () => { throw new Error('Focus cannot write to HA'); } };
     card.entries = demo.preview.entries; card.previewData = null; card.hass = hass;
     const other = document.createElement('f1-sensor-card');
     other.setConfig({ ...config, modules: [config.modules[0]] }); other.entries = demo.preview.entries; other.hass = hass;
