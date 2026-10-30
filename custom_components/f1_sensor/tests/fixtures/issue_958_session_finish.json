@@ -1,0 +1,847 @@
+{
+  "issue": 958,
+  "description": "Selected recorded 2026 United States GP final-lap messages demonstrating that valid laps continue after SessionStatus Finished.",
+  "extraction": "Offsets are seconds from the original jsonStream origin. TimingData payloads retain only the selected drivers and messages with lap-count or non-empty sector-time values. SessionStatus final-state payloads are unmodified. No external files are required to use this fixture.",
+  "sources": [
+    {
+      "session": "us_2026_race",
+      "archive_base_url": "https://livetiming.formula1.com/static/2026/2026-10-25_United_States_Grand_Prix/2026-10-25_Race/",
+      "archive_relative_path": "2026-10-23_United_States_Grand_Prix/2026-10-25_Race",
+      "stream_urls": {
+        "SessionInfo": "https://livetiming.formula1.com/static/2026/2026-10-25_United_States_Grand_Prix/2026-10-25_Race/SessionInfo.jsonStream",
+        "SessionStatus": "https://livetiming.formula1.com/static/2026/2026-10-25_United_States_Grand_Prix/2026-10-25_Race/SessionStatus.jsonStream",
+        "TimingData": "https://livetiming.formula1.com/static/2026/2026-10-25_United_States_Grand_Prix/2026-10-25_Race/TimingData.jsonStream"
+      },
+      "session_info": {
+        "Meeting": {
+          "Key": 1297,
+          "Name": "United States Grand Prix",
+          "OfficialName": "FORMULA 1 MSC CRUISES UNITED STATES GRAND PRIX 2026",
+          "Location": "Austin",
+          "Number": 18,
+          "Country": {
+            "Key": 19,
+            "Code": "USA",
+            "Name": "United States"
+          },
+          "Circuit": {
+            "Key": 9,
+            "ShortName": "Austin"
+          }
+        },
+        "SessionStatus": "Started",
+        "ArchiveStatus": {
+          "Status": "Generating"
+        },
+        "Key": 11396,
+        "Type": "Race",
+        "Name": "Race",
+        "StartDate": "2026-10-25T15:00:00",
+        "EndDate": "2026-10-25T17:00:00",
+        "GmtOffset": "-05:00:00",
+        "Path": "2026/2026-10-25_United_States_Grand_Prix/2026-10-25_Race/"
+      },
+      "finished_at": 9131.69,
+      "expected_laps": {
+        "11": 55,
+        "10": 56,
+        "27": 56
+      },
+      "expected_last_lap_times": {
+        "11": "1:41.680",
+        "10": "1:40.634",
+        "27": "1:40.616"
+      },
+      "events": [
+        {
+          "offset": 9092.583,
+          "stream": "TimingData",
+          "source_line": 57575,
+          "payload": {
+            "Lines": {
+              "27": {
+                "Sectors": {
+                  "1": {
+                    "Value": "39.959"
+                  }
+                },
+                "Speeds": {
+                  "I2": {
+                    "Value": "178",
+                    "PersonalFastest": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "offset": 9113.185,
+          "stream": "TimingData",
+          "source_line": 57756,
+          "payload": {
+            "Lines": {
+              "11": {
+                "NumberOfLaps": 54,
+                "Sectors": {
+                  "2": {
+                    "Value": "35.238"
+                  }
+                },
+                "Speeds": {
+                  "FL": {
+                    "Value": "210",
+                    "PersonalFastest": true
+                  }
+                },
+                "LastLapTime": {
+                  "Value": "1:44.237",
+                  "PersonalFastest": false
+                }
+              }
+            }
+          }
+        },
+        {
+          "offset": 9118.762,
+          "stream": "TimingData",
+          "source_line": 57809,
+          "payload": {
+            "Lines": {
+              "10": {
+                "NumberOfLaps": 55,
+                "Sectors": {
+                  "2": {
+                    "Value": "34.165"
+                  }
+                },
+                "Speeds": {
+                  "FL": {
+                    "Value": "211",
+                    "PersonalFastest": true
+                  }
+                },
+                "BestLapTime": {
+                  "Value": "1:40.193",
+                  "Lap": 55
+                },
+                "LastLapTime": {
+                  "Value": "1:40.193"
+                }
+              }
+            }
+          }
+        },
+        {
+          "offset": 9126.132,
+          "stream": "TimingData",
+          "source_line": 57870,
+          "payload": {
+            "Lines": {
+              "27": {
+                "NumberOfLaps": 55,
+                "Sectors": {
+                  "2": {
+                    "Value": "33.627"
+                  }
+                },
+                "Speeds": {
+                  "FL": {
+                    "Value": "209"
+                  }
+                },
+                "LastLapTime": {
+                  "Value": "1:40.382"
+                }
+              }
+            }
+          }
+        },
+        {
+          "offset": 9131.69,
+          "stream": "SessionStatus",
+          "source_line": 5,
+          "payload": {
+            "Status": "Finished",
+            "Started": "Finished"
+          }
+        },
+        {
+          "offset": 9139.962,
+          "stream": "TimingData",
+          "source_line": 57987,
+          "payload": {
+            "Lines": {
+              "11": {
+                "Sectors": {
+                  "0": {
+                    "Value": "26.991",
+                    "PersonalFastest": true
+                  },
+                  "1": {
+                    "Value": ""
+                  },
+                  "2": {
+                    "Value": ""
+                  }
+                },
+                "Speeds": {
+                  "I1": {
+                    "Value": "196",
+                    "PersonalFastest": true
+                  },
+                  "I2": {
+                    "Value": ""
+                  },
+                  "FL": {
+                    "Value": "",
+                    "PersonalFastest": false
+                  },
+                  "ST": {
+                    "Value": ""
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "offset": 9145.165,
+          "stream": "TimingData",
+          "source_line": 58038,
+          "payload": {
+            "Lines": {
+              "10": {
+                "Sectors": {
+                  "0": {
+                    "Value": "26.398",
+                    "PersonalFastest": false
+                  },
+                  "1": {
+                    "Value": ""
+                  },
+                  "2": {
+                    "Value": ""
+                  }
+                },
+                "Speeds": {
+                  "I1": {
+                    "Value": "209"
+                  },
+                  "I2": {
+                    "Value": ""
+                  },
+                  "FL": {
+                    "Value": "",
+                    "PersonalFastest": false
+                  },
+                  "ST": {
+                    "Value": ""
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "offset": 9153.134,
+          "stream": "TimingData",
+          "source_line": 58118,
+          "payload": {
+            "Lines": {
+              "27": {
+                "Sectors": {
+                  "0": {
+                    "Value": "26.863"
+                  },
+                  "1": {
+                    "Value": ""
+                  },
+                  "2": {
+                    "Value": ""
+                  }
+                },
+                "Speeds": {
+                  "I1": {
+                    "Value": "205",
+                    "PersonalFastest": false
+                  },
+                  "I2": {
+                    "Value": "",
+                    "PersonalFastest": false
+                  },
+                  "FL": {
+                    "Value": ""
+                  },
+                  "ST": {
+                    "Value": ""
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "offset": 9179.853,
+          "stream": "TimingData",
+          "source_line": 58275,
+          "payload": {
+            "Lines": {
+              "11": {
+                "Sectors": {
+                  "1": {
+                    "Value": "39.981",
+                    "PersonalFastest": true
+                  }
+                },
+                "Speeds": {
+                  "I2": {
+                    "Value": "178",
+                    "PersonalFastest": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "offset": 9185.009,
+          "stream": "TimingData",
+          "source_line": 58314,
+          "payload": {
+            "Lines": {
+              "10": {
+                "Sectors": {
+                  "1": {
+                    "Value": "39.886"
+                  }
+                },
+                "Speeds": {
+                  "I2": {
+                    "Value": "168"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "offset": 9193.087,
+          "stream": "TimingData",
+          "source_line": 58367,
+          "payload": {
+            "Lines": {
+              "27": {
+                "Sectors": {
+                  "1": {
+                    "Value": "40.024"
+                  }
+                },
+                "Speeds": {
+                  "I2": {
+                    "Value": "177"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "offset": 9214.712,
+          "stream": "TimingData",
+          "source_line": 58460,
+          "payload": {
+            "Lines": {
+              "11": {
+                "NumberOfLaps": 55,
+                "Sectors": {
+                  "2": {
+                    "Value": "34.708",
+                    "PersonalFastest": true
+                  }
+                },
+                "Speeds": {
+                  "FL": {
+                    "Value": "208"
+                  }
+                },
+                "BestLapTime": {
+                  "Value": "1:41.680",
+                  "Lap": 55
+                },
+                "LastLapTime": {
+                  "Value": "1:41.680",
+                  "PersonalFastest": true
+                }
+              }
+            }
+          }
+        },
+        {
+          "offset": 9219.306,
+          "stream": "TimingData",
+          "source_line": 58474,
+          "payload": {
+            "Lines": {
+              "10": {
+                "NumberOfLaps": 56,
+                "Sectors": {
+                  "2": {
+                    "Value": "34.350"
+                  }
+                },
+                "Speeds": {
+                  "FL": {
+                    "Value": "210"
+                  }
+                },
+                "LastLapTime": {
+                  "Value": "1:40.634",
+                  "PersonalFastest": false
+                }
+              }
+            }
+          }
+        },
+        {
+          "offset": 9226.728,
+          "stream": "TimingData",
+          "source_line": 58505,
+          "payload": {
+            "Lines": {
+              "27": {
+                "NumberOfLaps": 56,
+                "Sectors": {
+                  "2": {
+                    "Value": "33.729"
+                  }
+                },
+                "Speeds": {
+                  "FL": {
+                    "Value": "209"
+                  }
+                },
+                "LastLapTime": {
+                  "Value": "1:40.616"
+                }
+              }
+            }
+          }
+        },
+        {
+          "offset": 9572.831,
+          "stream": "SessionStatus",
+          "source_line": 6,
+          "payload": {
+            "Status": "Finalised",
+            "Started": "Finished"
+          }
+        },
+        {
+          "offset": 9572.831,
+          "stream": "SessionStatus",
+          "source_line": 7,
+          "payload": {
+            "Status": "Ends",
+            "Started": "Finished"
+          }
+        }
+      ]
+    },
+    {
+      "session": "us_2026_practice_1",
+      "archive_base_url": "https://livetiming.formula1.com/static/2026/2026-10-25_United_States_Grand_Prix/2026-10-23_Practice_1/",
+      "archive_relative_path": "2026-10-23_United_States_Grand_Prix/2026-10-23_Practice_1",
+      "stream_urls": {
+        "SessionInfo": "https://livetiming.formula1.com/static/2026/2026-10-25_United_States_Grand_Prix/2026-10-23_Practice_1/SessionInfo.jsonStream",
+        "SessionStatus": "https://livetiming.formula1.com/static/2026/2026-10-25_United_States_Grand_Prix/2026-10-23_Practice_1/SessionStatus.jsonStream",
+        "TimingData": "https://livetiming.formula1.com/static/2026/2026-10-25_United_States_Grand_Prix/2026-10-23_Practice_1/TimingData.jsonStream"
+      },
+      "session_info": {
+        "Meeting": {
+          "Key": 1297,
+          "Name": "United States Grand Prix",
+          "OfficialName": "FORMULA 1 MSC CRUISES UNITED STATES GRAND PRIX 2026",
+          "Location": "Austin",
+          "Number": 18,
+          "Country": {
+            "Key": 19,
+            "Code": "USA",
+            "Name": "United States"
+          },
+          "Circuit": {
+            "Key": 9,
+            "ShortName": "Austin"
+          }
+        },
+        "SessionStatus": "Started",
+        "ArchiveStatus": {
+          "Status": "Generating"
+        },
+        "Key": 11389,
+        "Type": "Practice",
+        "Number": 1,
+        "Name": "Practice 1",
+        "StartDate": "2026-10-23T12:30:00",
+        "EndDate": "2026-10-23T13:30:00",
+        "GmtOffset": "-05:00:00",
+        "Path": "2026/2026-10-25_United_States_Grand_Prix/2026-10-23_Practice_1/"
+      },
+      "finished_at": 4384.144,
+      "expected_laps": {
+        "55": 18
+      },
+      "expected_last_lap_times": {
+        "55": "1:39.196"
+      },
+      "events": [
+        {
+          "offset": 4369.616,
+          "stream": "TimingData",
+          "source_line": 12785,
+          "payload": {
+            "Lines": {
+              "55": {
+                "NumberOfLaps": 17,
+                "Sectors": {
+                  "2": {
+                    "Value": "35.848"
+                  }
+                },
+                "Speeds": {
+                  "FL": {
+                    "Value": "215",
+                    "PersonalFastest": true
+                  }
+                },
+                "LastLapTime": {
+                  "Value": "1:43.549"
+                }
+              }
+            }
+          }
+        },
+        {
+          "offset": 4384.144,
+          "stream": "SessionStatus",
+          "source_line": 5,
+          "payload": {
+            "Status": "Finished",
+            "Started": "Finished"
+          }
+        },
+        {
+          "offset": 4396.315,
+          "stream": "TimingData",
+          "source_line": 12928,
+          "payload": {
+            "Lines": {
+              "55": {
+                "Sectors": {
+                  "0": {
+                    "Value": "26.610"
+                  },
+                  "1": {
+                    "Value": ""
+                  },
+                  "2": {
+                    "Value": ""
+                  }
+                },
+                "Speeds": {
+                  "I1": {
+                    "Value": "208"
+                  },
+                  "I2": {
+                    "Value": ""
+                  },
+                  "FL": {
+                    "Value": "",
+                    "PersonalFastest": false
+                  },
+                  "ST": {
+                    "Value": ""
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "offset": 4435.354,
+          "stream": "TimingData",
+          "source_line": 13122,
+          "payload": {
+            "Lines": {
+              "55": {
+                "Sectors": {
+                  "1": {
+                    "Value": "39.137"
+                  }
+                },
+                "Speeds": {
+                  "I2": {
+                    "Value": "179"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "offset": 4468.834,
+          "stream": "TimingData",
+          "source_line": 13291,
+          "payload": {
+            "Lines": {
+              "55": {
+                "NumberOfLaps": 18,
+                "Sectors": {
+                  "2": {
+                    "Value": "33.449"
+                  }
+                },
+                "Speeds": {
+                  "FL": {
+                    "Value": "202"
+                  }
+                },
+                "LastLapTime": {
+                  "Value": "1:39.196"
+                }
+              }
+            }
+          }
+        },
+        {
+          "offset": 4839.63,
+          "stream": "SessionStatus",
+          "source_line": 6,
+          "payload": {
+            "Status": "Finalised",
+            "Started": "Finished"
+          }
+        },
+        {
+          "offset": 4841.568,
+          "stream": "SessionStatus",
+          "source_line": 7,
+          "payload": {
+            "Status": "Ends",
+            "Started": "Finished"
+          }
+        }
+      ]
+    },
+    {
+      "session": "us_2026_qualifying_q3",
+      "archive_base_url": "https://livetiming.formula1.com/static/2026/2026-10-25_United_States_Grand_Prix/2026-10-24_Qualifying/",
+      "archive_relative_path": "2026-10-23_United_States_Grand_Prix/2026-10-24_Qualifying",
+      "stream_urls": {
+        "SessionInfo": "https://livetiming.formula1.com/static/2026/2026-10-25_United_States_Grand_Prix/2026-10-24_Qualifying/SessionInfo.jsonStream",
+        "SessionStatus": "https://livetiming.formula1.com/static/2026/2026-10-25_United_States_Grand_Prix/2026-10-24_Qualifying/SessionStatus.jsonStream",
+        "TimingData": "https://livetiming.formula1.com/static/2026/2026-10-25_United_States_Grand_Prix/2026-10-24_Qualifying/TimingData.jsonStream"
+      },
+      "session_info": {
+        "Meeting": {
+          "Key": 1297,
+          "Name": "United States Grand Prix",
+          "OfficialName": "FORMULA 1 MSC CRUISES UNITED STATES GRAND PRIX 2026",
+          "Location": "Austin",
+          "Number": 18,
+          "Country": {
+            "Key": 19,
+            "Code": "USA",
+            "Name": "United States"
+          },
+          "Circuit": {
+            "Key": 9,
+            "ShortName": "Austin"
+          }
+        },
+        "SessionStatus": "Started",
+        "ArchiveStatus": {
+          "Status": "Generating"
+        },
+        "Key": 11392,
+        "Type": "Qualifying",
+        "Name": "Qualifying",
+        "StartDate": "2026-10-24T16:00:00",
+        "EndDate": "2026-10-24T17:00:00",
+        "GmtOffset": "-05:00:00",
+        "Path": "2026/2026-10-25_United_States_Grand_Prix/2026-10-24_Qualifying/"
+      },
+      "finished_at": 4408.252,
+      "expected_laps": {
+        "44": 14
+      },
+      "expected_last_lap_times": {
+        "44": "1:34.311"
+      },
+      "events": [
+        {
+          "offset": 4376.519,
+          "stream": "TimingData",
+          "source_line": 7818,
+          "payload": {
+            "Lines": {
+              "44": {
+                "NumberOfLaps": 13,
+                "LastLapTime": {
+                  "Value": "5:23.673"
+                }
+              }
+            }
+          }
+        },
+        {
+          "offset": 4376.66,
+          "stream": "TimingData",
+          "source_line": 7819,
+          "payload": {
+            "Lines": {
+              "44": {
+                "Sectors": {
+                  "2": {
+                    "Value": "35.567"
+                  }
+                },
+                "Speeds": {
+                  "FL": {
+                    "Value": "218",
+                    "PersonalFastest": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "offset": 4401.926,
+          "stream": "TimingData",
+          "source_line": 7886,
+          "payload": {
+            "Lines": {
+              "44": {
+                "Sectors": {
+                  "0": {
+                    "Value": "25.424"
+                  },
+                  "1": {
+                    "Value": ""
+                  },
+                  "2": {
+                    "Value": ""
+                  }
+                },
+                "Speeds": {
+                  "I1": {
+                    "Value": "224"
+                  },
+                  "I2": {
+                    "Value": ""
+                  },
+                  "FL": {
+                    "Value": "",
+                    "PersonalFastest": false
+                  },
+                  "ST": {
+                    "Value": ""
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "offset": 4408.252,
+          "stream": "SessionStatus",
+          "source_line": 11,
+          "payload": {
+            "Status": "Finished",
+            "Started": "Finished"
+          }
+        },
+        {
+          "offset": 4439.256,
+          "stream": "TimingData",
+          "source_line": 7970,
+          "payload": {
+            "Lines": {
+              "44": {
+                "Sectors": {
+                  "1": {
+                    "Value": "37.339",
+                    "PersonalFastest": true
+                  }
+                },
+                "Speeds": {
+                  "I2": {
+                    "Value": "185",
+                    "PersonalFastest": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "offset": 4470.74,
+          "stream": "TimingData",
+          "source_line": 8041,
+          "payload": {
+            "Lines": {
+              "44": {
+                "BestLapTimes": {
+                  "2": {
+                    "Value": "1:34.311",
+                    "Lap": 13
+                  }
+                },
+                "Line": 5,
+                "Position": "5",
+                "NumberOfLaps": 14,
+                "Sectors": {
+                  "2": {
+                    "Value": "31.548"
+                  }
+                },
+                "Speeds": {
+                  "FL": {
+                    "Value": "197"
+                  }
+                },
+                "BestLapTime": {
+                  "Value": "1:34.311",
+                  "Lap": 13
+                },
+                "LastLapTime": {
+                  "Value": "1:34.311",
+                  "PersonalFastest": true
+                }
+              }
+            }
+          }
+        },
+        {
+          "offset": 4647.352,
+          "stream": "SessionStatus",
+          "source_line": 12,
+          "payload": {
+            "Status": "Finalised",
+            "Started": "Finished"
+          }
+        },
+        {
+          "offset": 4823.481,
+          "stream": "SessionStatus",
+          "source_line": 13,
+          "payload": {
+            "Status": "Ends",
+            "Started": "Finished"
+          }
+        }
+      ]
+    }
+  ]
+}

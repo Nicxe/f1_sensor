@@ -2607,6 +2607,7 @@ async def _async_setup_entry(
             live_bus,
             http_session=session,
             archive_client=archive_client,
+            delay_controller=delay_controller,
             fallback_source=event_tracker_source,
         )
         transaction.track(live_supervisor)

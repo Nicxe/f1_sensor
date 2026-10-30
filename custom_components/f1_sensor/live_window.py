@@ -35,6 +35,7 @@ from .signalr import LiveBus
 
 if TYPE_CHECKING:
     from . import LiveSessionCoordinator
+    from .live_delay import LiveDelayController
 
 _LOGGER = logging.getLogger(f"custom_components.{DOMAIN}")
 
@@ -42,6 +43,7 @@ _NO_SPOILER_MANAGER_KEY = "no_spoiler_manager"
 
 STATIC_BASE = "https://livetiming.formula1.com/static"
 SESSION_END_STATES = {"Finished", "Finalised", "Ends"}
+SESSION_FINAL_STATES = {"Finalised", "Ends"}
 SESSION_RUNNING_STATES = {"Started", "Resumed"}
 DEFAULT_PRE_WINDOW = timedelta(minutes=60)
 DEFAULT_POST_WINDOW = timedelta(minutes=15)
@@ -887,7 +889,8 @@ def _session_status_finished(status_payload: dict | None) -> bool:
         status_payload.get("Started"),
         status_payload.get("Message"),
     )
-    return any(str(value or "").strip() in SESSION_END_STATES for value in values)
+    # Finished stops the session clock, but cars can still complete valid laps.
+    return any(str(value or "").strip() in SESSION_FINAL_STATES for value in values)
 
 
 def _session_data_race_start(session_data: dict | None) -> datetime | None:
@@ -927,7 +930,6 @@ class _LiveSessionStatus:
     """Keep session identity with status across incremental stream updates."""
 
     session_key: int | None = None
-    multi_part: bool = False
     payload: dict[str, Any] | None = None
 
     def update_info(self, payload: Any) -> None:
@@ -937,16 +939,7 @@ class _LiveSessionStatus:
             session_key = _as_int(payload["Key"])
             if session_key != self.session_key:
                 self.session_key = session_key
-                self.multi_part = False
                 self.payload = None
-        if str(payload.get("Type") or "").strip().casefold() == "qualifying":
-            self.multi_part = True
-        meeting = payload.get("Meeting")
-        if (
-            isinstance(meeting, dict)
-            and "testing" in str(meeting.get("Name") or "").casefold()
-        ):
-            self.multi_part = True
         if "SessionStatus" in payload:
             self.payload = {"Status": payload["SessionStatus"]}
 
@@ -955,23 +948,13 @@ class _LiveSessionStatus:
 
     def finished(self, window: SessionWindow) -> bool:
         session_key = _as_int(window.session_key)
-        if session_key is None or self.session_key != session_key:
-            return False
-        session_name = window.session_name.casefold()
-        is_multi_part = (
-            self.multi_part
-            or "qualifying" in session_name
-            or "shootout" in session_name
-            or "testing" in window.meeting_name.casefold()
+        # Apply the same finalisation boundary to every session type. Finished
+        # also marks qualifying segments and testing breaks, not a final result.
+        return (
+            session_key is not None
+            and self.session_key == session_key
+            and _session_status_finished(self.payload)
         )
-        if is_multi_part:
-            # Finished also marks qualifying segments and testing breaks.
-            # Only the final feed states end the whole scheduled window.
-            return isinstance(self.payload, dict) and any(
-                str(self.payload.get(field) or "").strip() in {"Finalised", "Ends"}
-                for field in ("Status", "Message", "Started")
-            )
-        return _session_status_finished(self.payload)
 
 
 class LiveSessionSupervisor:
@@ -985,6 +968,7 @@ class LiveSessionSupervisor:
         *,
         http_session: ClientSession,
         archive_client: F1ArchiveClient | None = None,
+        delay_controller: LiveDelayController | None = None,
         index_source: LiveScheduleSource | None = None,
         fallback_source: LiveScheduleSource | None = None,
         pre_window: timedelta = DEFAULT_PRE_WINDOW,
@@ -995,6 +979,7 @@ class LiveSessionSupervisor:
         self._bus = bus
         self._http = http_session
         self._archive_client = archive_client
+        self._delay_controller = delay_controller
         self._index_source = index_source or IndexScheduleSource(session_coord)
         self._fallback_source = fallback_source
         self._pre_window = pre_window
@@ -1596,7 +1581,16 @@ class LiveSessionSupervisor:
                         "Terminal SessionStatus received for %s; draining live updates",
                         label,
                     )
-                if now >= terminal_seen_at + SESSION_END_DRAIN:
+                # Normal shutdown clears delayed ingest queues. Keep the live
+                # generation available until its final frames have been shown.
+                drain = SESSION_END_DRAIN + timedelta(
+                    seconds=(
+                        self._delay_controller.current
+                        if self._delay_controller is not None
+                        else 0
+                    )
+                )
+                if now >= terminal_seen_at + drain:
                     self._terminal_sessions.add(_window_identity(window))
                     reason = "session-finished"
                     break
@@ -1606,10 +1600,21 @@ class LiveSessionSupervisor:
             fresh_activity = (
                 hb_age is not None and hb_age <= HEARTBEAT_DRAIN_SECONDS
             ) or (activity_age is not None and activity_age <= HEARTBEAT_DRAIN_SECONDS)
+            session_finishing = (
+                status.session_key is not None
+                and status.session_key == _as_int(window.session_key)
+                and isinstance(status.payload, dict)
+                and str(
+                    status.payload.get("Status") or status.payload.get("Message") or ""
+                ).strip()
+                == "Finished"
+            )
             extension_cap = max_disconnect_at
-            if "race" in window.session_name.casefold() and _session_status_running(
-                session_status
+            if "race" in window.session_name.casefold() and (
+                _session_status_running(session_status) or session_finishing
             ):
+                # Finished still permits final laps. Recalculate the cap so a
+                # late actual start can replace the provisional schedule limit.
                 extension_cap = max(
                     extension_cap,
                     self._race_extension_cap(window),
@@ -1643,6 +1648,7 @@ class LiveSessionSupervisor:
             if (
                 hb_age is not None
                 and hb_age > HEARTBEAT_DRAIN_SECONDS
+                and not fresh_activity
                 and not allow_post_finish_inactivity
             ):
                 _LOGGER.info(
