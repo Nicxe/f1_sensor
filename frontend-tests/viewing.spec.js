@@ -11,7 +11,7 @@ async function live(page, context = {}) {
     window.mountModular({ config: { context: { viewing_controls: true, ...context }, modules: [{ type: 'timing', fields: ['driver', 'last_lap'] }] } });
     const card = window.fixtureCard, demo = window.fixtureDemo;
     window.viewingCalls = []; window.failViewing = false; window.holdViewing = false;
-    const connection = { connected: true, subscribeEvents: async () => () => {} };
+    const connection = { connected: true, subscribeEvents: async () => () => {}, subscribeMessage: async () => () => {} };
     card.previewData = null;
     const callService = async (domain, service, data) => {
       window.viewingCalls.push({ domain, service, data });

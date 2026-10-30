@@ -20,6 +20,7 @@ test('multiple mounted cards share requests and subscriptions and release retain
       handlers.add(callback);
       return () => { counts.removed++; handlers.delete(callback); };
     };
+    connection.subscribeMessage = (callback, message) => connection.subscribeEvents(callback, message.event_type);
     const hass = { ...demo.hass, connection,
       callService() { counts.services++; },
       async callWS(query) { counts.requests++; return query.type === 'f1_sensor/entities' ? [entry] : { items: demo.preview.events }; },
@@ -77,6 +78,7 @@ test('modular cards render a larger field, share streams and release resources @
     const handlers = new Map(), subscriptionTypes = [], counts = { requests: 0, subscriptions: 0, removed: 0, services: 0 };
     const connection = new EventTarget(); connection.connected = true;
     connection.subscribeEvents = async (callback, type) => { counts.subscriptions++; subscriptionTypes.push(type); if (!handlers.has(type)) handlers.set(type, new Set()); handlers.get(type).add(callback); return () => { counts.removed++; handlers.get(type).delete(callback); }; };
+    connection.subscribeMessage = (callback, message) => connection.subscribeEvents(callback, message.event_type);
     let hass = { ...demo.hass, connection, callService() { counts.services++; }, async callWS(query) { counts.requests++; return query.type === 'f1_sensor/entities' ? [entry] : { items: demo.preview.events }; } };
     const root = document.querySelector('#root'), frame = () => new Promise(resolve => requestAnimationFrame(() => resolve()));
     const settle = async cards => { await Promise.all(cards.map(card => card.updateComplete)); await frame(); await Promise.all(cards.flatMap(card => [...card.moduleNodes.values()].map(node => node.updateComplete))); await frame(); };

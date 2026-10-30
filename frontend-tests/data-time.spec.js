@@ -15,6 +15,7 @@ async function live(page, modules, language = 'en', scene = 'race') {
     const connection = new EventTarget();
     connection.connected = true;
     connection.subscribeEvents = async () => () => {};
+    connection.subscribeMessage = async () => () => {};
     card.previewData = null;
     card.hass = { ...demo.hass, connection,
       callWS: async message => { window.timeRequests.push(message.type); return demo.preview.entries; },
