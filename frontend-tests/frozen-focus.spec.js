@@ -7,7 +7,7 @@ test('a frozen group card retains its driver and roster until resuming the lates
     const config = { context: { scope: 'group', group: 'race' }, modules: [{ type: 'timing', fields: ['driver', 'last_lap'] }] };
     window.mountModular({ config });
     const demo = window.fixtureDemo;
-    const hass = { ...demo.hass, connection: { connected: true, subscribeEvents: async () => () => {} }, callWS: async () => demo.preview.entries, callService: () => { throw new Error('Focus must never write to HA'); } };
+    const hass = { ...demo.hass, connection: { connected: true, subscribeEvents: async () => () => {}, subscribeMessage: async () => () => {} }, callWS: async () => demo.preview.entries, callService: () => { throw new Error('Focus must never write to HA'); } };
     const first = window.fixtureCard;
     first.entries = demo.preview.entries; first.previewData = null; first.hass = hass;
     const second = document.createElement('f1-sensor-card');
