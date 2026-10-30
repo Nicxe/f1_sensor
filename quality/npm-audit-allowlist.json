@@ -1,16 +1,18 @@
 {
-  "reviewed_on": "2026-10-24",
+  "reviewed_on": "2026-10-30",
   "entries": [
     {
       "package": "undici",
       "advisory_ids": [
-        1243114
+        1243114,
+        1243476,
+        1243479
       ],
       "allowed_nodes": [
         "node_modules/npm/node_modules/undici"
       ],
       "scope": "Undici 6.29.0 bundled inside npm 12.2.1, used only by release tooling and never shipped with the Home Assistant integration",
-      "reason": "Owner-approved temporary acceptance of GHSA-xjj6-f33q-929c on 2026-10-24: the latest npm release still bundles undici 6.29.0, which project overrides cannot replace. Ordinary undici dependencies are upgraded to patched versions; other advisories and paths remain blocking",
+      "reason": "Owner-approved temporary acceptance of GHSA-xjj6-f33q-929c on 2026-10-24, explicitly extended on 2026-10-30 to GHSA-2m5v-pch6-74hx and GHSA-qrxm-fqhp-jwvm for the 6.1.1 hotfix. Current npm releases still bundle undici 6.29.0, which project overrides cannot replace. Only these advisory IDs at this exact release-tooling path are accepted through the unchanged expiry; other advisories and paths remain blocking",
       "expires": "2026-10-31"
     }
   ]
