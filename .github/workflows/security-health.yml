@@ -9,6 +9,6 @@ jobs:
   security-health:
     # Use the reviewed immutable CI evaluator and its matching trusted tools.
     # Only its evaluator runs; branch dependency snapshots are never installed.
-    uses: Nicxe/f1_sensor/.github/workflows/security-snapshot.yml@5184cedf1ca388135df0597a631d92478f212074
+    uses: Nicxe/f1_sensor/.github/workflows/security-snapshot.yml@bae4992f0aeddeb88f5afd8422dc0ad3843baae7
     with:
-      tools_ref: '5184cedf1ca388135df0597a631d92478f212074'
+      tools_ref: 'bae4992f0aeddeb88f5afd8422dc0ad3843baae7'
