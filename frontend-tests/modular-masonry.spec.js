@@ -15,6 +15,10 @@ async function mountMasonry(page, responseDelay, scene = 'race') {
         window.masonryStats.activeSubscriptions++;
         return () => { window.masonryStats.activeSubscriptions--; };
       },
+      subscribeMessage: async () => {
+        window.masonryStats.activeSubscriptions++;
+        return () => { window.masonryStats.activeSubscriptions--; };
+      },
     };
     card.previewData = null;
     card.hass = { ...demo.hass, connection, callWS: async message => {

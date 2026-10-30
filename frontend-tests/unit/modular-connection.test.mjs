@@ -4,21 +4,35 @@ import { watchShared, watchRaceControl, watchEntries, watchGroup, connectionDiag
 
 const turn = () => new Promise(resolve => setImmediate(resolve));
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
-function harness(callWS = async () => ({ items: [] })) {
+function harness(callWS = async () => ({ items: [] }), { admin = true } = {}) {
   const handlers = new Map(), connectionHandlers = new Map();
   const counts = { subscriptions: 0, unsubscribe: 0, requests: 0, services: 0 };
+  const nativeSubscriptions = [], messages = [];
+  const subscribe = (callback, type) => {
+    counts.subscriptions++;
+    if (!handlers.has(type)) handlers.set(type, new Set()); handlers.get(type).add(callback);
+    return () => { counts.unsubscribe++; handlers.get(type).delete(callback); };
+  };
   const connection = {
     addEventListener: (type, callback) => { if (!connectionHandlers.has(type)) connectionHandlers.set(type, new Set()); connectionHandlers.get(type).add(callback); },
     removeEventListener: (type, callback) => connectionHandlers.get(type)?.delete(callback),
     subscribeEvents: async (callback, type) => {
-      counts.subscriptions++;
-      if (!handlers.has(type)) handlers.set(type, new Set()); handlers.get(type).add(callback);
-      return () => { counts.unsubscribe++; handlers.get(type).delete(callback); };
+      nativeSubscriptions.push(type);
+      if (!admin && type !== 'entity_registry_updated') throw { code: 'unauthorized', message: 'Unauthorized' };
+      return subscribe(callback, type);
+    },
+    subscribeMessage: async (callback, message, options) => {
+      assert.equal(message.type, 'f1_sensor/events/subscribe');
+      assert.equal(message.protocol_version, 1);
+      assert.equal(options.resubscribe, false);
+      messages.push(message);
+      return subscribe(callback, message.event_type);
     },
   };
-  return { connection, counts,
+  return { connection, counts, nativeSubscriptions, messages,
     hass: { connection, callWS: async message => { counts.requests++; return callWS(message); }, callService: () => { counts.services++; } },
-    emit: (type, data) => { for (const callback of handlers.get(type) ?? []) callback({ data }); },
+    emit: (type, data) => { for (const callback of handlers.get(type) ?? []) callback({ event_type: type, data }); },
+    close: type => { for (const callback of [...handlers.get(type) ?? []]) callback({ event_type: type, status: 'closed', data: {} }); },
     lifecycle: type => { for (const callback of connectionHandlers.get(type) ?? []) callback(); },
     active: () => [...handlers.values()].reduce((n, set) => n + set.size, 0),
   };
@@ -56,7 +70,7 @@ test('messages arriving before history resolves are merged, reset invalidates in
 
 test('a late subscribe resolution after removal is immediately unsubscribed', async () => {
   const subscription = deferred(), h = harness(); let removed = 0;
-  h.connection.subscribeEvents = () => subscription.promise;
+  h.connection.subscribeMessage = () => subscription.promise;
   const stop = watchRaceControl(h.hass, 'sensor.rc', () => {});
   await turn(); stop(); subscription.resolve(() => { removed++; }); await turn();
   assert.equal(removed, 1);
@@ -79,8 +93,8 @@ test('reconnect obtains new history and ignores responses from a prior connectio
 });
 
 test('partial subscription failure cleans up and does not leave a retry after final removal', async () => {
-  const h = harness(); const original = h.connection.subscribeEvents; let calls = 0, latest;
-  h.connection.subscribeEvents = (callback, type) => ++calls === 2 ? Promise.reject(new Error('Denied')) : original(callback, type);
+  const h = harness(); const original = h.connection.subscribeMessage; let calls = 0, latest;
+  h.connection.subscribeMessage = (callback, message, options) => ++calls === 2 ? Promise.reject(new Error('Denied')) : original(callback, message, options);
   const stop = watchRaceControl(h.hass, 'sensor.rc', state => { latest = state; });
   await turn();
   assert.equal(latest.status, 'error');
@@ -98,6 +112,61 @@ test('discovery is shared and refreshes after registry changes', async () => {
   h.emit('entity_registry_updated', {}); await turn();
   assert.equal(latest.data[0].entities.driver_list, 'sensor.renamed');
   a(); b();
+});
+
+for (const admin of [false, true]) {
+  test(`${admin ? 'admin' : 'non-admin'} users discover installations and receive complete Race Control history without custom bus subscriptions`, async () => {
+    let entries = [{ entry_id: 'one', entities: {} }], discovery, raceControl;
+    const first = { event_id: 'first', utc: '2026-10-20T13:00:00Z', message: 'YELLOW FLAG' };
+    const second = { event_id: 'second', utc: '2026-10-20T13:00:01Z', message: 'GREEN FLAG' };
+    let items = [first];
+    const h = harness(message => message.type === 'f1_sensor/entities' ? entries : { items }, { admin });
+    const stops = [
+      watchEntries(h.hass, state => { discovery = state; }),
+      watchRaceControl(h.hass, { entry_id: 'one', event_type: 'f1_sensor_race_control_data' }, state => { raceControl = state; }),
+    ];
+    try {
+      await turn();
+      assert.equal(discovery.status, 'ready');
+      assert.equal(discovery.data[0].entry_id, 'one');
+      assert.deepEqual(raceControl.data.map(item => item.event_id), ['first']);
+      assert.deepEqual(h.nativeSubscriptions, ['entity_registry_updated']);
+      assert.deepEqual(h.messages.map(({ event_type, entry_id, entity_id }) => ({ event_type, entry_id, entity_id })).sort((a, b) => a.event_type.localeCompare(b.event_type)), [
+        { event_type: 'f1_sensor_data_configuration', entry_id: undefined, entity_id: undefined },
+        { event_type: 'f1_sensor_race_control_data', entry_id: 'one', entity_id: undefined },
+        { event_type: 'f1_sensor_race_control_log_reset_event', entry_id: 'one', entity_id: undefined },
+      ]);
+      entries = [{ entry_id: 'one', entities: { driver_list: 'sensor.renamed' } }];
+      h.emit('f1_sensor_data_configuration', { entry_id: 'one' }); await turn();
+      assert.equal(discovery.data[0].entities.driver_list, 'sensor.renamed');
+      h.emit('f1_sensor_race_control_data', { entry_id: 'one', log_item: second });
+      assert.deepEqual(raceControl.data.map(item => item.event_id), ['second', 'first']);
+      h.emit('f1_sensor_race_control_log_reset_event', { entry_id: 'one' });
+      assert.deepEqual(raceControl.data, []);
+      items = [second];
+      h.lifecycle('disconnected'); h.lifecycle('ready'); await turn();
+      assert.equal(discovery.status, 'ready');
+      assert.deepEqual(raceControl.data.map(item => item.event_id), ['second']);
+      assert.equal(h.active(), 4);
+    } finally { stops.forEach(stop => stop()); }
+    assert.equal(h.active(), 0);
+    assert.equal(h.counts.services, 0);
+    assert.equal(connectionDiagnostics(h.connection).resources, 0);
+  });
+}
+
+test('closing an entry releases Race Control listeners and keeps its snapshot until reconnect', async () => {
+  const h = harness(), values = [];
+  const stop = watchRaceControl(h.hass, { entry_id: 'one', event_type: 'f1_sensor_race_control_data' }, state => values.push(state));
+  try {
+    await turn();
+    h.close('f1_sensor_race_control_data');
+    assert.equal(values.at(-1).status, 'error');
+    assert.equal(h.active(), 0);
+    h.lifecycle('ready'); await turn();
+    assert.equal(values.at(-1).status, 'ready');
+    assert.equal(h.active(), 2);
+  } finally { stop(); }
 });
 
 test('control groups isolate entry, dashboard, view and connection and never share integration commands', () => {

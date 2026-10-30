@@ -13,7 +13,7 @@ test('unknown modules survive a real preview and do not prevent supported module
     const card = window.fixtureCard, demo = window.fixtureDemo;
     card.previewData = null;
     card.preview = true;
-    card.hass = { ...demo.hass, connection: { connected: true, subscribeEvents: async () => () => {} }, callWS: async () => demo.preview.entries };
+    card.hass = { ...demo.hass, connection: { connected: true, subscribeEvents: async () => () => {}, subscribeMessage: async () => () => {} }, callWS: async () => demo.preview.entries };
   });
   await expect(page.getByText('This module needs a newer card version. Its settings are preserved.', { exact: true })).toBeVisible();
   await expect(page.locator('#module-schedule .schedule time').first()).toBeVisible();

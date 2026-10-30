@@ -68,6 +68,13 @@ export function watchShared(hass, key, factory, listener) {
   };
 }
 
+// HA's generic event-bus API permits custom events only for administrators.
+// This integration command exposes only the card's scoped, read-only events.
+async function subscribeCardEvent(hass, callback, eventType, address = {}) {
+  if (!hass.connection.subscribeMessage) throw new Error('Card event subscription is unavailable');
+  return hass.connection.subscribeMessage(callback, { type: 'f1_sensor/events/subscribe', protocol_version: 1, event_type: eventType, ...address }, { resubscribe: false });
+}
+
 export function watchEntries(hass, callback) {
   return watchShared(hass, 'entities', async scope => {
     let request = 0;
@@ -78,16 +85,13 @@ export function watchEntries(hass, callback) {
       if (!Array.isArray(entries)) throw new Error('F1 Sensor entity discovery is unavailable');
       scope.emit(entries);
     };
-    if (hass.connection.subscribeEvents) {
-      for (const eventType of ['entity_registry_updated', 'f1_sensor_data_configuration']) {
-        const unsubscribe = await hass.connection.subscribeEvents(() => {
-          // Discard overlapping responses; configuration can change without an
-          // entity registry mutation (for example automatic data capabilities).
-          load().catch(scope.error);
-        }, eventType);
-        scope.cleanup(unsubscribe);
-      }
-    }
+    const refresh = event => {
+      if (event?.status === 'closed') { scope.error(new Error('F1 Sensor entry was unloaded')); return; }
+      // Discard overlapping responses, including updates without a registry mutation.
+      load().catch(scope.error);
+    };
+    if (hass.connection.subscribeEvents) scope.cleanup(await hass.connection.subscribeEvents(refresh, 'entity_registry_updated'));
+    scope.cleanup(await subscribeCardEvent(hass, refresh, 'f1_sensor_data_configuration'));
     if (scope.active()) await load();
   }, callback);
 }
@@ -118,22 +122,23 @@ export function watchRaceControl(hass, address, callback) {
   const eventType = entryId && address.event_type === 'f1_sensor_race_control_data' ? 'f1_sensor_race_control_data' : 'f1_sensor_race_control_event';
   return watchShared(hass, `race-control:${entryId ? `entry:${entryId}` : entityId}:${eventType}`, async scope => {
     let items = [], reset = 0;
-    const connection = hass.connection;
-    if (!connection.subscribeEvents) throw new Error('Race Control event subscription is unavailable');
-    const unsubscribe = await connection.subscribeEvents(event => {
+    const address = entryId ? { entry_id: entryId } : { entity_id: entityId };
+    const unsubscribe = await subscribeCardEvent(hass, event => {
       if (!scope.active()) return;
+      if (event?.status === 'closed') { scope.error(new Error('F1 Sensor entry was unloaded')); return; }
       const data = event?.data;
       // Events without an entity cannot safely be assigned to one of several
       // integration entries. A later snapshot will recover valid persisted data.
       if (!matches(data)) return;
       items = mergeEvents(items, [data.log_item ?? data.message]); scope.emit(items);
-    }, eventType);
+    }, eventType, address);
     scope.cleanup(unsubscribe);
     if (!scope.active()) return;
-    const resetUnsubscribe = await connection.subscribeEvents(event => {
+    const resetUnsubscribe = await subscribeCardEvent(hass, event => {
+      if (event?.status === 'closed') { scope.error(new Error('F1 Sensor entry was unloaded')); return; }
       if (!scope.active() || !matches(event?.data)) return;
       reset++; items = []; scope.emit(items);
-    }, 'f1_sensor_race_control_log_reset_event');
+    }, 'f1_sensor_race_control_log_reset_event', address);
     scope.cleanup(resetUnsubscribe);
     if (!scope.active()) return;
     // Subscribe before requesting history so messages during the request are

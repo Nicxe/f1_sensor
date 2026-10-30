@@ -10,7 +10,7 @@ async function mount(page, local = 'inherit') {
   await page.evaluate(local => {
     window.mountModular({ config: { context: { viewing_controls: true, spoilers: local }, modules: [] } });
     const card = window.fixtureCard, demo = window.fixtureDemo, entry = demo.preview.entries[0];
-    const connection = { connected: true, subscribeEvents: async () => () => {} };
+    const connection = { connected: true, subscribeEvents: async () => () => {}, subscribeMessage: async () => () => {} };
     window.calibrationCalls = []; window.calibrationFail = false; window.calibrationRun = 0;
     window.calibrationPush = (mode, attrs = {}) => {
       const id = entry.entities.delay_calibration_switch, value = card.hass.states[id];
