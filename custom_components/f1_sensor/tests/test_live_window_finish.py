@@ -118,7 +118,7 @@ async def test_all_session_types_wait_for_late_lap_and_finalisation(
     )
     assert received == [_LAST_LAP]
     assert reason == "session-finished"
-    assert elapsed == 300
+    assert elapsed == 320
     assert eligible is None
 
 
@@ -127,6 +127,7 @@ async def test_stale_heartbeat_does_not_cut_fresh_timing(hass, monkeypatch):
         (20, "SessionStatus", {"Status": "Finished", "Started": "Finished"}),
         (100, "TimingData", _LAST_LAP),
         (120, "SessionStatus", {"Status": "Finalised", "Started": "Finished"}),
+        (240, "SessionStatus", {"Status": "Ends", "Started": "Finished"}),
     ]
     reason, _, received, _ = await _run_window(
         hass, monkeypatch, events, heartbeat_age=80.0
@@ -156,13 +157,14 @@ async def test_delayed_race_retains_extended_window_through_last_laps(
         (1840, "SessionStatus", {"Status": "Finished", "Started": "Finished"}),
         (1940, "TimingData", _LAST_LAP),
         (1960, "SessionStatus", {"Status": "Finalised", "Started": "Finished"}),
+        (2080, "SessionStatus", {"Status": "Ends", "Started": "Finished"}),
     ]
     reason, elapsed, received, eligible = await _run_window(
         hass, monkeypatch, events, session_name="Race", disconnect_seconds=40
     )
     assert received == [_LAST_LAP]
     assert reason == "session-finished"
-    assert elapsed == 2020
+    assert elapsed == 2140
     assert eligible is None
 
 
@@ -184,3 +186,68 @@ async def test_missing_finalisation_still_stops_on_idle_or_window_cap(
     else:
         assert reason == "heartbeat-timeout-80s"
         assert elapsed == 20
+
+
+@pytest.mark.parametrize("source", ["index", "event_tracker"])
+async def test_finalised_waits_through_idle_for_ends_without_starting_drain(
+    hass, monkeypatch, source
+):
+    reason, elapsed, _, eligible = await _run_window(
+        hass,
+        monkeypatch,
+        [
+            (20, "SessionStatus", {"Status": "Finalised", "Started": "Started"}),
+            (440, "SessionStatus", {"Status": "Ends", "Started": "Finished"}),
+        ],
+        source=source,
+        heartbeat_age=80.0,
+        activity_age=80.0,
+    )
+    assert reason == "session-finished"
+    assert elapsed == 500
+    assert eligible is None
+
+
+async def test_missing_ends_still_has_bounded_finalised_wait(hass, monkeypatch):
+    reason, elapsed, _, _ = await _run_window(
+        hass,
+        monkeypatch,
+        [(20, "SessionStatus", {"Status": "Finalised", "Started": "Finished"})],
+        heartbeat_age=80.0,
+        activity_age=80.0,
+        disconnect_seconds=40,
+    )
+    assert reason == "disconnect-window-expired"
+    assert elapsed == 40
+
+
+async def test_ends_drain_survives_duplicate_and_partial_status_snapshots(
+    hass, monkeypatch
+):
+    events = [
+        (20, "SessionStatus", {"Status": "Finalised"}),
+        (100, "SessionStatus", {"Status": "Ends", "Started": "Finished"}),
+        (120, "SessionStatus", {"Status": "Finalised"}),
+        (120, "SessionInfo", {"Key": 11396, "SessionStatus": "Started"}),
+        (140, "SessionStatus", {"Started": "Finished"}),
+        (160, "SessionStatus", None),
+    ]
+    reason, elapsed, _, _ = await _run_window(hass, monkeypatch, events)
+    assert reason == "session-finished"
+    assert elapsed == 160
+
+
+@pytest.mark.parametrize("status", ["Started", "Resumed"])
+async def test_explicit_resumption_cancels_previous_ends_drain(
+    hass, monkeypatch, status
+):
+    events = [
+        (20, "SessionStatus", {"Status": "Ends"}),
+        (60, "SessionStatus", {"Status": status}),
+        (220, "TimingData", _LAST_LAP),
+        (260, "SessionStatus", {"Status": "Ends"}),
+    ]
+    reason, elapsed, received, _ = await _run_window(hass, monkeypatch, events)
+    assert received == [_LAST_LAP]
+    assert reason == "session-finished"
+    assert elapsed == 320
