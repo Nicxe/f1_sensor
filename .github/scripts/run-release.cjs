@@ -8,7 +8,7 @@ const path = require('node:path');
 const { setReleaseContributors } = require('./release-contributors.cjs');
 const {
   compareReleaseTags, isBranchTag, mergedReleaseTags, parseReleaseTag,
-  releaseStage
+  releaseStage, sortedReleaseTags
 } = require('./release-stage.cjs');
 const {
   extractEditorial,
@@ -176,8 +176,10 @@ async function main() {
 
 function assertOpenReleaseCycle({branch, tags, releases}) {
   if (branch !== 'beta') return;
-  const candidate = tags.find(tag => parseReleaseTag(tag)?.stage === 'rc');
-  if (!candidate || parseReleaseTag(tags[0])?.stage === 'stable') return;
+  // Historical RC tags remain in ancestry after a new beta cycle starts.
+  // Only the latest release identifies an active RC series to protect.
+  const candidate = sortedReleaseTags(tags)[0];
+  if (parseReleaseTag(candidate)?.stage !== 'rc') return;
   for (const release of releases) {
     const tag = release.tag_name;
     if (release.draft !== false || release.prerelease !== false
