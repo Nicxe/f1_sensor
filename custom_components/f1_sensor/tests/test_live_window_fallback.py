@@ -1367,8 +1367,8 @@ async def test_terminal_session_status_ends_live_window_despite_heartbeats(
 ) -> None:
     now = dt.datetime(2026, 10, 4, 10, 20, 15, tzinfo=dt.UTC)
     bus = _DummyBus()
-    bus.inject_message("SessionInfo", {"Key": 11465, "SessionStatus": "Finished"})
-    bus.inject_message("SessionStatus", {"Status": "Finished"})
+    bus.inject_message("SessionInfo", {"Key": 11465, "SessionStatus": "Ends"})
+    bus.inject_message("SessionStatus", {"Status": "Ends"})
     supervisor = LiveSessionSupervisor(
         hass,
         _DummySessionCoordinator({}, status=200),

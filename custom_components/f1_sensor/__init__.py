@@ -66,6 +66,10 @@ from .card_data_websocket import (
     CARD_RACE_CONTROL_EVENT,
     async_register_card_data_websocket,
 )
+from .card_events_websocket import (
+    CARD_EVENTS_WS_MARKER,
+    async_register_card_events_websocket,
+)
 from .const import (
     API_URL,
     CONF_LEGACY_RACE_CONTROL_EVENTS,
@@ -291,6 +295,7 @@ _DOMAIN_ROOT_INTERNAL_KEYS = frozenset(
         TRACK_MAP_WS_MARKER,
         ENTITY_MAP_WS_MARKER,
         CARD_DATA_WS_MARKER,
+        CARD_EVENTS_WS_MARKER,
     }
 )
 _FINISHING_PLUS_LAPS_RE = re.compile(r"^\+\d+\s+Laps?$", re.IGNORECASE)
@@ -1484,6 +1489,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     async_setup_f1tv_auth_http(hass)
     async_register_entity_map_websocket(hass)
     async_register_card_data_websocket(hass)
+    async_register_card_events_websocket(hass)
     async_register_team_radio_media_view(hass)
     _async_register_race_control_log_interfaces(hass)
     async_register_team_radio_transcription_service(hass)
@@ -2602,6 +2608,7 @@ async def _async_setup_entry(
             live_bus,
             http_session=session,
             archive_client=archive_client,
+            delay_controller=delay_controller,
             fallback_source=event_tracker_source,
         )
         transaction.track(live_supervisor)

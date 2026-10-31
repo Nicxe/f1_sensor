@@ -145,7 +145,7 @@ test('Home Assistant boolean preview still discovers real sources but never runs
     const card = window.fixtureCard, demo = window.fixtureDemo;
     window.previewRequests = []; window.previewActions = [];
     card.previewData = null; card.preview = true;
-    card.hass = { ...demo.hass, connection: { subscribeEvents: async () => () => {} }, callWS: async message => { window.previewRequests.push(message.type); return demo.preview.entries; } };
+    card.hass = { ...demo.hass, connection: { subscribeEvents: async () => () => {}, subscribeMessage: async () => () => {} }, callWS: async message => { window.previewRequests.push(message.type); return demo.preview.entries; } };
     card.addEventListener('hass-action', event => window.previewActions.push(event.detail));
     card.setConfig({ ...card.config, tap_action: { action: 'toggle' }, entity: 'switch.example' });
   });
@@ -654,7 +654,7 @@ test('global spoiler protection blocks every sensitive module and keeps sensitiv
         return () => { window.spoilerResourceStops++; };
       },
       subscribeMessage: async (_callback, message) => {
-        window.spoilerResourceCalls.push(`message:${message.type}`);
+        window.spoilerResourceCalls.push(`message:${message.type}${message.event_type ? `:${message.event_type}` : ''}`);
         return () => { window.spoilerResourceStops++; };
       },
     };
@@ -679,14 +679,14 @@ test('global spoiler protection blocks every sensitive module and keeps sensitiv
     blocked: node.model.blocked,
     leakedPayload: ['rows', 'items', 'series', 'events', 'values', 'documents'].some(key => Object.hasOwn(node.model, key)),
   })))).toEqual([...sensitive, 'weather'].map(type => ({ type, blocked: 'Spoiler protection is active.', leakedPayload: false })));
-  expect(await page.evaluate(() => window.spoilerResourceCalls.filter(call => !['event:entity_registry_updated', 'event:f1_sensor_data_configuration'].includes(call)))).toEqual(['ws:f1_sensor/entities']);
+  expect(await page.evaluate(() => window.spoilerResourceCalls.filter(call => !['event:entity_registry_updated', 'message:f1_sensor/events/subscribe:f1_sensor_data_configuration'].includes(call)))).toEqual(['ws:f1_sensor/entities']);
 
   await page.evaluate(() => {
     const card = window.fixtureCard, entity = card.entry.global_entities.no_spoiler_mode;
     card.hass = { ...card.hass, states: { ...card.hass.states, [entity]: { state: 'unavailable', attributes: {} } } };
   });
   await expect(page.getByText('Spoiler status cannot be verified. Refresh F1 Sensor before showing sensitive data.', { exact: true })).toHaveCount(sensitive.length + 1);
-  expect(await page.evaluate(() => window.spoilerResourceCalls.filter(call => !['event:entity_registry_updated', 'event:f1_sensor_data_configuration'].includes(call)))).toEqual(['ws:f1_sensor/entities']);
+  expect(await page.evaluate(() => window.spoilerResourceCalls.filter(call => !['event:entity_registry_updated', 'message:f1_sensor/events/subscribe:f1_sensor_data_configuration'].includes(call)))).toEqual(['ws:f1_sensor/entities']);
 
   await page.evaluate(() => {
     const card = window.fixtureCard, entity = card.entry.global_entities.no_spoiler_mode;
@@ -695,8 +695,8 @@ test('global spoiler protection blocks every sensitive module and keeps sensitiv
   await expect.poll(() => page.evaluate(() => window.spoilerResourceCalls)).toEqual(expect.arrayContaining([
     'message:f1_sensor/track_map/subscribe',
     'message:f1_sensor/analysis/subscribe',
-    'event:f1_sensor_race_control_event',
-    'event:f1_sensor_race_control_log_reset_event',
+    'message:f1_sensor/events/subscribe:f1_sensor_race_control_event',
+    'message:f1_sensor/events/subscribe:f1_sensor_race_control_log_reset_event',
     'ws:f1_sensor/race_control_log/get',
   ]));
 
@@ -1019,7 +1019,7 @@ test('real analysis subscription refreshes a card and changing modules only rele
     const card = window.fixtureCard, demo = window.fixtureDemo;
     window.analysisRequests = []; window.analysisUnsubscribed = 0; window.analysisServices = 0;
     card.entries = demo.preview.entries; card.previewData = null;
-    card.hass = { ...demo.hass, connection: { subscribeEvents: async () => () => {}, subscribeMessage: async (callback, message) => { window.analysisRequests.push(message); window.analysisCallback = callback; callback(demo.preview.analysis); return () => window.analysisUnsubscribed++; } }, callWS: async () => demo.preview.entries, callService: () => window.analysisServices++ };
+    card.hass = { ...demo.hass, connection: { subscribeEvents: async () => () => {}, subscribeMessage: async (callback, message) => { if (message.type === 'f1_sensor/events/subscribe') return () => {}; window.analysisRequests.push(message); window.analysisCallback = callback; callback(demo.preview.analysis); return () => window.analysisUnsubscribed++; } }, callWS: async () => demo.preview.entries, callService: () => window.analysisServices++ };
   });
   await expect(page.getByText('Demo · track clear', { exact: true })).toBeVisible();
   expect(await page.evaluate(() => window.analysisRequests)).toHaveLength(1);
@@ -1160,6 +1160,7 @@ test('live map becomes stale on its deadline, handles new sessions and releases 
     window.mapRequests = []; window.mapUnsubscribed = 0; window.mapServices = 0;
     card.entries = demo.preview.entries; card.previewData = null;
     card.hass = { ...demo.hass, connection: { subscribeEvents: async () => () => {}, subscribeMessage: async (callback, message) => {
+      if (message.type === 'f1_sensor/events/subscribe') return () => {};
       window.mapRequests.push(message); window.mapCallback = callback;
       callback({ protocol_version: 2, type: 'snapshot', entry_id: 'demo', sequence: 1, geometry_revision: 1, snapshot: demo.preview.map });
       return () => window.mapUnsubscribed++;
@@ -1361,7 +1362,7 @@ test('Race Control clear requires confirmation and targets only the discovered e
   const clear = control.getByRole('button', { name: 'Clear saved messages', exact: true });
   await expect(clear).toBeDisabled();
   await page.evaluate(() => {
-    const card = window.fixtureCard, demo = window.fixtureDemo, connection = { connected: true, subscribeEvents: async () => () => {} };
+    const card = window.fixtureCard, demo = window.fixtureDemo, connection = { connected: true, subscribeEvents: async () => () => {}, subscribeMessage: async () => () => {} };
     card.previewData = null; card.entries = demo.preview.entries; card.eventState = { status: 'connected', data: demo.preview.events };
     card.hass = { ...demo.hass, connection, callService: async (...args) => { window.serviceCalls.push(args); } };
     card.connection = connection; card.eventKey = demo.preview.entries[0].entities.race_control;
@@ -1583,7 +1584,7 @@ test('lap chart editor saves driver, measure and lap interval without requiring 
 
 test('replay controls are inert in previews and only explicit actions affect the discovered player', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 900 });
-  await page.evaluate(() => { window.mountModular({ scene: 'replay', config: { modules: [{ type: 'replay' }] } }); window.replayCalls = []; window.fixtureCard.hass = { ...window.fixtureDemo.hass, connection: { connected: true, subscribeEvents: async () => () => {} }, callWS: async () => window.fixtureDemo.preview.entries, callService: async (...args) => window.replayCalls.push(args) }; });
+  await page.evaluate(() => { window.mountModular({ scene: 'replay', config: { modules: [{ type: 'replay' }] } }); window.replayCalls = []; window.fixtureCard.hass = { ...window.fixtureDemo.hass, connection: { connected: true, subscribeEvents: async () => () => {}, subscribeMessage: async () => () => {} }, callWS: async () => window.fixtureDemo.preview.entries, callService: async (...args) => window.replayCalls.push(args) }; });
   await expect(page.getByRole('button', { name: 'Play replay', exact: true })).toBeDisabled();
   await expect(page.getByText('From replay start: 0:30:00 / 2:00:00', { exact: true })).toBeVisible();
   expect(await page.evaluate(() => window.replayCalls)).toEqual([]);
@@ -1634,7 +1635,7 @@ test('replay loading blocks duplicate clicks, reports service failures and rejec
     status.state = 'selected'; status.attributes.selected_session = 'Demo Grand Prix · Race';
     const card = window.fixtureCard; card.entries = d.preview.entries; card.previewData = null;
     window.replayCalls = [];
-    card.hass = { ...d.hass, connection: { connected: true, subscribeEvents: async () => () => {} }, callWS: async () => d.preview.entries, callService: (...args) => { window.replayCalls.push(args); return new Promise((_resolve, reject) => { window.rejectReplay = reject; }); } };
+    card.hass = { ...d.hass, connection: { connected: true, subscribeEvents: async () => () => {}, subscribeMessage: async () => () => {} }, callWS: async () => d.preview.entries, callService: (...args) => { window.replayCalls.push(args); return new Promise((_resolve, reject) => { window.rejectReplay = reject; }); } };
   });
   await page.getByText('Choose replay', { exact: true }).click();
   await page.getByRole('button', { name: 'Load selected replay', exact: true }).click();
@@ -1737,6 +1738,8 @@ test('archive discards late sessions, retries manually, and clears requests and 
     const card = window.fixtureCard, demo = window.fixtureDemo;
     window.archiveRequests = []; window.archiveFail = false; window.archiveDelayed = null;
     const connection = new EventTarget(); connection.connected = true;
+    connection.subscribeEvents = async () => () => {};
+    connection.subscribeMessage = async () => () => {};
     card.previewData = null;
     card.hass = { ...demo.hass, connection, callService: () => { throw new Error('Unexpected replay service'); }, callWS: async query => {
       window.archiveRequests.push(query);
@@ -1775,6 +1778,8 @@ test('archive editor saves source choices and fields, resetting dependent choice
   await page.evaluate(() => {
     window.mountModular({ editor: true, config: { modules: [{ type: 'archive', options: { year: 2024 } }] } });
     const editor = window.fixtureCard, demo = window.fixtureDemo, connection = new EventTarget(); connection.connected = true;
+    connection.subscribeEvents = async () => () => {};
+    connection.subscribeMessage = async () => () => {};
     editor.hass = { ...demo.hass, connection, callWS: async query => query.type === 'f1_sensor/entities' ? demo.preview.entries : demo.preview.history(query).data.payload };
   });
   const settings = page.getByRole('region', { name: 'Selected module' });
@@ -1827,7 +1832,7 @@ test('telemetry fetches only explicit comparisons, retries manually and discards
     const card = window.fixtureCard, demo = window.fixtureDemo;
     window.telemetryRequests = []; window.telemetryFail = false; window.telemetryHold = false;
     card.previewData = null;
-    card.hass = { ...demo.hass, connection: { subscribeEvents: async () => () => {} }, callService: () => { throw new Error('Unexpected replay action'); }, callWS: async query => {
+    card.hass = { ...demo.hass, connection: { subscribeEvents: async () => () => {}, subscribeMessage: async () => () => {} }, callService: () => { throw new Error('Unexpected replay action'); }, callWS: async query => {
       window.telemetryRequests.push(query);
       if (query.type === 'f1_sensor/entities') return demo.preview.entries;
       const payload = demo.preview.telemetry(query).data.payload;
@@ -1878,7 +1883,7 @@ test('telemetry editor saves chosen laps and channels without fetching samples',
     window.mountModular({ editor: true, scene: 'replay', config: { modules: [{ type: 'telemetry' }] } });
     const editor = window.fixtureCard, demo = window.fixtureDemo;
     window.telemetryEditorRequests = [];
-    editor.hass = { ...demo.hass, connection: { subscribeEvents: async () => () => {} }, callWS: async query => {
+    editor.hass = { ...demo.hass, connection: { subscribeEvents: async () => () => {}, subscribeMessage: async () => () => {} }, callWS: async query => {
       window.telemetryEditorRequests.push(query);
       if (query.type === 'f1_sensor/entities') return demo.preview.entries;
       if (query.type.endsWith('telemetry_compare')) throw new Error('Editor cannot fetch telemetry');

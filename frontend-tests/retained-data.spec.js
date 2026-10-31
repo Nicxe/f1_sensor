@@ -11,6 +11,7 @@ async function mount(page, modules = [{ id: 'timing', type: 'timing', fields: ['
     const card = window.fixtureCard, demo = window.fixtureDemo;
     const connection = new EventTarget(); connection.connected = true;
     connection.subscribeEvents = async () => () => {};
+    connection.subscribeMessage = async () => () => {};
     window.retainedServices = [];
     card.previewData = null;
     card.hass = { ...demo.hass, connection, callWS: async () => demo.preview.entries,
