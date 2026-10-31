@@ -2940,6 +2940,8 @@ async def _async_setup_entry(
             return resolve_team_radio_source_url(
                 capture,
                 session_path=getattr(window, "path", None),
+                session_key=getattr(window, "session_key", None),
+                session_info=getattr(session_info_coordinator, "data", None),
                 year=session_coordinator.year,
             )
 

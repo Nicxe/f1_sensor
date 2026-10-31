@@ -10,7 +10,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.exceptions import ConfigEntryNotReady, ServiceValidationError
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.entity_platform import DATA_ENTITY_PLATFORM
 import pytest
@@ -48,6 +48,9 @@ from custom_components.f1_sensor.const import (
 from custom_components.f1_sensor.live_delay import LiveDelayReferenceController
 from custom_components.f1_sensor.live_window import LiveAvailabilityTracker
 from custom_components.f1_sensor.runtime import F1RuntimeData
+from custom_components.f1_sensor.team_radio_transcription import (
+    TRANSCRIPTION_MANAGER_KEY,
+)
 from custom_components.f1_sensor.track_map import (
     TrackMapReplayAdapter,
     TrackMapStore,
@@ -1473,6 +1476,108 @@ async def test_async_setup_entry_live_mode_registers_replay_only_components(
     assert entry_data["team_radio_coordinator"] is not None
     assert entry_data["pitstop_coordinator"] is not None
     assert entry_data["championship_prediction_coordinator"] is not None
+
+
+@pytest.mark.asyncio
+async def test_setup_transcription_resolves_current_session_radio_source(hass) -> None:
+    """The service uses the same verified session path as radio playback."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            "sensor_name": "F1",
+            "enable_race_control": True,
+            CONF_OPERATION_MODE: OPERATION_MODE_LIVE,
+            CONF_REPLAY_FILE: "",
+        },
+    )
+    entry.add_to_hass(hass)
+    with ExitStack() as stack:
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.build_user_agent",
+                AsyncMock(return_value="ua"),
+            )
+        )
+        stack.enter_context(patch("custom_components.f1_sensor.LiveBus", FakeLiveBus))
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.LiveSessionCoordinator", DummyCoordinator
+            )
+        )
+        stack.enter_context(
+            patch("custom_components.f1_sensor.ReplayController", FakeReplayController)
+        )
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.LiveSessionSupervisor", FakeLiveSupervisor
+            )
+        )
+        stack.enter_context(
+            patch(
+                "custom_components.f1_sensor.EventTrackerScheduleSource",
+                lambda *_args, **_kwargs: object(),
+            )
+        )
+        for context_manager in _coordinator_patches():
+            stack.enter_context(context_manager)
+        hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=None)
+        assert await async_setup_entry(hass, entry)
+
+    runtime = hass.data[DOMAIN][entry.entry_id]
+    runtime["session_coordinator"].year = 2026
+    runtime["live_supervisor"].current_window = SimpleNamespace(
+        path="", session_key=11399
+    )
+    session_info = runtime["session_info_coordinator"]
+    session_info.data = {
+        "Key": 11399,
+        "Path": "2026/2026-11-01_Mexico_City_Grand_Prix/2026-10-31_Practice_3/",
+    }
+    radio = runtime["team_radio_coordinator"]
+    radio.data = {
+        "latest": {
+            "Utc": "2026-10-31T17:44:21.042Z",
+            "RacingNumber": "14",
+            "Path": "TeamRadio/ALO_14_20261031_114347.mp3",
+        }
+    }
+    manager = runtime[TRANSCRIPTION_MANAGER_KEY]
+    local_clip_url = "/api/f1_sensor/team-radio/entry/signed"
+
+    capture = manager._latest_capture(local_clip_url)  # noqa: SLF001
+    assert capture["clip_url"] == (
+        "https://livetiming.formula1.com/static/"
+        "2026/2026-11-01_Mexico_City_Grand_Prix/2026-10-31_Practice_3/"
+        "TeamRadio/ALO_14_20261031_114347.mp3"
+    )
+
+    # SessionInfo from another session must not be used for live audio.
+    session_info.data["Key"] = 11398
+    with pytest.raises(ServiceValidationError, match="has no audio URL"):
+        manager._latest_capture(local_clip_url)  # noqa: SLF001
+
+    # A missing live session identity is not sufficient to trust SessionInfo.
+    runtime["live_supervisor"].current_window.session_key = None
+    session_info.data["Key"] = 11399
+    with pytest.raises(ServiceValidationError, match="has no audio URL"):
+        manager._latest_capture(local_clip_url)  # noqa: SLF001
+
+    # A path supplied by the active window takes priority over SessionInfo.
+    runtime["live_supervisor"].current_window.path = "2026/active/session/"
+    assert manager._latest_capture(local_clip_url)["clip_url"] == (  # noqa: SLF001
+        "https://livetiming.formula1.com/static/2026/active/session/"
+        "TeamRadio/ALO_14_20261031_114347.mp3"
+    )
+
+    # Replay provides its own static root even without a live session path.
+    runtime["live_supervisor"].current_window.path = ""
+    radio.data["latest"]["_static_root"] = (
+        "https://livetiming.formula1.com/static/replay/session"
+    )
+    assert manager._latest_capture(local_clip_url)["clip_url"] == (  # noqa: SLF001
+        "https://livetiming.formula1.com/static/replay/session/"
+        "TeamRadio/ALO_14_20261031_114347.mp3"
+    )
 
 
 @pytest.mark.asyncio
