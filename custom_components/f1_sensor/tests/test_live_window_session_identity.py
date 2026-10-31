@@ -141,7 +141,10 @@ async def test_identified_session_finishes_after_partial_info(
     initial = [("SessionInfo", {"Key": 11379, "SessionStatus": "Started"})]
     updates = [
         [("SessionInfo", {"ArchiveStatus": {"Status": "Generating"}})],
-        [("SessionStatus", {"Status": status, "Started": "Finished"})],
+        [
+            ("SessionStatus", {"Status": status, "Started": "Finished"}),
+            ("SessionStatus", {"Status": "Ends", "Started": "Finished"}),
+        ],
     ] + [[]] * 5
     reason, supervisor, window, tick = await _monitor(
         hass, monkeypatch, initial, updates, source=source
@@ -170,14 +173,17 @@ async def test_qualifying_segment_finish_and_break_keep_window_open(
     assert await supervisor._select_window([window], source=source) is window
 
 
-async def test_qualifying_final_segment_waits_for_finalised(hass, monkeypatch):
+async def test_qualifying_final_segment_waits_for_ends(hass, monkeypatch):
     initial = [("SessionInfo", {"Key": 11379, "Type": "Qualifying"})]
     updates = [
         [("SessionStatus", {"Status": "Started", "Started": "Started"})],
         [("SessionStatus", {"Status": "Finished", "Started": "Finished"})],
         [],
         [],
-        [("SessionStatus", {"Status": "Finalised", "Started": "Finished"})],
+        [
+            ("SessionStatus", {"Status": "Finalised", "Started": "Finished"}),
+            ("SessionStatus", {"Status": "Ends", "Started": "Finished"}),
+        ],
     ] + [[]] * 5
     reason, supervisor, window, tick = await _monitor(
         hass, monkeypatch, initial, updates
@@ -206,7 +212,10 @@ async def test_full_qualifying_progression_stays_live_through_two_breaks(
         [("SessionStatus", {"Status": "Started", "Started": "Started"})],
         [("SessionStatus", {"Status": "Finished", "Started": "Finished"})],
         *([[]] * 4),
-        [("SessionStatus", {"Status": "Finalised", "Started": "Finished"})],
+        [
+            ("SessionStatus", {"Status": "Finalised", "Started": "Finished"}),
+            ("SessionStatus", {"Status": "Ends", "Started": "Finished"}),
+        ],
         *([[]] * 4),
     ]
     reason, supervisor, window, tick = await _monitor(
@@ -237,7 +246,10 @@ async def test_new_race_key_waits_for_its_own_finalisation(hass, monkeypatch, ol
         [("SessionInfo", {"Key": 11379, "Type": "Race"})],
         [("SessionStatus", {"Status": "Finished"})],
         *([[]] * 4),
-        [("SessionStatus", {"Status": "Finalised"})],
+        [
+            ("SessionStatus", {"Status": "Finalised"}),
+            ("SessionStatus", {"Status": "Ends"}),
+        ],
         *([[]] * 4),
     ]
     reason, supervisor, window, tick = await _monitor(
@@ -272,7 +284,10 @@ async def test_testing_day_remains_live_through_lunch_finish(
         [("SessionStatus", {"Status": "Finished", "Started": "Finished"})],
         *([[]] * 4),
         [("SessionStatus", {"Status": "Started", "Started": "Started"})],
-        [("SessionStatus", {"Status": "Finalised", "Started": "Started"})],
+        [
+            ("SessionStatus", {"Status": "Finalised", "Started": "Started"}),
+            ("SessionStatus", {"Status": "Ends", "Started": "Finished"}),
+        ],
         *([[]] * 4),
     ]
     reason, supervisor, window, tick = await _monitor(
@@ -310,12 +325,15 @@ async def test_session_info_type_protects_renamed_qualifying_session(hass, monke
     assert await supervisor._select_window([window], source="index") is window
 
 
-async def test_practice_finish_waits_for_finalisation(hass, monkeypatch):
+async def test_practice_finish_waits_for_ends(hass, monkeypatch):
     initial = [("SessionInfo", {"Key": 11379, "Type": "Practice"})]
     updates = [
         [("SessionStatus", {"Status": "Finished"})],
         *([[]] * 5),
-        [("SessionStatus", {"Status": "Finalised"})],
+        [
+            ("SessionStatus", {"Status": "Finalised"}),
+            ("SessionStatus", {"Status": "Ends"}),
+        ],
         *([[]] * 4),
     ]
     reason, supervisor, window, tick = await _monitor(
@@ -336,7 +354,10 @@ async def test_matching_identity_arrives_after_unknown_terminal_status(
         [("SessionInfo", None), ("SessionStatus", None)],
         [("SessionStatus", {"Status": "Finished"})],
         *([[]] * 4),
-        [("SessionStatus", {"Status": "Finalised"})],
+        [
+            ("SessionStatus", {"Status": "Finalised"}),
+            ("SessionStatus", {"Status": "Ends"}),
+        ],
         *([[]] * 4),
     ]
     reason, supervisor, window, tick = await _monitor(
@@ -347,8 +368,8 @@ async def test_matching_identity_arrives_after_unknown_terminal_status(
     assert await supervisor._select_window([window], source="index") is None
 
 
-async def test_reconnect_to_identified_finished_session_closes(hass, monkeypatch):
-    initial = [("SessionInfo", {"Key": 11379, "SessionStatus": "Finalised"})]
+async def test_reconnect_to_identified_ended_session_closes(hass, monkeypatch):
+    initial = [("SessionInfo", {"Key": 11379, "SessionStatus": "Ends"})]
     reason, supervisor, window, tick = await _monitor(
         hass, monkeypatch, initial, [[]] * 6
     )
@@ -358,7 +379,7 @@ async def test_reconnect_to_identified_finished_session_closes(hass, monkeypatch
 
 
 async def test_changed_identity_cancels_pending_finish(hass, monkeypatch):
-    initial = [("SessionInfo", {"Key": 11379, "SessionStatus": "Finalised"})]
+    initial = [("SessionInfo", {"Key": 11379, "SessionStatus": "Ends"})]
     updates = [
         [],
         [("SessionInfo", {"Key": 11380})],

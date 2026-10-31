@@ -43,7 +43,6 @@ _NO_SPOILER_MANAGER_KEY = "no_spoiler_manager"
 
 STATIC_BASE = "https://livetiming.formula1.com/static"
 SESSION_END_STATES = {"Finished", "Finalised", "Ends"}
-SESSION_FINAL_STATES = {"Finalised", "Ends"}
 SESSION_RUNNING_STATES = {"Started", "Resumed"}
 DEFAULT_PRE_WINDOW = timedelta(minutes=60)
 DEFAULT_POST_WINDOW = timedelta(minutes=15)
@@ -881,16 +880,17 @@ def _session_status_running(status_payload: dict | None) -> bool:
     return status in SESSION_RUNNING_STATES or started in SESSION_RUNNING_STATES
 
 
-def _session_status_finished(status_payload: dict | None) -> bool:
+def _session_final_status(status_payload: dict | None) -> str | None:
     if not isinstance(status_payload, dict):
-        return False
-    values = (
-        status_payload.get("Status"),
-        status_payload.get("Started"),
-        status_payload.get("Message"),
-    )
-    # Finished stops the session clock, but cars can still complete valid laps.
-    return any(str(value or "").strip() in SESSION_FINAL_STATES for value in values)
+        return None
+    values = {
+        str(status_payload.get(field) or "").strip()
+        for field in ("Status", "Message", "Started")
+    }
+    for status in ("Ends", "Finalised"):
+        if status in values:
+            return status
+    return None
 
 
 def _session_data_race_start(session_data: dict | None) -> datetime | None:
@@ -931,6 +931,7 @@ class _LiveSessionStatus:
 
     session_key: int | None = None
     payload: dict[str, Any] | None = None
+    completion_status: str | None = None
 
     def update_info(self, payload: Any) -> None:
         if not isinstance(payload, dict):
@@ -940,21 +941,36 @@ class _LiveSessionStatus:
             if session_key != self.session_key:
                 self.session_key = session_key
                 self.payload = None
+                self.completion_status = None
         if "SessionStatus" in payload:
-            self.payload = {"Status": payload["SessionStatus"]}
+            # Same-session snapshots can lag behind the live status stream.
+            self.update_status({"Status": payload["SessionStatus"]}, allow_resume=False)
 
-    def update_status(self, payload: Any) -> None:
+    def update_status(self, payload: Any, *, allow_resume: bool = True) -> None:
         self.payload = payload if isinstance(payload, dict) else None
+        final_status = _session_final_status(self.payload)
+        if final_status is not None:
+            if self.completion_status != "Ends":
+                self.completion_status = final_status
+        elif allow_resume and isinstance(payload, dict):
+            if any(
+                str(payload.get(field) or "").strip() in SESSION_RUNNING_STATES
+                for field in ("Status", "Message")
+            ):
+                self.completion_status = None
 
-    def finished(self, window: SessionWindow) -> bool:
+    def finalised(self, window: SessionWindow) -> bool:
         session_key = _as_int(window.session_key)
-        # Apply the same finalisation boundary to every session type. Finished
-        # also marks qualifying segments and testing breaks, not a final result.
         return (
             session_key is not None
             and self.session_key == session_key
-            and _session_status_finished(self.payload)
+            and self.completion_status is not None
         )
+
+    def ended(self, window: SessionWindow) -> bool:
+        # Finished also marks qualifying/testing breaks; Finalised can precede
+        # Ends by several minutes. Only Ends starts the final live-data drain.
+        return self.finalised(window) and self.completion_status == "Ends"
 
 
 class LiveSessionSupervisor:
@@ -1574,11 +1590,12 @@ class LiveSessionSupervisor:
             hb_age = self._bus.last_heartbeat_age()
             activity_age = self._bus.last_stream_activity_age(LIVE_ACTIVITY_STREAMS)
             session_status = self._cached_bus_payload("SessionStatus")
-            if status.finished(window):
+            session_finalised = status.finalised(window)
+            if status.ended(window):
                 if terminal_seen_at is None:
                     terminal_seen_at = now
                     _LOGGER.info(
-                        "Terminal SessionStatus received for %s; draining live updates",
+                        "SessionStatus Ends received for %s; draining live updates",
                         label,
                     )
                 # Normal shutdown clears delayed ingest queues. Keep the live
@@ -1611,7 +1628,9 @@ class LiveSessionSupervisor:
             )
             extension_cap = max_disconnect_at
             if "race" in window.session_name.casefold() and (
-                _session_status_running(session_status) or session_finishing
+                _session_status_running(session_status)
+                or session_finishing
+                or session_finalised
             ):
                 # Finished still permits final laps. Recalculate the cap so a
                 # late actual start can replace the provisional schedule limit.
@@ -1649,6 +1668,7 @@ class LiveSessionSupervisor:
                 hb_age is not None
                 and hb_age > HEARTBEAT_DRAIN_SECONDS
                 and not fresh_activity
+                and not session_finalised
                 and not allow_post_finish_inactivity
             ):
                 _LOGGER.info(

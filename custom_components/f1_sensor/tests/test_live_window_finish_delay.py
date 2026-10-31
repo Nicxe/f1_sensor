@@ -67,7 +67,7 @@ async def _exercise_session_finish(
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
-    remove_driver_listener = remove_state_listener = lambda: None
+    remove_driver_listener = remove_state_listener = remove_card_listener = lambda: None
     try:
         registry = hass.data[DOMAIN][entry.entry_id]
         bus = entry.runtime_data.live.bus
@@ -75,6 +75,10 @@ async def _exercise_session_finish(
         drivers = registry["drivers_coordinator"]
         analysis_bus = registry["analysis_bus"]
         laps = entry.runtime_data.history.lap_analysis
+        card_data = entry.runtime_data.card_data
+        remove_card_listener = card_data.subscribe(
+            ["driver_positions"], lambda _data: None
+        )
         controller = registry["live_delay_controller"]
         assert controller.current == delay
         assert drivers is not None
@@ -107,6 +111,7 @@ async def _exercise_session_finish(
         }
         published = set()
         before_close = []
+        readable_drain_snapshots = []
 
         def observe_drivers():
             for number, driver in (drivers.data or {}).get("drivers", {}).items():
@@ -127,25 +132,35 @@ async def _exercise_session_finish(
         events = iter(case["events"])
         event = next(events, None)
         first_offset = case["events"][0]["offset"]
-        finalised_at = changed_delay_at = interrupted_at = None
+        ends_at = changed_delay_at = interrupted_at = duplicate_sent_at = None
 
         async def advance(_seconds):
-            nonlocal event, finalised_at, changed_delay_at, interrupted_at
+            nonlocal event, ends_at, changed_delay_at, interrupted_at, duplicate_sent_at
             clock.value += 20
-            assert clock.value <= 1200, "The finalised live session did not close"
+            assert clock.value <= 1200, "The ended live session did not close"
             # These heartbeats isolate normal session completion from inactivity.
             bus.inject_message("Heartbeat", {"Utc": origin.isoformat()})
             while event is not None and event["offset"] - first_offset <= clock.value:
                 bus.inject_message(event["stream"], event["payload"])
                 if (
-                    finalised_at is None
+                    ends_at is None
                     and event["stream"] == "SessionStatus"
-                    and event["payload"].get("Status") == "Finalised"
+                    and event["payload"].get("Status") == "Ends"
                 ):
-                    finalised_at = clock.value
+                    ends_at = clock.value
                 event = next(events, None)
-            if finish_action is not None and finalised_at is not None:
-                if changed_delay_at is None and clock.value > finalised_at:
+            if finish_action == "duplicate-finalised":
+                if (
+                    ends_at is not None
+                    and duplicate_sent_at is None
+                    and clock.value > ends_at
+                ):
+                    bus.inject_message(
+                        "SessionStatus", {"Status": "Finalised", "Started": "Finished"}
+                    )
+                    duplicate_sent_at = clock.value
+            elif finish_action is not None and ends_at is not None:
+                if changed_delay_at is None and clock.value > ends_at:
                     await controller.async_set_delay(300)
                     changed_delay_at = clock.value
                 elif (
@@ -165,6 +180,22 @@ async def _exercise_session_finish(
                         supervisor.availability.set_state(True, "replay")
             f1._drain_delayed_ingest_queue(drivers)
             f1._drain_delayed_ingest_queue(analysis_bus)
+            if finish_action is None and ends_at is not None and expected <= published:
+                snapshot = card_data.snapshot("driver_positions")
+                assert snapshot["status"] == "ready"
+                rows = snapshot["payload"]["attributes"]["drivers"]
+                visible = {
+                    (
+                        row["racing_number"],
+                        row["completed_laps"],
+                        row["laps"].get(str(row["completed_laps"])),
+                    )
+                    for row in rows
+                }
+                assert expected <= visible, (
+                    "The Timing card lost its final readable laps"
+                )
+                readable_drain_snapshots.append(clock.value)
             await asyncio.sleep(0)
 
         monkeypatch.setattr(supervisor, "_interruptible_sleep", advance)
@@ -182,9 +213,19 @@ async def _exercise_session_finish(
         assert before_close == [True], "Availability ended before the last laps arrived"
         assert supervisor.availability.reason == f"finished-{info['Name']}"
         assert not bus._running
+        assert ends_at is not None, "Normal close happened before the Ends status"
+        elapsed_after_ends = clock.value - ends_at
+        expected_drain = 60 + controller.current
+        assert expected_drain <= elapsed_after_ends < expected_drain + 20
+        if finish_action is None:
+            assert len(readable_drain_snapshots) >= 3
+            snapshot = card_data.snapshot("driver_positions")
+            assert snapshot["status"] == "unavailable"
+            assert snapshot["payload"] is None
         if finish_action == "increase":
-            assert finalised_at is not None and changed_delay_at is not None
-            assert clock.value - finalised_at >= 360
+            assert changed_delay_at is not None
+        elif finish_action == "duplicate-finalised":
+            assert duplicate_sent_at is not None
         for number, count, lap_time in expected:
             lap = laps.get_lap(int(number), count)
             assert lap is not None
@@ -195,6 +236,7 @@ async def _exercise_session_finish(
     finally:
         remove_driver_listener()
         remove_state_listener()
+        remove_card_listener()
         if entry.state == ConfigEntryState.LOADED:
             await hass.config_entries.async_unload(entry.entry_id)
         await hass.async_block_till_done()
@@ -211,7 +253,9 @@ async def test_last_recorded_laps_are_published_before_normal_close(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("finish_action", ["increase", "no-spoiler", "replay"])
+@pytest.mark.parametrize(
+    "finish_action", ["increase", "no-spoiler", "replay", "duplicate-finalised"]
+)
 async def test_delay_change_and_interrupts_during_final_drain(
     hass, enable_custom_integrations, aioclient_mock, monkeypatch, finish_action
 ):
