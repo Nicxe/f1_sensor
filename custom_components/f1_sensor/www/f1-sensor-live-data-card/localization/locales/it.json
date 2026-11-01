@@ -8,5 +8,13 @@
   "card.driver_standings.name": "Classifica Piloti del campionato F1",
   "card.fia.name": "Documenti FIA F1",
   "card.investigations.description": "Monitoraggio delle investigazioni e delle penalità, raggruppato per pilota",
-  "card.investigations.name": "F1 Investigazioni & Penalità"
+  "card.investigations.name": "F1 Investigazioni & Penalità",
+  "card.fia.description": "Documenti del weekend di gara, con link diretti e tempo di pubblicazione",
+  "card.lap_positions.description": "Grafico della posizione sul giro dopo la gara per le gare concluse",
+  "card.lap_positions.name": "Progressione della posizione sul giro in F1",
+  "card.live_session.description": "Sessione in tempo reale, meteo, stato tracciato e progressione sul giro",
+  "card.live_session.name": "F1 stato della sessione in tempo reale",
+  "card.modular.description": "Crea la tua visuale personalizzata della Formula 1 con moduli configurabili, colori e cronometraggio accessibile",
+  "card.modular.name": "Sensore F1",
+  "card.next_race.description": "Conto alla rovescia per la prossima gara, programma, meteo e storia"
 }
