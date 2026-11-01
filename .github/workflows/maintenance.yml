@@ -85,7 +85,8 @@ jobs:
       - run: python3 scripts/check_token_helper_review.py quality/token-helper-review.json
   browser:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    # Provisioning both engines must not consume either verification budget.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -98,13 +99,18 @@ jobs:
       - name: Use the project npm version
         run: node scripts/install_project_npm.cjs
       - run: npm ci --no-audit --no-fund
-      - run: npx playwright install --with-deps chromium webkit
+      - name: Install Chromium, WebKit and system dependencies
+        id: browser_install
+        timeout-minutes: 20
+        run: npx playwright install --with-deps chromium webkit
       - name: Chromium performance
+        timeout-minutes: 12
         env:
           F1_MAINTENANCE: 'true'
         run: npx playwright test --grep '@performance'
       - name: WebKit lifecycle, locale, keyboard and destructive-action smoke
-        if: always()
+        if: ${{ !cancelled() && steps.browser_install.outcome == 'success' }}
+        timeout-minutes: 8
         env:
           F1_BROWSER: webkit
         run: npx playwright test --grep 'mounts and unmounts|keyboard actions|timezone wins|clear always'
