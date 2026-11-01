@@ -8,7 +8,7 @@ from pathlib import Path
 import subprocess
 from types import SimpleNamespace
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, call, patch
 
 from scripts.check_npm_audit import match_advisory_versions, project_npm_cli
 from scripts.run_npm_audit import read_baseline, run_audit as run_with_lock
@@ -285,6 +285,69 @@ class RunnerTests(unittest.TestCase):
         target.assert_called_once_with("origin/main")
         self.assertTrue(visited)
         self.assertTrue(all(not directory.exists() for directory in visited))
+
+    def test_introduced_target_uses_two_isolated_snapshots_and_never_the_tools_lock(
+        self,
+    ):
+        base_sha, target_sha = "a" * 40, "b" * 40
+        target_lock = {
+            "lockfileVersion": 3,
+            "packages": {"": {}, "node_modules/pkg": {"version": "1.1.0"}},
+        }
+        base_files = {"package.json": "{}", "package-lock.json": json.dumps(LOCK)}
+        target_files = {
+            "package.json": '{"scripts":{"postinstall":"must-not-run"}}',
+            "package-lock.json": json.dumps(target_lock),
+        }
+        existing = {"pkg": {"via": [{"source": 42, "range": "<1.1.0"}]}}
+        introduced = {"pkg": {"via": [{"source": 43, "range": ">=1.1.0"}]}}
+        for findings, expected_status in (({}, 0), (introduced, 1)):
+            with self.subTest(new_exposure=bool(findings)):
+                snapshots = Mock(side_effect=[base_files, target_files])
+                tools_lock = Mock(side_effect=AssertionError("wrong lock"))
+                reports = iter([result(existing), result(findings)])
+                visited = []
+
+                def execute(
+                    command,
+                    *,
+                    snapshot_directories=visited,
+                    registry_reports=reports,
+                    **kwargs,
+                ):
+                    self.assertEqual(command[0], "node")
+                    self.assertEqual(command[2], "audit")
+                    self.assertIn("--package-lock-only", command)
+                    self.assertIn("--ignore-scripts", command)
+                    directory = Path(command[command.index("--prefix") + 1])
+                    expected_files = (
+                        base_files if not snapshot_directories else target_files
+                    )
+                    self.assertEqual(
+                        {path.name: path.read_text() for path in directory.iterdir()},
+                        expected_files,
+                    )
+                    snapshot_directories.append(directory)
+                    return next(registry_reports)
+
+                with redirect_stdout(StringIO()):
+                    status = run_audit(
+                        {"entries": []},
+                        execute,
+                        Mock(),
+                        mode="introduced",
+                        base=base_sha,
+                        target_ref=target_sha,
+                        read_base=snapshots,
+                        read_lock=tools_lock,
+                    )
+                self.assertEqual(status, expected_status)
+                self.assertEqual(
+                    snapshots.call_args_list, [call(base_sha), call(target_sha)]
+                )
+                tools_lock.assert_not_called()
+                self.assertEqual(len(set(visited)), 2)
+                self.assertTrue(all(not directory.exists() for directory in visited))
 
     def test_baseline_resolves_one_immutable_commit_before_reading_inputs(self):
         sha = "a" * 40

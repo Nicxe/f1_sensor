@@ -1,5 +1,5 @@
 {
-  "reviewed_on": "2026-10-29",
+  "reviewed_on": "2026-11-01",
   "entries": [
     {
       "package": "undici",
@@ -12,8 +12,8 @@
         "node_modules/npm/node_modules/undici"
       ],
       "scope": "Undici 6.29.0 bundled inside npm 12.2.1, used only by release tooling and never shipped with the Home Assistant integration",
-      "reason": "Owner-approved temporary acceptance of GHSA-xjj6-f33q-929c on 2026-10-24, extended after the owner's delegated risk decision on 2026-10-29 to GHSA-2m5v-pch6-74hx and GHSA-qrxm-fqhp-jwvm. npm 12.2.1 still bundles undici 6.29.0 inside the unused npm-publishing dependency of the release tools; project overrides cannot replace that bundled copy, and a compatible downgrade introduced additional high-severity findings. Only these advisory IDs at this exact path are accepted through the unchanged expiry; other advisories and paths remain blocking",
-      "expires": "2026-10-31"
+      "reason": "Owner-approved temporary renewal through 2026-11-08 after renewed dependency and exposure review on 2026-11-01. Only GHSA-xjj6-f33q-929c, GHSA-2m5v-pch6-74hx and GHSA-qrxm-fqhp-jwvm at this exact bundled npm path are covered. Published npm 12.2.1 and 11.21.1 still contain undici 6.29.0; npm 10.9.9 introduces additional high-severity findings and overrides do not replace the shrinkwrapped bundle. The npm publishing plugin is not enabled in the release configuration; this package is a transitive release-tool dependency and is excluded from the Home Assistant archive. This accepts the remaining release-tool crash and custom TLS-verification risks only through 2026-11-08; other advisories, dependency paths and runtime findings remain blocking. Replace or remove this entry when a compatible patched npm bundle is available.",
+      "expires": "2026-11-08"
     }
   ]
 }
