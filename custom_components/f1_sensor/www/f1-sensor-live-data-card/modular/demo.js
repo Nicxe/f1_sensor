@@ -31,6 +31,7 @@ export function makeDemo(scene = 'race', language = 'en', entryId = 'demo') {
     laps: { 10: 81.543 + index * .2, 11: 81.1 + index * .18, 12: 80.873 + index * .23 }, best_lap_time: 80.873 + index * .23, best_lap_lap: 12, fastest_lap: index === 0,
     best_lap_time_source: 'official', best_lap_gap: scene === 'practice' ? Number((index * .23).toFixed(3)) : null,
     push_lap: { state: ['practice', 'qualifying', 'sprint_qualifying'].includes(scene) ? index === 2 ? 'push' : index === 1 ? 'probable_push' : index === 3 ? 'pit' : 'cooldown' : 'unknown', active: ['practice', 'qualifying', 'sprint_qualifying'].includes(scene) && [1, 2].includes(index), confidence: index === 2 ? 'high' : 'medium', lap: 13, progress: index === 2 ? .82 : .4, observed_at: new Date(now).toISOString(), completed_at: null, last_lap_time: null, reason: 'demo' },
+    push_lap_delta: { status: qualifying ? 'available' : 'unsupported', lap: 13, session_part: qualifying ? 2 : null, reference: qualifying ? { racing_number: '16', lap: 12, time: 80.873 } : null, sector_1: index === 1 ? -.008 : .242, sector_2: index === 2 ? .522 : null, sector_3: null, latest_sector: index === 2 ? 2 : 1, reason: 'demo' },
     sector_current_lap: 13, sectors: { current: {
       sector_1: { time: 24.321 + index * .121, lap: 13, overall_fastest: index === 0, personal_fastest: index < 3 },
       sector_2: { time: 30.543 + index * .14, lap: 13, personal_fastest: index === 1 },

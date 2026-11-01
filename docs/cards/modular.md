@@ -104,6 +104,37 @@ timing together. After seeking or reconnecting, the assessment may need fresh
 lap evidence before it can highlight a driver. The push setting does not change
 race or sprint-race sorting.
 
+### Compare a push lap with the best qualifying lap
+
+Choose **Push laps first** or **Push laps only**, then enable **Show difference
+to best lap** beneath **Push laps**. This optional setting is off by default
+and applies only to qualifying and sprint qualifying.
+
+The S1, S2 and S3 columns show a signed difference below each received sector
+time. S1 compares the first sector, S2 compares the combined first two sectors,
+and S3 compares the whole lap. For example, **−0.008** after S1 means the driver
+is 0.008 seconds ahead of the reference at that point. **+0.357** after S2 means
+the driver is 0.357 seconds behind after two sectors. The difference stays
+unchanged between sector passages.
+
+Differences use neutral text with explicit minus or plus signs. Sector-time
+colors keep their existing meanings: personal best, recorded time and overall
+fastest.
+
+The reference is the fastest valid completed lap in the current qualifying
+part, such as Q2 or SQ2, across all drivers. Its driver and time appear below
+the push label. Each attempt keeps the same reference through the finish unless
+that reference is invalidated. The next attempt can use a newly improved best.
+This uses the sectors of one actual lap; it does not combine separate sector
+records into a theoretical lap. Driver and team filters do not change the
+reference.
+
+The final difference stays with the briefly displayed completed attempt.
+Missing reference sectors, corrected or deleted times, and incomplete data
+after joining or seeking show **—** instead of an estimated difference.
+The option also works with **S1 with minisectors**, **S2 with minisectors** and
+**S3 with minisectors**; differences update at sector boundaries only.
+
 ### Show Pit stops
 
 Add **Pit stops** to follow reported pit visits and any timed stop records available for the current session. The module distinguishes counts from details: an available count does not establish the lap or duration of an individual stop.

@@ -10,6 +10,14 @@ on:
         description: Optional dependency snapshot instead of the permanent branch matrix
         type: string
         default: ''
+      mode:
+        description: Full health gate or newly introduced severe dependency exposure
+        type: string
+        default: gate
+      base:
+        description: Immutable comparison commit required for introduced mode
+        type: string
+        default: ''
 permissions:
   contents: read
 concurrency:
@@ -17,7 +25,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   audit:
-    name: Full dependency health on ${{ matrix.branch }}
+    name: Dependency ${{ inputs.mode == 'introduced' && 'change audit' || 'security health' }} on ${{ matrix.branch }}
     strategy:
       fail-fast: false
       matrix:
@@ -42,7 +50,23 @@ jobs:
       - name: Assess the branch dependency snapshot without installing or running it
         env:
           AUDIT_REF: ${{ inputs.target_ref || format('refs/heads/{0}', matrix.branch) }}
+          AUDIT_TARGET_REF: ${{ inputs.target_ref }}
+          AUDIT_MODE: ${{ inputs.mode }}
+          AUDIT_BASE: ${{ inputs.base }}
         run: |
+          case "$AUDIT_MODE" in
+            gate) ;;
+            introduced)
+              if [[ -z "$AUDIT_TARGET_REF" || ! "$AUDIT_BASE" =~ ^[0-9a-f]{40}$ ]]; then
+                echo 'Introduced dependency audit requires an explicit snapshot and immutable comparison commit.' >&2
+                exit 1
+              fi
+              ;;
+            *)
+              echo 'Dependency audit mode must be gate or introduced.' >&2
+              exit 1
+              ;;
+          esac
           case "$AUDIT_REF" in
             dev|beta|main) AUDIT_REF="refs/heads/$AUDIT_REF" ;;
           esac
@@ -52,4 +76,14 @@ jobs:
           fi
           git fetch --no-tags -- origin "$AUDIT_REF"
           snapshot=$(git rev-parse --verify 'FETCH_HEAD^{commit}')
-          python3 scripts/run_npm_audit.py --mode gate --target-ref "$snapshot"
+          audit_args=(--mode "$AUDIT_MODE" --target-ref "$snapshot")
+          if [[ "$AUDIT_MODE" == introduced ]]; then
+            git fetch --no-tags -- origin "$AUDIT_BASE"
+            baseline=$(git rev-parse --verify 'FETCH_HEAD^{commit}')
+            if [[ "$baseline" != "$AUDIT_BASE" ]]; then
+              echo 'Dependency comparison must resolve to the requested immutable commit.' >&2
+              exit 1
+            fi
+            audit_args+=(--base "$baseline")
+          fi
+          python3 scripts/run_npm_audit.py "${audit_args[@]}"

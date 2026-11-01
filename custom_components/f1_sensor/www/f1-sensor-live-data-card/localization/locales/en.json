@@ -1740,5 +1740,13 @@
   "modular.push_laps_unavailable": "Push-lap timing is unavailable",
   "modular.push_laps_unsupported": "Push laps are available during practice and qualifying",
   "modular.push_laps_waiting": "Waiting for enough timing data to identify push laps",
-  "modular.push_laps_order_incomplete": "Track order is incomplete"
+  "modular.push_laps_order_incomplete": "Track order is incomplete",
+  "modular.push_lap_deltas": "Show difference to best lap",
+  "modular.push_lap_deltas_help": "For qualifying and sprint qualifying push laps, show the cumulative difference after each completed sector against the best valid lap in the current part.",
+  "modular.push_delta_reference": "Against {driver} {time} · {part}",
+  "modular.push_delta_waiting": "Waiting for a complete reference lap",
+  "modular.push_delta_unknown": "Cumulative difference after S{sector} unavailable",
+  "modular.push_delta_checkpoint": "Cumulative difference after S{sector}: {delta} s",
+  "modular.push_delta_explained": "Push-lap differences compare S1, then S1 + S2, then the whole lap against the same actual best valid lap in the current qualifying part. Minus is faster and plus is slower. The reference stays fixed through the attempt unless it is invalidated. A dash means the required timing is unavailable.",
+  "modular.push_delta_unavailable": "Reference lap unavailable"
 }

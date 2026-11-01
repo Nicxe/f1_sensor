@@ -37,6 +37,7 @@ from .helpers import (
     normalize_track_status,
 )
 from .push_laps import empty_push_lap
+from .qualifying_deltas import empty_push_lap_delta
 from .static_data_models import ProjectionModel
 from .stream_state import StreamStateMixin
 from .team_radio_common import team_radio_clip_id
@@ -2869,6 +2870,7 @@ class DriverPositionsModel(LiveProjectionModel):
                 if not isinstance(drv, dict):
                     continue
                 drv["push_lap"] = empty_push_lap()
+                drv["push_lap_delta"] = empty_push_lap_delta()
                 drv.setdefault("best_lap_time", None)
                 drv.setdefault("best_lap_time_secs", None)
                 drv.setdefault("best_lap_lap", None)
@@ -3072,6 +3074,9 @@ class DriverPositionsModel(LiveProjectionModel):
                 ),
                 "status": status,
                 "push_lap": deepcopy(info.get("push_lap") or empty_push_lap()),
+                "push_lap_delta": deepcopy(
+                    info.get("push_lap_delta") or empty_push_lap_delta()
+                ),
                 "gap_to_leader": timing.get("gap_to_leader"),
                 "interval_to_position_ahead": timing.get("interval"),
                 "best_lap_time": best_lap_time,

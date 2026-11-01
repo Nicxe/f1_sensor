@@ -136,6 +136,15 @@ actions without freezing translated wording or the number of languages.
 
 If you are unsure whether a change fits the project direction, open an issue before starting work. This prevents effort being spent on contributions that may not be accepted.
 
+## Repository contents
+
+Keep shared source, tests, build inputs, quality policies and technical decisions
+in Git. Personal agent instructions, session journals, release drafts, browser
+captures and generated test reports stay local. The repository's `.gitignore`
+lists the current local paths. Retain dated measurements when they explain a
+shared technical decision, and distinguish historical evidence from verification
+of the current revision.
+
 ## Automated checks
 
 `CI required` summarizes all applicable checks. Code PRs run on the proposed merge result with read-only permissions and without secrets, including PRs from forks. Metadata workflows read trusted default-branch scripts and use the GitHub API; they never install or execute contributor code. A first-time contributor may still need the maintainer to start GitHub's restricted workflow run.
@@ -170,6 +179,25 @@ The Node unit suite loads complete delivered card modules and simulates the brow
 Python line coverage must remain strictly above 95 percent globally. Per-module and branch percentages are review signals, not independent gates. Tests protect user behavior, lifecycle and external boundaries, not specific source spelling. Browser assertions run with zero test retries; rendering auto-wait is still expected. Functional layout, accessibility and shared-resource cleanup remain blocking. Broad pixel diffs are opt-in with `F1_VISUAL_REVIEW=1 npm run test:frontend`; timing benchmarks use `F1_MAINTENANCE=1 npm run test:frontend` and scheduled maintenance.
 
 Weekly maintenance checks latest stable HA compatibility on `dev`, WebKit smoke flows, timing budgets and review dates. Daily security health assesses `dev`, `beta` and `main` with trusted tools without installing or running the scanned branch. Its launcher must exist on `main`; a schedule added only to dev/beta is not active. Review-date checks document overdue manual review, not a remote service's actual security.
+
+## Frontend assets
+
+Frontend modules use native ES modules and a single bundled Lit runtime. Relative
+module imports must preserve the resource's `v` query parameter. Register delivered
+assets in `LIVE_DATA_CARD_ASSET_FILENAMES` in `frontend.py`, and test the bundled
+module graph. Do not add a CDN runtime or a second Lit copy.
+
+The dependencies and build tool for the bundled Lit asset are pinned in
+`quality/lit-vendor/package-lock.json`. From the repository root, verify the asset
+without rewriting it:
+
+```bash
+npm ci --prefix quality/lit-vendor
+node quality/lit-vendor/build.mjs --check "$PWD/custom_components/f1_sensor/www/f1-sensor-live-data-card/f1-lit-3.3.2.js"
+```
+
+Use `--write` only when intentionally regenerating the asset, then deliver and
+verify the same bytes with the remaining frontend assets.
 
 ## Avoiding duplicate verification
 
