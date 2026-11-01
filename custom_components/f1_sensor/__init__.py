@@ -6520,6 +6520,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             "personal_best": {
                 idx: cls._empty_personal_best_sector() for idx in (0, 1, 2)
             },
+            "raw": {},
             "current_lap": None,
             "pending_completed_lap": None,
             "last_completed_sector": None,
@@ -6648,6 +6649,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
     @classmethod
     def _reset_sector_state(cls, sectors: dict[str, Any], *, reset_best: bool) -> None:
         sectors["current"] = {idx: cls._empty_current_sector() for idx in (0, 1, 2)}
+        sectors["raw"] = {}
         if reset_best:
             sectors["best"] = {0: None, 1: None, 2: None}
             sectors["personal_best"] = {
@@ -6728,32 +6730,64 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         else:
             return False
 
-        # Collect valid final sector times from this message
+        # Feed flags are deltas too, independent of the displayed lap progress.
+        # Keep their last value and timing candidate even when current S1/S2
+        # are cleared after S3, so late flags cannot revive those sectors.
+        raw = sectors.setdefault("raw", {})
         updates: dict[int, dict] = {}
+        flag_updates: dict[int, dict] = {}
         for idx, sd in items:
             if not isinstance(sd, dict) or idx not in (0, 1, 2):
                 continue
-            value_str = (sd.get("Value") or "").strip()
+            stored = raw.setdefault(
+                idx, {"overall_fastest": False, "personal_fastest": False}
+            )
+            has_flags = False
+            for source_key, target_key in (
+                ("OverallFastest", "overall_fastest"),
+                ("PersonalFastest", "personal_fastest"),
+            ):
+                if source_key in sd:
+                    stored[target_key] = bool(sd[source_key])
+                    has_flags = True
+
             # Status is absent in many real/replay messages when a sector is
             # completed — treat absent Status as "valid" when Value is present.
-            # Only explicitly reject when Status == 2048 ("no time").
-            status = sd.get("Status")
-            if not value_str or sd.get("Stopped") or status == 2048:
+            # An explicit reset invalidates the candidate, but its flags still
+            # carry forward to a later Value unless the feed changes them.
+            if sd.get("Stopped") or sd.get("Status") == 2048:
+                stored.pop("candidate", None)
                 continue
+            if "Value" not in sd:
+                candidate = stored.get("candidate")
+                if has_flags and isinstance(candidate, dict):
+                    data = {
+                        **candidate,
+                        "overall_fastest": stored["overall_fastest"],
+                        "personal_fastest": stored["personal_fastest"],
+                    }
+                    stored["candidate"] = data
+                    flag_updates[idx] = data
+                continue
+
+            value_str = (sd.get("Value") or "").strip()
             time_secs = self._parse_laptime_secs(value_str)
             if time_secs is None:
+                stored.pop("candidate", None)
                 continue
             sector_lap = self._current_sector_lap(entry, sectors, idx)
-            updates[idx] = {
+            data = {
                 "time": time_secs,
                 "value": value_str,
                 "lap": sector_lap,
-                "overall_fastest": bool(sd.get("OverallFastest", False)),
-                "personal_fastest": bool(sd.get("PersonalFastest", False)),
+                "overall_fastest": stored["overall_fastest"],
+                "personal_fastest": stored["personal_fastest"],
                 "source": "current",
             }
+            stored["candidate"] = data
+            updates[idx] = data
 
-        if not updates:
+        if not updates and not flag_updates:
             return False
 
         changed = False
@@ -6781,7 +6815,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 if clear_idx not in updates and current[clear_idx]["time"] is not None:
                     changed = self._clear_current_sector(sectors, clear_idx) or changed
 
-        # Apply sector updates and refresh personal best
+        # Only Value updates advance lap progress or clear other sectors.
         for idx, data in updates.items():
             if current.get(idx) != data:
                 current[idx] = data
@@ -6790,6 +6824,39 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 sectors["pending_completed_lap"] = None
                 pending_completed_lap = None
                 changed = True
+            sectors["last_completed_sector"] = {
+                "number": idx + 1,
+                **data,
+            }
+
+        if 2 in updates and not full_lap_update:
+            for clear_idx in (0, 1):
+                changed = self._clear_current_sector(sectors, clear_idx) or changed
+            if sectors.get("current_lap") != updates[2]["lap"]:
+                sectors["current_lap"] = updates[2]["lap"]
+                changed = True
+
+        for idx, data in flag_updates.items():
+            visible = current[idx]
+            if (
+                visible["time"] == data["time"]
+                and visible["lap"] == data["lap"]
+                and visible != data
+            ):
+                current[idx] = data
+                changed = True
+            last = sectors.get("last_completed_sector")
+            if (
+                isinstance(last, dict)
+                and last.get("number") == idx + 1
+                and last.get("time") == data["time"]
+                and last.get("lap") == data["lap"]
+                and last != {"number": idx + 1, **data}
+            ):
+                sectors["last_completed_sector"] = {"number": idx + 1, **data}
+                changed = True
+
+        for idx, data in (updates | flag_updates).items():
             if data["personal_fastest"] and (
                 best[idx] is None or data["time"] < best[idx]
             ):
@@ -6803,17 +6870,6 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                     "session_part": session_part,
                     "source": "personal_best",
                 }
-                changed = True
-            sectors["last_completed_sector"] = {
-                "number": idx + 1,
-                **data,
-            }
-
-        if 2 in updates and not full_lap_update:
-            for clear_idx in (0, 1):
-                changed = self._clear_current_sector(sectors, clear_idx) or changed
-            if sectors.get("current_lap") != updates[2]["lap"]:
-                sectors["current_lap"] = updates[2]["lap"]
                 changed = True
 
         state = self._derive_sector_progress_state(sectors)
@@ -7391,6 +7447,13 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             for idx in (0, 1):
                 changed = self._clear_current_sector(sectors, idx) or changed
             if s3.get("lap") != lap_num:
+                candidate = sectors.get("raw", {}).get(2, {}).get("candidate")
+                if (
+                    isinstance(candidate, dict)
+                    and candidate.get("time") == s3_time
+                    and candidate.get("lap") == s3.get("lap")
+                ):
+                    candidate["lap"] = lap_num
                 s3["lap"] = lap_num
                 changed = True
             last_completed = {
