@@ -664,7 +664,10 @@ export class F1SensorCard extends LitElement {
       if (module.type === 'documents') Object.assign(model, season.documentsModel(viewHass, viewEntry, effective));
       if (module.type === 'map') {
         const driverPositions = data.source(viewHass, viewEntry, 'driver_positions');
-        Object.assign(model, mapModel(this.modelPreview?.map ?? this.mapState.data?.snapshot, effective, focus, this.modelPreview?.now ?? Date.now(), driverPositions.status === 'available' ? data.array(driverPositions.attributes.drivers) : []));
+        // Qualifying has no leader lap count, so an unknown sensor state can
+        // still carry complete timing attributes, as it does for timing rows.
+        const timingDrivers = ['available', 'unknown'].includes(driverPositions.status) ? data.array(driverPositions.attributes.drivers) : [];
+        Object.assign(model, mapModel(this.modelPreview?.map ?? this.mapState.data?.snapshot, effective, focus, this.modelPreview?.now ?? Date.now(), timingDrivers));
         const laps = data.source(viewHass, viewEntry, 'race_lap_count'), trackStatus = data.source(viewHass, viewEntry, 'track_status');
         const currentLap = Number(laps.state), totalLaps = Number(laps.attributes.total_laps);
         model.lap = laps.status === 'available' && Number.isInteger(currentLap) && currentLap >= 0 ? currentLap : null;

@@ -417,7 +417,7 @@ export const MODULES = {
     show_track_status: { type: 'boolean', default: true, label: 'Show track status' },
     track_status_line_mode: { type: 'enum', values: ['accent', 'full', 'off'], default: 'accent', label: 'Track-status line' },
     show_driver_count: { type: 'boolean', default: true, label: 'Show driver count' },
-  }, ['track_map', 'current_session', 'race_lap_count', 'track_status'], { spoiler: true, stream: 'track_map', focus: ['driver', 'team'], defaultFields: ['track_map', 'map_drivers'] }),
+  }, ['track_map', 'driver_positions', 'current_session', 'race_lap_count', 'track_status'], { spoiler: true, stream: 'track_map', focus: ['driver', 'team'], defaultFields: ['track_map', 'map_drivers'] }),
   battles: module('battles', 'Battles and position changes', ['battle_status', 'incident_drivers', 'battle_gap', 'exchange_positions', 'analysis_source', 'analysis_quality'], {
     content: { type: 'enum', values: ['active_battles', 'battle_history', 'position_exchanges'], default: 'active_battles', label: 'Observations' },
     presentation: { type: 'enum', values: ['list', 'table'], default: 'list', label: 'Presentation' },

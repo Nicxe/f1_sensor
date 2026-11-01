@@ -200,6 +200,47 @@ test('map removes drivers declared out by timing even when Position.z retains an
   assert.deepEqual(rows.map(row => row.id), ['16']);
 });
 
+for (const part of [1, 2]) {
+  test(`map removes a Q${part} elimination after the driver has returned to the pits`, () => {
+    // Mexico qualifying retained Alonso's OnTrack coordinate after his return
+    // to the pits; the position stream kept refreshing its timestamp as well.
+    const now = Date.parse('2026-10-31T22:00:01Z');
+    const snapshot = {
+      source: 'live', stream_timestamp: '2026-10-31T22:00:00Z', stale_after_seconds: 10,
+      track: { points: [[-2000, -2000], [2000, 2000]] },
+      drivers: [{ racing_number: '14', tla: 'ALO', x: -1180, y: -110,
+        timestamp: '2026-10-31T22:00:00Z', status: 'OnTrack', stale: false }],
+    };
+    const module = { options: { focus: 'highlight', orientation: 'source', vertical: 'flipped' } };
+    const timing = { racing_number: '14', tla: 'ALO', in_pit: true,
+      stopped: false, retired: false, status: 'pit_in', [`q${part}_knocked_out`]: true };
+    assert.deepEqual(mapModel(snapshot, module, {}, now, [timing]).rows, []);
+    assert.equal(mapModel(snapshot, module, {}, now, [timing]).freshness.stale, false);
+
+    // An eliminated car may still be completing its in-lap, and another car
+    // can be in the garage between runs without having been eliminated.
+    for (const active of [
+      { ...timing, in_pit: false, status: 'on_track' },
+      { ...timing, [`q${part}_knocked_out`]: false },
+    ]) {
+      assert.deepEqual(mapModel(snapshot, module, {}, now, [active]).rows.map(row => row.id), ['14']);
+    }
+  });
+}
+
+test('a driver removed during qualifying returns when fresh timing reports a later active session', () => {
+  const snapshot = { source: 'replay', session: { session_key: 'qualifying' },
+    track: { points: [[-2000, -2000], [2000, 2000]] },
+    drivers: [{ racing_number: '14', tla: 'ALO', x: -1180, y: -110, status: 'OnTrack' }],
+  };
+  const module = { options: { focus: 'highlight', orientation: 'source', vertical: 'flipped' } };
+  const inactive = { racing_number: '14', in_pit: true, q1_knocked_out: true, status: 'pit_in' };
+  assert.deepEqual(mapModel(snapshot, module, {}, Date.now(), [inactive]).rows, []);
+  const race = { ...snapshot, session: { session_key: 'race' } };
+  const active = { racing_number: '14', in_pit: false, q1_knocked_out: false, q2_knocked_out: false, status: 'on_track' };
+  assert.deepEqual(mapModel(race, module, {}, Date.now(), [active]).rows.map(row => row.id), ['14']);
+});
+
 test('freshness expiry is absolute and does not schedule replay or already stale positions', () => {
   const snapshot = { source: 'live', stream_timestamp: '2026-09-13T13:00:00Z', stale_after_seconds: 10 };
   const expiry = Date.parse('2026-09-13T13:00:10Z');
