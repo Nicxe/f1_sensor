@@ -62,3 +62,18 @@ test('timing from an earlier qualifying part is hidden until matching context ar
   entry.card_data.driver_positions.data.context.qualifying_part = 2;
   assert.equal(source(hass, entry, 'driver_positions').state, 22);
 });
+
+test('timing from a previous direct session never falls back to an unknown sensor with populated driver attributes', () => {
+  const entry = { entities: { driver_positions: 'sensor.timing' }, data_api: { enabled: ['driver_positions', 'session_context'] }, card_data: {
+    session_context: { status: 'ready', data: { generation: 'race', context: { qualifying_part: null } } },
+    driver_positions: { status: 'ready', data: { generation: 'qualifying', source: 'live', status: 'ready',
+      payload: { state: null, attributes: { drivers: [{ racing_number: '14', in_pit: true, q1_knocked_out: true }] } } } },
+  } };
+  const hass = { states: { 'sensor.timing': { state: 'unknown', attributes: { drivers: [{ racing_number: '14', stopped: true }] } } } };
+  const selected = source(hass, entry, 'driver_positions');
+  assert.equal(selected.status, 'unavailable');
+  assert.deepEqual(selected.attributes, {});
+  entry.card_data.driver_positions.data.generation = 'race';
+  assert.equal(source(hass, entry, 'driver_positions').status, 'available');
+  assert.equal(source(hass, entry, 'driver_positions').state, null);
+});
