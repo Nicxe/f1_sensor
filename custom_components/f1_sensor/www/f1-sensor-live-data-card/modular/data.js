@@ -213,6 +213,23 @@ function pushLapState(value, available) {
     last_lap_time: completed ? seconds(raw.last_lap_time) : null };
 }
 
+function pushLapDelta(value, push, part, enabled, identity, rawDrivers) {
+  if (!enabled || !push.active && !push.completed) return null;
+  const empty = { status: ['unavailable', 'unsupported'].includes(value?.status) ? 'unavailable' : 'waiting', reference: null, sector_1: null, sector_2: null, sector_3: null, latest_sector: null };
+  if (!value || value.status !== 'available' || !part || positiveInteger(value.session_part) !== part
+    || positiveInteger(value.lap) === null || positiveInteger(value.lap) !== positiveInteger(push.lap)) return empty;
+  const reference = value.reference, time = seconds(reference?.time);
+  const referenceId = reference?.racing_number == null ? '' : String(reference.racing_number);
+  if (!referenceId || time === null) return empty;
+  const supplied = positiveInteger(value.latest_sector);
+  const limit = push.completed ? 3 : push.progress === null ? 0 : Math.floor(push.progress * 3);
+  const latest = supplied && supplied <= 3 ? Math.min(supplied, limit) : 0;
+  const person = identity.get(referenceId) ?? rawDrivers.find(driver => String(driver?.racing_number) === referenceId);
+  return { ...empty, status: 'available', reference: { racing_number: referenceId, driver: person?.tla ?? referenceId, time,
+    lap: positiveInteger(reference.lap), part }, latest_sector: latest || null,
+    ...Object.fromEntries([1, 2, 3].map(sector => [`sector_${sector}`, sector <= latest ? number(value[`sector_${sector}`]) : null])) };
+}
+
 function pushLapRows(rows, mode, status, key, orders) {
   if (mode === 'off') return rows;
   if (status !== 'available') { orders?.delete(key); return mode === 'only' ? [] : rows; }
@@ -274,6 +291,7 @@ export function timingRows(hass, entry, context, sectors, module, focus = {}, mi
     ? { ...positions, status: 'available' }
     : positions;
   const pushMode = module.type === 'timing' ? module.options.push_laps ?? 'off' : 'off';
+  const pushDeltas = pushMode !== 'off' && qualifying && module.options.push_lap_deltas === true;
   const pushSupported = ['practice', 'qualifying', 'sprint_qualifying'].includes(kind);
   const pushStatus = !pushSupported ? 'unsupported'
     : timingSource.status !== 'available' || positions.data_status === 'stale' || context.retained || hass?.connection?.connected === false ? 'unavailable'
@@ -345,6 +363,7 @@ export function timingRows(hass, entry, context, sectors, module, focus = {}, mi
       status: driver.retired === true ? 'retired' : driver.in_pit === true ? 'in_pit' : driver.pit_out === true ? 'pit_out' : driver.stopped === true ? 'stopped' : nonempty(driver.status),
       updated_at: positions.updated_at,
       push_lap: pushLap,
+      push_lap_delta: pushLapDelta(driver.push_lap_delta, pushLap, part, pushDeltas, identity, rawDrivers),
     };
   }).filter(row => row.id && (!chosenDriver || row.id === chosenDriver || row.driver === chosenDriver)
     && (!chosenTeam || row.team === chosenTeam));
@@ -365,7 +384,7 @@ export function timingRows(hass, entry, context, sectors, module, focus = {}, mi
   });
   const ordered = pushLapRows(rows, pushMode, pushStatus, `${entry?.entry_id}:${context.key}:${part}:${module.id}`, pushOrders);
   return { rows: ordered.slice(0, module.options.rows), total: ordered.length, source: timingSource, filtered: Boolean(chosenDriver || chosenTeam), fields: timingFields(module, context.name), sessionKind: kind, currentPart: part,
-    pushMode, pushStatus, pushCount: rows.filter(row => row.push_lap.active).length,
+    pushMode, pushStatus, pushDeltas, pushCount: rows.filter(row => row.push_lap.active).length,
     pushOrderUnknown: rows.some(row => row.push_lap.active && row.push_lap.progress === null) };
 }
 

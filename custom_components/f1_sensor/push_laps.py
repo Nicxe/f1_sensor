@@ -8,6 +8,8 @@ from datetime import UTC, datetime
 import math
 from typing import Any
 
+from .qualifying_deltas import QualifyingDeltaTracker
+
 COMPLETED_HOLD_SECONDS = 6.0
 STALE_SECONDS = 45.0
 _RECORDED = {2048, 2049, 2051}
@@ -98,10 +100,12 @@ class PushLapTracker:
     def __init__(self) -> None:
         self._supported: bool | None = None
         self._session: str | None = None
+        self._qualifying_deltas = QualifyingDeltaTracker()
         self.reset()
 
     def reset(self) -> None:
         """Discard one playback/source generation, retaining session capability."""
+        self._qualifying_deltas.reset()
         self._drivers: dict[str, _Driver] = {}
         self._now: float | None = None
         self._relative_clock = False
@@ -208,8 +212,12 @@ class PushLapTracker:
                 self._supported = any(
                     word in name for word in ("qualifying", "shootout", "practice")
                 )
+            self._qualifying_deltas.session_info(payload)
             return
         if not self._clock(payload):
+            return
+        if stream == "RaceControlMessages":
+            self._qualifying_deltas.race_control(payload)
             return
         if stream == "TrackStatus":
             self._clear_track = str(payload.get("Status", "1")) == "1"
@@ -251,6 +259,7 @@ class PushLapTracker:
         snapshot = payload.get("_f1_snapshot") is True
         lines = payload.get("Lines")
         if not isinstance(lines, Mapping):
+            self._qualifying_deltas.update(payload)
             return
         for rn, line in lines.items():
             key = str(rn)
@@ -262,6 +271,13 @@ class PushLapTracker:
                 self._drivers[key] = _Driver()
             driver = self._drivers.setdefault(key, _Driver())
             self._merge(driver, line, snapshot)
+        self._qualifying_deltas.update(payload)
+
+    def delta_snapshot(self, racing_number: str) -> dict[str, Any]:
+        """Return qualifying split deltas using the same source generation."""
+        return self._qualifying_deltas.snapshot(
+            racing_number, self.driver_snapshot(racing_number)
+        )
 
     @staticmethod
     def _set(driver: _Driver, state: str, confidence: str | None, reason: str) -> None:

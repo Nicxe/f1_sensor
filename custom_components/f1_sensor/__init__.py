@@ -178,6 +178,7 @@ from .minisectors import MiniSectorStateStore
 from .no_spoiler import NoSpoilerModeManager
 from .providers import ProviderRegistry
 from .push_laps import PushLapTracker, empty_push_lap
+from .qualifying_deltas import empty_push_lap_delta
 from .race_weather import F1RaceWeatherCoordinator
 from .replay import ReplaySignalRClient
 from .replay_mode import ReplayController, ReplayState
@@ -5937,6 +5938,10 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             if driver.get("push_lap", empty_push_lap()) != value:
                 changed = True
             driver["push_lap"] = value
+            delta = self._push_laps.delta_snapshot(rn)
+            if driver.get("push_lap_delta", empty_push_lap_delta()) != delta:
+                changed = True
+            driver["push_lap_delta"] = delta
         status = self._push_laps.status if self.available else "unavailable"
         values = {"push_laps_status": status}
         if update_stream_time:
@@ -5953,6 +5958,12 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
     def _on_push_lap_clock(self, payload: dict) -> None:
         """Expire activity using the delayed provider clock, including replay pause."""
         self._push_laps.update("Heartbeat", payload)
+        if self._publish_push_laps(update_stream_time=False):
+            self._schedule_deliver()
+
+    def _on_push_lap_race_control(self, payload: dict) -> None:
+        """Apply delayed lap invalidations to active qualifying comparisons."""
+        self._push_laps.update("RaceControlMessages", payload)
         if self._publish_push_laps(update_stream_time=False):
             self._schedule_deliver()
 
@@ -8016,6 +8027,12 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             self._unsubs.append(
                 bus.subscribe(
                     "Heartbeat", _wrap_delayed_handler(self, self._on_push_lap_clock)
+                )
+            )
+            self._unsubs.append(
+                bus.subscribe(
+                    "RaceControlMessages",
+                    _wrap_delayed_handler(self, self._on_push_lap_race_control),
                 )
             )
             with suppress(Exception):
