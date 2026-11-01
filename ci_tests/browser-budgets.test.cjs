@@ -3,6 +3,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const os = require('node:os');
+const { spawnSync } = require('node:child_process');
 const yaml = require('js-yaml');
 
 // A successful dev run spent ten minutes provisioning Chromium alone. Browser
@@ -52,6 +54,56 @@ function weeklyBrowserSteps() {
     webkit: job.steps.find(step => step.env?.F1_BROWSER === 'webkit'),
   };
 }
+
+test('weekly WebKit preserves artifacts from a preceding Chromium failure', { timeout: 60000 }, () => {
+  const {performance, webkit} = weeklyBrowserSteps();
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'f1-weekly-artifacts-'));
+  const playwright = require.resolve('@playwright/test');
+  const cli = path.join(path.dirname(require.resolve('@playwright/test/package.json')), 'cli.js');
+  const defaultOutput = require('../playwright.config.js').outputDir;
+  const outputFor = step => path.resolve(directory,
+    /--output(?:=|\s+)([^\s]+)/.exec(step.run)?.[1] || defaultOutput);
+  try {
+    fs.mkdirSync(path.join(directory, 'specs'));
+    const config = path.join(directory, 'playwright.config.cjs');
+    fs.writeFileSync(config, `module.exports = { testDir: './specs', retries: 0, reporter: 'line' };`);
+    fs.writeFileSync(path.join(directory, 'specs/failure.spec.js'), `
+      const { test, expect } = require(${JSON.stringify(playwright)});
+      const fs = require('node:fs');
+      test('failed Chromium measurement fixture', async ({}, testInfo) => {
+        fs.writeFileSync(testInfo.outputPath('measurement.json'), '{"longestTask":90}');
+        expect(false, 'deliberate fixture failure').toBe(true);
+      });
+    `);
+    fs.writeFileSync(path.join(directory, 'specs/success.spec.js'), `
+      const { test } = require(${JSON.stringify(playwright)});
+      test('successful WebKit fixture', async () => {});
+    `);
+    const run = (file, output) => spawnSync(process.execPath,
+      [cli, 'test', '--config', config, file, '--output', output],
+      { cwd: directory, env: {...process.env, CI: 'true'}, encoding: 'utf8', timeout: 20000 });
+    const chromiumOutput = outputFor(performance);
+    const failed = run('failure.spec.js', chromiumOutput);
+    assert.equal(failed.status, 1, failed.error?.message || failed.stdout + failed.stderr);
+    assert.match(failed.stdout, /deliberate fixture failure/);
+    const artifact = fs.readdirSync(chromiumOutput, {recursive: true})
+      .find(name => name.endsWith('measurement.json'));
+    assert.ok(artifact, 'the failed first invocation produced diagnostic evidence');
+    const artifactPath = path.join(chromiumOutput, artifact);
+    const original = fs.readFileSync(artifactPath, 'utf8');
+    const passed = run('success.spec.js', outputFor(webkit));
+    assert.equal(passed.status, 0, passed.error?.message || passed.stdout + passed.stderr);
+    assert.ok(fs.existsSync(artifactPath), 'WebKit must not clean Chromium failure artifacts');
+    assert.equal(fs.readFileSync(artifactPath, 'utf8'), original);
+    const uploadRoot = path.resolve(directory, 'test-results/playwright');
+    for (const output of [chromiumOutput, outputFor(webkit)]) {
+      assert.ok(path.relative(uploadRoot, output).split(path.sep)[0] !== '..',
+        'both invocations retain evidence under the uploaded artifact root');
+    }
+  } finally {
+    fs.rmSync(directory, {recursive: true, force: true});
+  }
+});
 
 function runsStep(condition, {installation, previousSuccess = true, cancelled = false}) {
   const expression = condition?.replace(/^\$\{\{\s*|\s*\}\}$/g, '') || 'success()';
