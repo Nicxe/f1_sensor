@@ -426,7 +426,8 @@ export function scheduleRows(hass, entry, module, now = Date.now()) {
     const date = publishedDate(block?.date) ?? publishedDate(race[`${prefix}_date`]) ?? publishedDate(typeof candidate === 'string' ? candidate.slice(0, 10) : null);
     if (!start && !date) continue;
     rows.push({ id: `${race.season ?? ''}:${race.round ?? ''}:${id}`, session: id, label: sourceText, meeting: race.race_name ?? race.raceName ?? null,
-      start, date, timezone: race.circuit_timezone ?? null, country: race.circuit_country ?? race.Circuit?.Location?.country ?? null,
+      start, date, estimated: id === 'race' && race.race_start_estimated === true,
+      timezone: race.circuit_timezone ?? null, country: race.circuit_country ?? race.Circuit?.Location?.country ?? null,
       flag: safeImageUrl(race.country_flag_url), round: race.round ?? null, circuit: race.circuit_name ?? race.Circuit?.circuitName ?? null,
       location: [race.circuit_locality ?? race.Circuit?.Location?.locality, race.circuit_country ?? race.Circuit?.Location?.country].filter(Boolean).join(', ') });
   }
