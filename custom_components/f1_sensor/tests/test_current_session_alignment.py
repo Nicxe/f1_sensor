@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 import logging
 from types import SimpleNamespace
 
@@ -22,6 +23,128 @@ from custom_components.f1_sensor.sensor import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("track_status", [None, "1", "5"])
+async def test_pre_race_started_hint_does_not_start_session(
+    hass, monkeypatch, freezer, track_status
+) -> None:
+    """Mexico's preparation snapshot must not announce a live or stopped race."""
+    freezer.move_to("2026-11-01T19:10:00+00:00")
+    window = SimpleNamespace(
+        session_name="Race",
+        meeting_name="Mexico City Grand Prix",
+        session_key=11404,
+        start_utc=datetime(2026, 11, 1, 20, tzinfo=UTC),
+    )
+    coordinator = SessionStatusCoordinator(
+        hass,
+        SimpleNamespace(data={}),
+        live_supervisor=SimpleNamespace(current_window=window),
+    )
+    monkeypatch.setattr(
+        "custom_components.f1_sensor._is_no_spoiler_blocked", lambda _coord: False
+    )
+    entry_id = "pre_race_started_hint"
+    _set_live_context(hass, entry_id, status_coordinator=coordinator)
+    if track_status is not None:
+        hass.data[LATEST_TRACK_STATUS] = {"Status": track_status}
+    info = _build_coordinator(
+        hass,
+        {
+            "Key": 11404,
+            "Type": "Race",
+            "Name": "Race",
+            "StartDate": "2026-11-01T14:00:00",
+            "EndDate": "2026-11-01T16:00:00",
+            "GmtOffset": "-06:00:00",
+        },
+    )
+    status_sensor = F1SessionStatusSensor(
+        coordinator, "pre_race_status", entry_id, "F1"
+    )
+    current_sensor = F1CurrentSessionSensor(info, "pre_race_current", entry_id, "F1")
+    await _add_sensors(hass, [status_sensor, current_sensor])
+
+    # The stream briefly announces Started before the Inactive keyframe arrives.
+    for status in ("Started", "Inactive", "Aborted"):
+        coordinator._on_bus_message({"Status": status, "Started": "Started"})
+        await hass.async_block_till_done()
+        assert hass.states.get(status_sensor.entity_id).state == "pre"
+        current = hass.states.get(current_sensor.entity_id)
+        assert current.state == STATE_UNKNOWN
+        assert current.attributes["active"] is False
+
+    # Scheduled time alone must not reinterpret the old preparation payload.
+    freezer.move_to("2026-11-01T20:03:00+00:00")
+    assert status_sensor._map_status(coordinator.data) == "pre"
+    coordinator._on_bus_message({"Status": "Inactive", "Started": "Started"})
+    await hass.async_block_till_done()
+    assert hass.states.get(status_sensor.entity_id).state == "pre"
+    coordinator._on_bus_message({"Status": "Started", "Started": "Started"})
+    await hass.async_block_till_done()
+    assert hass.states.get(status_sensor.entity_id).state == "live"
+    assert hass.states.get(current_sensor.entity_id).state == "Race"
+
+    # A genuine mid-race red flag and recovery keep their existing semantics.
+    hass.data[LATEST_TRACK_STATUS] = {"Status": "5"}
+    coordinator._on_bus_message({"Status": "Inactive", "Started": "Started"})
+    await hass.async_block_till_done()
+    assert hass.states.get(status_sensor.entity_id).state == "suspended"
+    hass.data[LATEST_TRACK_STATUS] = {"Status": "1"}
+    coordinator._on_bus_message({"Status": "Inactive", "Started": "Started"})
+    await hass.async_block_till_done()
+    assert hass.states.get(status_sensor.entity_id).state == "live"
+    assert hass.states.get(current_sensor.entity_id).state == "Race"
+    coordinator._handle_live_state(False, "session-end")
+    assert coordinator.is_pre_session is False
+    await coordinator.async_close()
+
+
+@pytest.mark.parametrize(
+    ("seconds_before_start", "delay", "replay", "expected"),
+    [
+        (1, 0, False, True),
+        (0, 0, False, False),
+        (-30, 60, False, True),
+        (-60, 60, False, False),
+        (1, 0, True, False),
+    ],
+)
+async def test_pre_session_phase_respects_delay_and_replay(
+    hass, monkeypatch, freezer, seconds_before_start, delay, replay, expected
+) -> None:
+    start = datetime(2026, 11, 1, 20, tzinfo=UTC)
+    freezer.move_to(start - timedelta(seconds=seconds_before_start))
+    coordinator = SessionStatusCoordinator(
+        hass,
+        SimpleNamespace(data={}),
+        delay_seconds=delay,
+        live_supervisor=SimpleNamespace(
+            current_window=SimpleNamespace(start_utc=start)
+        ),
+    )
+    coordinator._replay_mode = replay
+    monkeypatch.setattr(
+        "custom_components.f1_sensor._is_no_spoiler_blocked", lambda _coord: False
+    )
+    coordinator._on_bus_message({"Status": "Inactive", "Started": "Started"})
+    assert coordinator.is_pre_session is expected
+    await coordinator.async_close()
+
+
+@pytest.mark.parametrize("start", [None, "invalid", datetime(2026, 11, 1, 20)])
+async def test_missing_or_naive_schedule_keeps_existing_status_mapping(hass, start):
+    coordinator = SessionStatusCoordinator(
+        hass,
+        SimpleNamespace(data={}),
+        live_supervisor=SimpleNamespace(
+            current_window=SimpleNamespace(start_utc=start)
+        ),
+    )
+    assert coordinator._is_before_session_start() is False
+    await coordinator.async_close()
 
 
 class _LiveState:

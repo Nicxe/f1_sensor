@@ -10650,6 +10650,7 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
         self.qualifying_part: int | None = None
         self.status_qualifying_part: int | None = None
         self._pending_status_part: tuple[str, int] | None = None
+        self.is_pre_session = False
 
     async def async_close(self, *_):
         if self._context_unsubs:
@@ -10695,6 +10696,16 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
             "qualifying" in session_name or "shootout" in session_name,
             "testing" in meeting_name,
         )
+
+    def _is_before_session_start(self) -> bool:
+        """Classify live payloads against the delayed session schedule."""
+        if self._replay_mode:
+            return False
+        window = getattr(self._live_supervisor, "current_window", None)
+        start = getattr(window, "start_utc", None)
+        if not isinstance(start, datetime) or start.tzinfo is None:
+            return False
+        return dt_util.utcnow() - timedelta(seconds=self._delay) < start
 
     def _refresh_finished_context(self) -> None:
         if (
@@ -10864,6 +10875,14 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
             self.status_qualifying_part = pending_status_part[1]
         elif status != previous_status or self.status_qualifying_part is None:
             self.status_qualifying_part = self.qualifying_part
+        # Keep the phase attached to this delivery: reaching the scheduled time
+        # alone must not turn an earlier Inactive payload into a suspended race.
+        self.is_pre_session = self._is_before_session_start() or (
+            self.is_pre_session
+            and not self._replay_mode
+            and status in ("Inactive", "Aborted")
+            and str(msg.get("Started") or "").strip() == "Started"
+        )
         self.available = True
         self._last_message = msg
         self.data_list = [msg]
@@ -10921,6 +10940,7 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
             self.qualifying_part = None
             self.status_qualifying_part = None
             self._pending_status_part = None
+            self.is_pre_session = False
             _clear_delayed_ingest_state(self)
             self._last_message = None
             self.data_list = []

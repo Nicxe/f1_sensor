@@ -460,6 +460,9 @@ class TrackStatusModel(LiveProjectionModel):
             is_testing_session=bool(
                 getattr(self._session_status_coordinator, "is_testing_session", False)
             ),
+            is_pre_session=bool(
+                getattr(self._session_status_coordinator, "is_pre_session", False)
+            ),
         )
         return mapped in {"finished", "finalised", "ended"}
 
@@ -626,6 +629,7 @@ class SessionStatusModel(LiveProjectionModel):
             is_testing_session=bool(
                 getattr(self.coordinator, "is_testing_session", False)
             ),
+            is_pre_session=bool(getattr(self.coordinator, "is_pre_session", False)),
         )
 
     def refresh_data(self) -> None:
@@ -940,6 +944,9 @@ class CurrentSessionModel(LiveProjectionModel):
             qualifying_part=qualifying_part,
             is_testing_session=bool(
                 getattr(self._status_coordinator, "is_testing_session", False)
+            ),
+            is_pre_session=bool(
+                getattr(self._status_coordinator, "is_pre_session", False)
             ),
         )
 

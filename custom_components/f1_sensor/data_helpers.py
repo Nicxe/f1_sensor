@@ -129,12 +129,17 @@ def _map_session_status_payload(
     is_qualifying_like: bool = False,
     qualifying_part: int | None = None,
     is_testing_session: bool = False,
+    is_pre_session: bool = False,
 ) -> str | None:
     """Map raw SessionStatus payloads to semantic states."""
     if not raw:
         return None
     message = str(raw.get("Status") or raw.get("Message") or "").strip()
     started_hint = str(raw.get("Started") or "").strip()
+    # The pre-session feed can briefly announce Started and retain that hint
+    # in later Inactive snapshots. It does not mean the session has begun.
+    if is_pre_session and message in ("Started", "Inactive", "Aborted"):
+        return "pre"
     if message == "Started":
         return "live"
     if message == "Finished":
