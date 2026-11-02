@@ -108,6 +108,21 @@ test('weekend schedule follows source times and omits absent sprint sessions wit
   assert.equal(new Set(rows.map(item => item.id)).size, 3);
 });
 
+test('only the race row inherits a provisional race start and confirmed API data clears it', () => {
+  const attributes = {
+    season: '2027', round: '1', race_name: 'Bahrain Grand Prix',
+    race_start_utc: '2027-03-14T15:00:00Z', qualifying_start_utc: '2027-03-13T15:00:00Z',
+    schedule_source: 'official_calendar_fallback', race_start_estimated: true,
+  };
+  const hass = { states: { 'sensor.weekend': state(attributes) } };
+  const module = normalizeConfig({ modules: [{ type: 'calendar' }] }).modules[0];
+  const rows = () => scheduleRows(hass, entry, module, Date.parse('2026-12-15T00:00:00Z')).rows;
+  assert.deepEqual(rows().map(row => [row.session, row.estimated]), [['qualifying', false], ['race', true]]);
+  attributes.schedule_source = 'jolpica';
+  attributes.race_start_estimated = false;
+  assert.ok(rows().every(row => row.estimated === false));
+});
+
 test('forecast and missing measurements stay distinct from measured zero', () => {
   const hass = { states: { 'sensor.weather': state({ current_temperature: 0, current_humidity: null, race_precipitation_probability: 12 }) } };
   const { values } = weatherValues(hass, entry);

@@ -1748,5 +1748,7 @@
   "modular.push_delta_unknown": "Cumulative difference after S{sector} unavailable",
   "modular.push_delta_checkpoint": "Cumulative difference after S{sector}: {delta} s",
   "modular.push_delta_explained": "Push-lap differences compare S1, then S1 + S2, then the whole lap against the same actual best valid lap in the current qualifying part. Minus is faster and plus is slower. The reference stays fixed through the attempt unless it is invalidated. A dash means the required timing is unavailable.",
-  "modular.push_delta_unavailable": "Reference lap unavailable"
+  "modular.push_delta_unavailable": "Reference lap unavailable",
+  "modular.provisional_start_time": "Provisional start time",
+  "modular.provisional_race_start_countdown": "The race date is confirmed. The start time and countdown use a provisional estimate until the start time is published."
 }

@@ -48,6 +48,9 @@ def test_race_week_boundaries_and_attributes(monkeypatch) -> None:
     assert sensor.extra_state_attributes == {
         "days_until_next_race": 4,
         "next_race_name": "Test GP",
+        "schedule_source": "jolpica",
+        "race_start_estimated": False,
+        "schedule_source_url": None,
     }
     sensor._race_week_start = RACE_WEEK_START_SATURDAY
     sensor._get_next_race = lambda: (None, None)

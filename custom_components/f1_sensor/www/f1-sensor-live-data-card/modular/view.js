@@ -699,7 +699,7 @@ export class F1ModuleView extends LitElement {
       </div></div>
       <div>${row.start ? html`<time datetime=${row.start}>${dateTime(row.start, this.settings, { timeZone: row.display_timezone, weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</time>
       <span class="provenance">${row.timezone_label}</span>${row.track_timezone ? html`<time datetime=${row.start}>${dateTime(row.start, this.settings, { timeZone: row.track_timezone, weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</time><span class="provenance">${this.w('modular.circuit_time')} · ${row.track_timezone}</span>` : ''}` : html`<time datetime=${row.date}>${dateTime(`${row.date}T00:00:00Z`, this.settings, { timeZone: 'UTC', weekday: 'short', day: 'numeric', month: 'short' })}</time>
-      <span class="provenance">${this.w('modular.start_time_not_published')}</span>`}</div>
+      <span class="provenance">${this.w('modular.start_time_not_published')}</span>`}${row.estimated ? html`<span class="provenance">${this.w('modular.provisional_start_time')}</span>` : ''}</div>
     </li>`)}</ol>`;
   }
   timeCell(value) {

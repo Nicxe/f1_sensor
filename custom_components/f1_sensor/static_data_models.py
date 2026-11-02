@@ -9,9 +9,6 @@ import re
 from zoneinfo import ZoneInfo
 
 from .card_data_models import DataSnapshot
-from .const import (
-    RACE_SWITCH_GRACE,
-)
 from .data_helpers import (
     _combine_date_time,
     _timezone_from_circuit,
@@ -27,8 +24,8 @@ from .helpers import (
     get_circuit_outline_url,
     get_country_code,
     get_country_flag_url,
-    get_next_race,
 )
+from .next_race import resolve_next_race
 from .race_weather import legacy_weather_observation, weather_icon
 
 
@@ -79,10 +76,7 @@ class NextRaceProjection(ProjectionModel):
         data = self.coordinator.data
         if not data:
             return None
-        races = data.get("MRData", {}).get("RaceTable", {}).get("Races", [])
-        _, race = get_next_race(
-            races, grace=RACE_SWITCH_GRACE, default_time=default_time
-        )
+        _, race = resolve_next_race(data, default_time=default_time)
         return race
 
 
@@ -162,6 +156,9 @@ class NextRaceModel(NextRaceProjection, ProjectionModel):
             "season": race.get("season"),
             "round": race.get("round"),
             "race_name": race.get("raceName"),
+            "schedule_source": race.get("schedule_source", "jolpica"),
+            "race_start_estimated": race.get("race_start_estimated", False),
+            "schedule_source_url": race.get("schedule_source_url"),
             "scheduled_laps": race.get("scheduled_laps"),
             "sprint_scheduled_laps": sprint.get("scheduled_laps"),
             "race_url": race.get("url"),
@@ -195,7 +192,10 @@ class NextRaceModel(NextRaceProjection, ProjectionModel):
         _populate("qualifying_start", qual_start)
         _populate("sprint_qualifying_start", sprint_quali_start)
         _populate("sprint_start", sprint_start)
-        attrs.update(self._history_attributes())
+        # The history coordinator follows the unmodified API schedule. Its last
+        # circuit can differ from the offseason reserve until API data returns.
+        if race.get("schedule_source") != "official_calendar_fallback":
+            attrs.update(self._history_attributes())
         self._attr_native_value = race_start
         self._attr_extra_state_attributes = attrs
 

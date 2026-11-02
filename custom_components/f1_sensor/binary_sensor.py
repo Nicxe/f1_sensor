@@ -25,7 +25,6 @@ from .const import (
     DEFAULT_OPERATION_MODE,
     DEFAULT_RACE_WEEK_START_DAY,
     OPERATION_MODE_DEVELOPMENT,
-    RACE_SWITCH_GRACE,
     RACE_WEEK_START_MONDAY,
     RACE_WEEK_START_SATURDAY,
     RACE_WEEK_START_SUNDAY,
@@ -44,7 +43,8 @@ from .entity import (
     set_default_entity_id,
 )
 from .formation_start import FormationStartTracker
-from .helpers import get_next_race, normalize_track_status
+from .helpers import normalize_track_status
+from .next_race import resolve_next_race
 from .runtime import F1ConfigEntry, entry_value
 
 _LOGGER = logging.getLogger(__name__)
@@ -225,12 +225,7 @@ class F1RaceWeekSensor(F1BaseEntity, BinarySensorEntity):
         if not data:
             return None, None
 
-        races = data.get("MRData", {}).get("RaceTable", {}).get("Races", [])
-        return get_next_race(
-            races,
-            grace=RACE_SWITCH_GRACE,
-            default_time="23:59:59Z",
-        )
+        return resolve_next_race(data, default_time="23:59:59Z")
 
     @property
     def is_on(self):
@@ -267,6 +262,11 @@ class F1RaceWeekSensor(F1BaseEntity, BinarySensorEntity):
         return {
             "days_until_next_race": days,
             "next_race_name": race_name,
+            "schedule_source": race.get("schedule_source", "jolpica") if race else None,
+            "race_start_estimated": race.get("race_start_estimated", False)
+            if race
+            else False,
+            "schedule_source_url": race.get("schedule_source_url") if race else None,
         }
 
 
