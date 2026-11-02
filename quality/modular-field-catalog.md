@@ -141,7 +141,7 @@ Declared sources: `current_session`, `driver_list`, `driver_positions`.
 
 ## Track map (`map`)
 
-Declared sources: `current_session`, `race_lap_count`, `track_map`, `track_status`.
+Declared sources: `current_session`, `driver_positions`, `race_lap_count`, `track_map`, `track_status`.
 
 | Field | Source and path | Coverage | Identity and time | Presentation |
 | --- | --- | --- | --- | --- |
