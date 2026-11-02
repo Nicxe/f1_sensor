@@ -478,6 +478,40 @@ class PolicyTests(unittest.TestCase):
             self.assertFalse(runtime["documentation"])
             self.assertFalse(runtime["audit"])
 
+    def test_field_catalog_inputs_run_consistency_checks_before_release(self):
+        registry = (
+            "custom_components/f1_sensor/www/"
+            "f1-sensor-live-data-card/modular/catalog.js"
+        )
+        for path in (
+            registry,
+            "scripts/build_modular_field_catalog.mjs",
+            "quality/modular-field-catalog.json",
+            "quality/modular-field-catalog.md",
+        ):
+            for branch, head in (
+                ("dev", "feature/card"),
+                ("beta", "dev"),
+                ("main", "beta"),
+            ):
+                for event, payload in (
+                    ("push", {}),
+                    ("pull_request", pull(branch, head)),
+                ):
+                    with self.subTest(path=path, branch=branch, event=event):
+                        selected = select_jobs([path], payload, event, branch)
+                        self.assertTrue(selected["automation"])
+                        if path == registry:
+                            for job in (
+                                "lint",
+                                "backend",
+                                "frontend",
+                                "translations",
+                                "validation",
+                                "package",
+                            ):
+                                self.assertTrue(selected[job], job)
+
     def test_issue_metadata_changes_do_not_run_product_browsers_or_security(self):
         for path in (
             ".github/scripts/issue-automation.cjs",
