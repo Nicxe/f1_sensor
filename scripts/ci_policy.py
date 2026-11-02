@@ -476,6 +476,15 @@ def select_jobs(
         return selected_checks({"translations"})
     selected: set[str] = set()
     for path in files:
+        # The generated field catalog is checked in the automation lane.
+        # Keep its consistency check alongside all existing impact checks.
+        if path in (
+            "custom_components/f1_sensor/www/f1-sensor-live-data-card/modular/catalog.js",
+            "scripts/build_modular_field_catalog.mjs",
+            "quality/modular-field-catalog.json",
+            "quality/modular-field-catalog.md",
+        ):
+            selected.add("automation")
         if (
             path in SHARED_POLICY
             or path.startswith("requirements/")
