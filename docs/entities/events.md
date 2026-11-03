@@ -8,7 +8,6 @@ description: Use Race Control, incident, and Favorite Driver events in Home Assi
 Keep every entity used by templates, older cards and automations selected. Automatic card data does not recreate a removed automation entity. Existing installations keep their sensor choices and continue entity updates and F1 event delivery after upgrading. Automatic Race Control card data does not enable additional public automation events. See [Automatic card data and optional sensors](/features/card-data-and-sensors).
 :::
 
-
 Events are useful when an automation must react to each message or change, including updates that may not change a sensor’s state. Choose a stream below, then use its event type in a Home Assistant event trigger.
 
 ## Home Assistant Events
@@ -134,7 +133,6 @@ Race Control messages are available both as a **sensor** and as **events** in Ho
 Events are published under the event type `f1_sensor_race_control_event` and act as a real-time complement to the Race Control sensor.
 
 They include flags, steward notes, incident reports, and other live race control communications.
-
 
 #### Example payloads
 ```yaml

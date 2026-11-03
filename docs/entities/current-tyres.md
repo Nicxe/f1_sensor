@@ -4,19 +4,18 @@ title: "Current Tyres"
 description: "Current tyre compound per driver \u2014 state, attributes, and examples for F1 Sensor."
 ---
 
-See the tyre compound currently fitted to each driver’s car. Use `sensor.f1_current_tyres` in dashboards, templates, and automations.
+import {EntityMeta, RelatedReferences} from '@site/src/components/Docs';
 
-See [live data availability](/entities/live-data#availability-model) for session and data-source requirements. The details below describe any additional conditions for this entity.
+See the tyre compound currently fitted to each driver’s car.
 
-:::info[Find your entity]
-These are standard entity IDs. If Home Assistant assigned a different ID, or you renamed an entity, use your existing ID in the examples.
-:::
+<EntityMeta id="current-tyres" />
 
-## State and attributes
+<span id="state-and-attributes"></span>
 
 Shows the current tyre compound for each driver in the active session.
 
-**State**
+## State
+
 - Integer: number of drivers with tyre information available.
 
 **Example**
@@ -24,13 +23,13 @@ Shows the current tyre compound for each driver in the active session.
 20
 ```
 
-**Attributes**
+## Attributes
 
 | Attribute | Type | Description |
 | --- | --- | --- |
 | drivers | list | List of driver tyre information, sorted by car number |
 
-Each entry in `drivers` contains:
+### `drivers` entries
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -45,6 +44,8 @@ Each entry in `drivers` contains:
 | compound_color_rgb | list | Compound color as RGB values (e.g., `[255, 0, 0]` for soft) |
 | new | boolean | Whether the tyres are brand new |
 | stint_laps | number | Number of laps on the current set |
+
+## Examples
 
 <details>
 <summary>JSON Structure Example</summary>
@@ -102,8 +103,8 @@ Each entry in `drivers` contains:
 
 **Get a driver's current tyre:**
 ```jinja2
-{% set drivers = state_attr('sensor.f1_current_tyres', 'drivers') %}
-{% set ver = drivers | selectattr('tla', 'eq', 'VER') | first %}
+{% set drivers = state_attr('sensor.f1_current_tyres', 'drivers') or [] %}
+{% set ver = drivers | selectattr('tla', 'eq', 'VER') | first | default(none) %}
 {% if ver %}
   VER on {{ ver.compound }} ({{ ver.stint_laps }} laps{% if ver.new %}, NEW{% endif %})
 {% endif %}
@@ -111,7 +112,7 @@ Each entry in `drivers` contains:
 
 **Count drivers on each compound:**
 ```jinja2
-{% set drivers = state_attr('sensor.f1_current_tyres', 'drivers') %}
+{% set drivers = state_attr('sensor.f1_current_tyres', 'drivers') or [] %}
 {% if drivers %}
   SOFT: {{ drivers | selectattr('compound', 'eq', 'SOFT') | list | length }}
   MEDIUM: {{ drivers | selectattr('compound', 'eq', 'MEDIUM') | list | length }}
@@ -121,7 +122,7 @@ Each entry in `drivers` contains:
 
 **List drivers on fresh tyres:**
 ```jinja2
-{% set drivers = state_attr('sensor.f1_current_tyres', 'drivers') %}
+{% set drivers = state_attr('sensor.f1_current_tyres', 'drivers') or [] %}
 {% for d in drivers if d.new %}
   {{ d.tla }} - fresh {{ d.compound }}
 {% endfor %}
@@ -129,26 +130,31 @@ Each entry in `drivers` contains:
 
 **Find driver with most laps on current stint:**
 ```jinja2
-{% set drivers = state_attr('sensor.f1_current_tyres', 'drivers') %}
+{% set drivers = state_attr('sensor.f1_current_tyres', 'drivers') or [] %}
 {% if drivers %}
-  {% set longest = drivers | sort(attribute='stint_laps', reverse=true) | first %}
+  {% set longest = drivers | sort(attribute='stint_laps', reverse=true) | first | default(none) %}
   {{ longest.tla }} has {{ longest.stint_laps }} laps on {{ longest.compound }}
 {% endif %}
 ```
 
-**Create a tyre summary with colors:**
+**Create a tyre summary in position order:**
 ```jinja2
-{% set drivers = state_attr('sensor.f1_current_tyres', 'drivers') %}
-{% for d in drivers | sort(attribute='position') %}
+{% set drivers = state_attr('sensor.f1_current_tyres', 'drivers') or [] %}
+{% set ranked = namespace(rows=[]) %}
+{% for driver in drivers %}
+  {% set position = driver.position | int(999) %}
+  {% set ranked.rows = ranked.rows + [{'position': position, 'driver': driver}] %}
+{% endfor %}
+{% for row in ranked.rows | sort(attribute='position') %}
+  {% set d = row.driver %}
   P{{ d.position }} {{ d.tla }}: {{ d.compound_short }} ({{ d.stint_laps }} laps)
 {% endfor %}
 ```
 
 </details>
 
+## Related references
 
-## Next steps
+<span id="next-steps"></span>
 
-- [Browse the entity reference](/reference/overview)
-- [Build an automation](/automation)
-- [Choose a dashboard card](/cards/cards-overview)
+<RelatedReferences id="current-tyres" />

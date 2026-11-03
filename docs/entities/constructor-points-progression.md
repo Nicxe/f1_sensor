@@ -4,19 +4,17 @@ title: "Constructor Points Progression"
 description: "Constructors Point Progression \u2014 state, attributes, and examples for F1 Sensor."
 ---
 
-Follow constructor championship points across race rounds. Use `sensor.f1_constructor_points_progression` in dashboards, templates, and automations.
+import {EntityMeta, RelatedReferences} from '@site/src/components/Docs';
 
-This reference covers the state and attributes. For setup, see [Configuration](/getting-started/add-integration).
+Follow constructor championship points across race rounds.
 
-:::info[Find your entity]
-These are standard entity IDs. If Home Assistant assigned a different ID, or you renamed an entity, use your existing ID in the examples.
-:::
+<EntityMeta id="constructor-points-progression" />
 
-## State and attributes
+<span id="state-and-attributes"></span>
 
 `sensor.f1_constructor_points_progression` - Per‑round constructor points (including sprint) with cumulative series, suitable for charts.
 
-**State**
+## State
 
   - Integer: number of rounds covered.
 
@@ -25,7 +23,7 @@ These are standard entity IDs. If Home Assistant assigned a different ID, or you
 12
 ```
 
-**Attributes**
+## Attributes
 
 | Attribute | Type | Description |
 | --- | --- | --- |
@@ -34,7 +32,7 @@ These are standard entity IDs. If Home Assistant assigned a different ID, or you
 | constructors | object | Map of constructor IDs to their progression data |
 | series | object | Progression series data for charts |
 
-Each entry in `rounds` contains:
+### `rounds` entries
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -42,7 +40,7 @@ Each entry in `rounds` contains:
 | race_name | string | Grand Prix name |
 | date | string | Race date (YYYY-MM-DD) |
 
-Each entry in `constructors` (keyed by constructor ID) contains:
+### `constructors` entries (keyed by constructor ID)
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -53,14 +51,14 @@ Each entry in `constructors` (keyed by constructor ID) contains:
 | wins_by_round | list | Wins per round |
 | totals | object | `{ points, wins }` - season totals |
 
-The `series` object contains:
+### `series` object
 
 | Field | Type | Description |
 | --- | --- | --- |
 | labels | list | Round labels for chart X-axis (e.g., ["R1", "R2", ...]) |
 | series | list | Array of series objects for charting |
 
-Each entry in `series.series` contains:
+### `series.series` entries
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -68,6 +66,8 @@ Each entry in `series.series` contains:
 | name | string | Team name |
 | data | list | Points per round |
 | cumulative | list | Cumulative points per round |
+
+## Examples
 
 <details>
 <summary>JSON Structure Example</summary>
@@ -142,16 +142,16 @@ Each entry in `series.series` contains:
 
 **Get a team's total points:**
 ```jinja2
-{% set constructors = state_attr('sensor.f1_constructor_points_progression', 'constructors') %}
-{% if constructors and constructors.red_bull %}
+{% set constructors = state_attr('sensor.f1_constructor_points_progression', 'constructors') or {} %}
+{% if constructors.get('red_bull') %}
   Red Bull total: {{ constructors.red_bull.totals.points }} points
 {% endif %}
 ```
 
 **Get points scored in the last round:**
 ```jinja2
-{% set constructors = state_attr('sensor.f1_constructor_points_progression', 'constructors') %}
-{% set ferrari = constructors.ferrari %}
+{% set constructors = state_attr('sensor.f1_constructor_points_progression', 'constructors') or {} %}
+{% set ferrari = constructors.get('ferrari') %}
 {% if ferrari %}
   {% set pts = ferrari.points_by_round %}
   Ferrari last round: {{ pts[-1] if pts else 0 }} points
@@ -160,8 +160,8 @@ Each entry in `series.series` contains:
 
 **Calculate gap between two teams:**
 ```jinja2
-{% set c = state_attr('sensor.f1_constructor_points_progression', 'constructors') %}
-{% if c.red_bull and c.ferrari %}
+{% set c = state_attr('sensor.f1_constructor_points_progression', 'constructors') or {} %}
+{% if c.get('red_bull') and c.get('ferrari') %}
   {% set gap = c.red_bull.totals.points - c.ferrari.totals.points %}
   Red Bull leads Ferrari by {{ gap }} points
 {% endif %}
@@ -169,8 +169,8 @@ Each entry in `series.series` contains:
 
 **Get team with most wins:**
 ```jinja2
-{% set constructors = state_attr('sensor.f1_constructor_points_progression', 'constructors') %}
-{% set winner = constructors.values() | sort(attribute='totals.wins', reverse=true) | first %}
+{% set constructors = state_attr('sensor.f1_constructor_points_progression', 'constructors') or {} %}
+{% set winner = constructors.values() | sort(attribute='totals.wins', reverse=true) | first | default(none) %}
 {% if winner %}
   Most wins: {{ winner.name }} with {{ winner.totals.wins }}
 {% endif %}
@@ -178,7 +178,7 @@ Each entry in `series.series` contains:
 
 **List all teams by points:**
 ```jinja2
-{% set constructors = state_attr('sensor.f1_constructor_points_progression', 'constructors') %}
+{% set constructors = state_attr('sensor.f1_constructor_points_progression', 'constructors') or {} %}
 {% for c in constructors.values() | sort(attribute='totals.points', reverse=true) %}
   {{ c.name }}: {{ c.totals.points }} pts
 {% endfor %}
@@ -189,8 +189,8 @@ Each entry in `series.series` contains:
 Use the **Season progression** module in the [F1 Sensor card](/cards/cards-overview) to show constructor championship point progression without installing another chart card.
 :::
 
-## Next steps
+## Related references
 
-- [Browse the entity reference](/reference/overview)
-- [Build an automation](/automation)
-- [Choose a dashboard card](/cards/cards-overview)
+<span id="next-steps"></span>
+
+<RelatedReferences id="constructor-points-progression" />

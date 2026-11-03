@@ -4,19 +4,19 @@ title: "Current Session"
 description: "Current ongoing session, like Practice 1, Qualification, Race \u2014 state, attributes, and examples for F1 Sensor."
 ---
 
-Identify the session currently being followed, such as practice, qualifying, or the race. Use `sensor.f1_current_session` in dashboards, templates, and automations.
+import {EntityMeta, RelatedReferences} from '@site/src/components/Docs';
 
-See [live data availability](/entities/live-data#availability-model) for session and data-source requirements. The details below describe any additional conditions for this entity.
+Identify the session currently being followed, such as practice, qualifying, or the race.
 
-:::info[Find your entity]
-These are standard entity IDs. If Home Assistant assigned a different ID, or you renamed an entity, use your existing ID in the examples.
-:::
+<EntityMeta id="current-session" />
 
-## State and attributes
+<span id="state-and-attributes"></span>
 
 Human-readable label for the session being followed. Practice, Sprint, and Race labels are shown while the mapped session status is `live`. Qualifying and Sprint Qualifying retain their label between segments until the session ends.
 
-**State (enum/string)**
+## State
+
+State type: enum/string.
 - `Practice 1`, `Practice 2`, `Practice 3`, `Qualifying`, `Sprint Qualifying`, `Sprint`, `Race`, or `unknown` when there is no current label. The entity can be `unavailable` outside its data window.
 
 **Example**
@@ -24,7 +24,7 @@ Human-readable label for the session being followed. Practice, Sprint, and Race 
 Qualifying
 ```
 
-**Attribute**
+## Attributes
 
 | Attribute | Type | Description |
 | --- | --- | --- |
@@ -44,9 +44,8 @@ Qualifying
 | active | boolean | True when live running is active |
 | last_label | string | Last resolved label when not active |
 
+## Related references
 
-## Next steps
+<span id="next-steps"></span>
 
-- [Browse the entity reference](/reference/overview)
-- [Build an automation](/automation)
-- [Choose a dashboard card](/cards/cards-overview)
+<RelatedReferences id="current-session" />

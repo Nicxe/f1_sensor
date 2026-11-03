@@ -4,19 +4,18 @@ title: "Race Lap"
 description: "Current race lap number \u2014 state, attributes, and examples for F1 Sensor."
 ---
 
-Current race lap number. Use `sensor.f1_race_lap_count` in dashboards, templates, and automations.
+import {EntityMeta, RelatedReferences} from '@site/src/components/Docs';
 
-See [live data availability](/entities/live-data#availability-model) for session and data-source requirements. The details below describe any additional conditions for this entity.
+Current race lap number.
 
-:::info[Find your entity]
-These are standard entity IDs. If Home Assistant assigned a different ID, or you renamed an entity, use your existing ID in the examples.
-:::
+<EntityMeta id="race-lap" />
 
-## State and attributes
+<span id="state-and-attributes"></span>
 
 Current lap and total laps during the race.
 
-**State**
+## State
+
   - Integer: current lap, or `unknown` if none available or stale cleared.
 
 **Example**
@@ -24,7 +23,7 @@ Current lap and total laps during the race.
 23
 ```
 
-**Attributes**
+## Attributes
 
 | Attribute | Type | Description |
 | --- | --- | --- |
@@ -33,8 +32,8 @@ Current lap and total laps during the race.
 This sensor is active only during sprint and race sessions.
 :::
 
-## Next steps
+## Related references
 
-- [Browse the entity reference](/reference/overview)
-- [Build an automation](/automation)
-- [Choose a dashboard card](/cards/cards-overview)
+<span id="next-steps"></span>
+
+<RelatedReferences id="race-lap" />

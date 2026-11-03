@@ -4,15 +4,13 @@ title: "Championship Prediction (Drivers)"
 description: "Drivers championship prediction (P1 and list) (Replay Mode or F1TV Auth live timing) \u2014 state, attributes, and examples for F1 Sensor."
 ---
 
-Drivers championship prediction (P1 and list) (Replay Mode or F1TV Auth live timing). Use `sensor.f1_championship_prediction_drivers` in dashboards, templates, and automations.
+import {EntityMeta, RelatedReferences} from '@site/src/components/Docs';
 
-See [live data availability](/entities/live-data#availability-model) for session and data-source requirements. The details below describe any additional conditions for this entity.
+Drivers championship prediction (P1 and list) (Replay Mode or F1TV Auth live timing).
 
-:::info[Find your entity]
-These are standard entity IDs. If Home Assistant assigned a different ID, or you renamed an entity, use your existing ID in the examples.
-:::
+<EntityMeta id="championship-prediction-drivers" />
 
-## State and attributes
+<span id="state-and-attributes"></span>
 
 :::info[Replay Mode or F1TV Auth live timing]
 This entity stays registered in Home Assistant. It updates in [Replay Mode](/features/replay-mode) and can update during live sessions when [F1TV Auth](/features/f1tv-auth) is paired with a valid token and live prediction data is available.
@@ -20,7 +18,8 @@ This entity stays registered in Home Assistant. It updates in [Replay Mode](/fea
 
 Predicted Drivers Championship winner and points table.
 
-**State**
+## State
+
 - Predicted P1 driver TLA, or `unknown` when not available.
 
 **Example**
@@ -28,7 +27,7 @@ Predicted Drivers Championship winner and points table.
 VER
 ```
 
-**Attributes**
+## Attributes
 
 | Attribute | Type | Description |
 | --- | --- | --- |
@@ -36,7 +35,7 @@ VER
 | drivers | object | Map of all drivers keyed by racing number |
 | last_update | string | ISO-8601 timestamp of the last prediction update |
 
-The `predicted_driver_p1` object contains:
+### `predicted_driver_p1` object
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -45,7 +44,7 @@ The `predicted_driver_p1` object contains:
 | points | number | Predicted final points |
 | entry | object | Full entry data from the feed |
 
-Each entry in `drivers` (keyed by racing number) contains:
+### `drivers` entries (keyed by racing number)
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -54,6 +53,8 @@ Each entry in `drivers` (keyed by racing number) contains:
 | PredictedPosition | number | Predicted final position |
 | CurrentPoints | number | Current points total |
 | PredictedPoints | number | Predicted final points |
+
+## Examples
 
 <details>
 <summary>JSON Structure Example</summary>
@@ -106,7 +107,7 @@ Each entry in `drivers` (keyed by racing number) contains:
 
 **Get predicted champion:**
 ```jinja2
-{% set p1 = state_attr('sensor.f1_championship_prediction_drivers', 'predicted_driver_p1') %}
+{% set p1 = state_attr('sensor.f1_championship_prediction_drivers', 'predicted_driver_p1') or {} %}
 {% if p1 %}
   Predicted champion: {{ p1.tla }} with {{ p1.points }} points
 {% endif %}
@@ -114,7 +115,7 @@ Each entry in `drivers` (keyed by racing number) contains:
 
 **Show points gain prediction for a driver:**
 ```jinja2
-{% set drivers = state_attr('sensor.f1_championship_prediction_drivers', 'drivers') %}
+{% set drivers = state_attr('sensor.f1_championship_prediction_drivers', 'drivers') or {} %}
 {% set ver = drivers.get('1') %}
 {% if ver %}
   {% set gain = ver.PredictedPoints - ver.CurrentPoints %}
@@ -124,7 +125,7 @@ Each entry in `drivers` (keyed by racing number) contains:
 
 **List drivers predicted to gain positions:**
 ```jinja2
-{% set drivers = state_attr('sensor.f1_championship_prediction_drivers', 'drivers') %}
+{% set drivers = state_attr('sensor.f1_championship_prediction_drivers', 'drivers') or {} %}
 {% for num, d in drivers.items() if d.PredictedPosition < d.CurrentPosition %}
   #{{ num }}: P{{ d.CurrentPosition }} -> P{{ d.PredictedPosition }}
 {% endfor %}
@@ -132,8 +133,8 @@ Each entry in `drivers` (keyed by racing number) contains:
 
 **Calculate predicted gap to leader:**
 ```jinja2
-{% set p1 = state_attr('sensor.f1_championship_prediction_drivers', 'predicted_driver_p1') %}
-{% set drivers = state_attr('sensor.f1_championship_prediction_drivers', 'drivers') %}
+{% set p1 = state_attr('sensor.f1_championship_prediction_drivers', 'predicted_driver_p1') or {} %}
+{% set drivers = state_attr('sensor.f1_championship_prediction_drivers', 'drivers') or {} %}
 {% set ham = drivers.get('44') %}
 {% if p1 and ham %}
   Gap to leader: {{ p1.points - ham.PredictedPoints }} points
@@ -142,9 +143,8 @@ Each entry in `drivers` (keyed by racing number) contains:
 
 </details>
 
+## Related references
 
-## Next steps
+<span id="next-steps"></span>
 
-- [Browse the entity reference](/reference/overview)
-- [Build an automation](/automation)
-- [Choose a dashboard card](/cards/cards-overview)
+<RelatedReferences id="championship-prediction-drivers" />

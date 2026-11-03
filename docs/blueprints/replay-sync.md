@@ -64,6 +64,45 @@ This blueprint does not load sessions, match playback positions, or follow a see
 
 ---
 
+## YAML alternative
+
+Add the following two automations under `automation:` in a Home Assistant configuration or included automation file, merging with your existing list. This example follows play/pause changes; it does not match the playback position automatically. First load the F1 session and align it manually. The [Replay Sync blueprint](/blueprints/replay-sync) provides the same basic workflow without writing YAML.
+
+```yaml
+automation:
+  - alias: "Pause F1 replay when Apple TV pauses"
+    trigger:
+      - platform: state
+        entity_id: media_player.apple_tv
+        to: "paused"
+    condition:
+      - condition: state
+        entity_id: media_player.f1_replay_player
+        state: "playing"
+    action:
+      - service: media_player.media_pause
+        target:
+          entity_id: media_player.f1_replay_player
+
+  - alias: "Resume F1 replay when Apple TV plays"
+    trigger:
+      - platform: state
+        entity_id: media_player.apple_tv
+        to: "playing"
+    condition:
+      - condition: state
+        entity_id: media_player.f1_replay_player
+        state: "paused"
+    action:
+      - service: media_player.media_play
+        target:
+          entity_id: media_player.f1_replay_player
+```
+
+Replace `media_player.apple_tv` with your actual media player entity. This works with any media player that reports play and pause states.
+
+---
+
 ## Related
 
 - [Replay Mode](/features/replay-mode)

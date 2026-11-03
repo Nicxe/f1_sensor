@@ -57,6 +57,8 @@ With several F1 Sensor installations, select the intended installation in the ed
 
 To analyse the timing of an archived session, load that session in [Replay Mode](/features/replay-mode) and use the [analysis modules](/features/weekend-analysis). Merely selecting it in Historical archive does not start playback.
 
+For a saved session identity, see [following or pinning a session](/cards/shared-options#follow-or-pin-a-session). A pin keeps context; it does not start playback.
+
 ## When data is missing
 
 - **No events or sessions:** check the year and try another published session. Historical availability varies by season and session type.

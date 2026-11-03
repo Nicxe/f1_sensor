@@ -4,15 +4,13 @@ title: "Possible On-track Incident"
 description: "Possible stopped car or on-track incident candidate is active \u2014 state, attributes, and examples for F1 Sensor."
 ---
 
-Possible stopped car or on-track incident candidate is active. Use `binary_sensor.f1_possible_on_track_incident` in dashboards, templates, and automations.
+import {EntityMeta, RelatedReferences} from '@site/src/components/Docs';
 
-See [live data availability](/entities/live-data#availability-model) for session and data-source requirements. The details below describe any additional conditions for this entity.
+Possible stopped car or on-track incident candidate is active.
 
-:::info[Find your entity]
-These are standard entity IDs. If Home Assistant assigned a different ID, or you renamed an entity, use your existing ID in the examples.
-:::
+<EntityMeta id="possible-on-track-incident" />
 
-## State and attributes
+<span id="state-and-attributes"></span>
 
 `binary_sensor.f1_possible_on_track_incident` - On while F1 Sensor has a possible or confirmed likely stopped car or on-track incident for the active session.
 
@@ -22,7 +20,9 @@ This entity includes early `candidate` incidents. Candidates can come from publi
 Candidate incidents are earlier and less certain than confirmed incidents. Use this entity for advanced automations, dashboard indicators, or opt-in alerts. For conservative notifications, use `binary_sensor.f1_on_track_incident` or the incident notification blueprint defaults.
 :::
 
-**State (on/off)**
+## State
+
+State type: on/off.
 - `on` when at least one `candidate`, `confirmed`, or `updated` incident is active.
 - `off` when no possible or confirmed incident is active.
 - `unavailable` when live or replay data is not available enough to report a reliable state.
@@ -32,7 +32,7 @@ Candidate incidents are earlier and less certain than confirmed incidents. Use t
 on
 ```
 
-**Attributes**
+## Attributes
 
 | Attribute | Type | Description |
 | --- | --- | --- |
@@ -51,9 +51,8 @@ Detailed car movement samples are not exposed as state attributes.
 
 For conservative notifications, use [Incident Detection](/features/incident-detection) and the [Incident Notifications blueprint](/blueprints/incident-notifications).
 
+## Related references
 
-## Next steps
+<span id="next-steps"></span>
 
-- [Browse the entity reference](/reference/overview)
-- [Build an automation](/automation)
-- [Choose a dashboard card](/cards/cards-overview)
+<RelatedReferences id="possible-on-track-incident" />

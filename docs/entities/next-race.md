@@ -4,22 +4,21 @@ title: "Next Race"
 description: "Next race info \u2014 state, attributes, and examples for F1 Sensor."
 ---
 
-Next race info. Use `sensor.f1_next_race` in dashboards, templates, and automations.
+import {EntityMeta, RelatedReferences} from '@site/src/components/Docs';
 
-This reference covers the state and attributes. For setup, see [Configuration](/getting-started/add-integration).
+Next race info.
 
-:::info[Find your entity]
-These are standard entity IDs. If Home Assistant assigned a different ID, or you renamed an entity, use your existing ID in the examples.
-:::
+<EntityMeta id="next-race" />
 
-## State and attributes
+<span id="state-and-attributes"></span>
 
 `sensor.f1_next_race` - Schedule for the next race; state is the race start timestamp (ISO‑8601).
 
-**State**
+## State
+
   - ISO‑8601 timestamp (UTC) of the race start, or `unknown` if not available.
 
-**Attributes**
+## Attributes
 
 | Attribute | Type | Description |
 | --- | --- | --- |
@@ -31,6 +30,11 @@ These are standard entity IDs. If Home Assistant assigned a different ID, or you
 | schedule_source_url | string or null | Official calendar source for the fallback; otherwise `null` |
 | scheduled_laps | number or null | Planned race laps; `null` when Jolpica has no value or its alpha data is unavailable |
 | sprint_scheduled_laps | number or null | Planned sprint laps; `null` when there is no sprint or no alpha value is available |
+
+### Circuit and location
+
+| Attribute | Type | Description |
+| --- | --- | --- |
 | race_url | string | Ergast race URL |
 | circuit_id | string | Circuit identifier |
 | circuit_name | string | Circuit name |
@@ -44,6 +48,11 @@ These are standard entity IDs. If Home Assistant assigned a different ID, or you
 | circuit_map_url | string | URL to official circuit map image |
 | circuit_outline_url | string | URL to circuit outline image when available |
 | circuit_timezone | string | Local timezone (best effort) |
+
+### Race and session timestamps
+
+| Attribute | Type | Description |
+| --- | --- | --- |
 | race_start_utc | string | Race start (UTC ISO‑8601) |
 | race_start | string | Race start in Home Assistant local time |
 | race_start_local | string | Race start in circuit local time |
@@ -84,9 +93,8 @@ An upcoming race from Jolpica takes priority as soon as it arrives through the n
 
 If Jolpica supplies the Bahrain opener on 14 March 2027 without a start time, the sensor keeps the provisional 15:00 UTC timestamp. Its `schedule_source` becomes `jolpica` and `schedule_source_url` becomes `null`, while `race_start_estimated` remains `true`. A start time supplied by Jolpica replaces the provisional time and clears the estimated flag. Other races with a date but no API start time retain the default of 00:00 UTC and also set `race_start_estimated` to `true`.
 
+## Related references
 
-## Next steps
+<span id="next-steps"></span>
 
-- [Browse the entity reference](/reference/overview)
-- [Build an automation](/automation)
-- [Choose a dashboard card](/cards/cards-overview)
+<RelatedReferences id="next-race" />

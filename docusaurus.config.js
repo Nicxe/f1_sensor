@@ -87,7 +87,15 @@ const config = {
   themes: [
     [
       '@easyops-cn/docusaurus-search-local',
-      { hashed: true, docsRouteBasePath: '/', indexBlog: false, highlightSearchTermsOnTargetPage: true },
+      {
+        hashed: true,
+        docsRouteBasePath: '/',
+        indexBlog: false,
+        highlightSearchTermsOnTargetPage: true,
+        explicitSearchResultPath: true,
+        // Preserve the old URL while search opens the complete current guide.
+        ignoreFiles: ['getting-started/replay-mode'],
+      },
     ],
   ],
 
@@ -104,15 +112,22 @@ const config = {
       title: 'F1 Sensor',
       logo: { alt: 'F1 Sensor', src: 'img/logo.svg' },
       items: [
-        { label: 'Get started', to: '/getting-started/installation', position: 'left' },
-        { label: 'Dashboards', to: '/cards/cards-overview', position: 'left' },
-        { label: 'Guides', to: '/features/overview', position: 'left' },
-        { label: 'Reference', to: '/reference/overview', position: 'left' },
-        { label: 'Help', to: '/help/overview', position: 'left' },
-        { label: isBeta ? 'Stable docs' : 'Beta docs', position: 'right', href: isBeta ? stableDocsUrl : betaDocsUrl },
-        { label: versionLabel, position: 'right', className: 'navbar-version-chip', href: versionUrl },
+        { type: 'docSidebar', sidebarId: 'startedSidebar', label: 'Get started', position: 'left' },
+        { type: 'docSidebar', sidebarId: 'dashboardsSidebar', label: 'Dashboards', position: 'left' },
+        { type: 'docSidebar', sidebarId: 'guidesSidebar', label: 'Guides', position: 'left' },
+        { type: 'docSidebar', sidebarId: 'referenceSidebar', label: 'Reference', position: 'left' },
+        { type: 'docSidebar', sidebarId: 'helpSidebar', label: 'Help', position: 'left' },
+        {
+          label: `${isBeta ? 'Beta' : isPreview ? 'Preview' : 'Stable'} · ${versionLabel}`,
+          position: 'right',
+          className: 'navbar-channel-menu',
+          items: [
+            {label: 'Stable documentation', href: stableDocsUrl},
+            {label: 'Beta documentation', href: betaDocsUrl},
+            {label: 'Release notes', href: versionUrl},
+          ],
+        },
         { type: 'search', position: 'right' },
-        { href: `${GITHUB_REPO_URL}`, label: 'GitHub', position: 'right' },
       ],
     },
     footer: {
@@ -124,11 +139,14 @@ const config = {
           {label: 'Automations', to: '/automation'},
         ]},
         {title: 'Find answers', items: [
+          {label: 'Browse all documentation', to: '/documentation'},
           {label: 'Troubleshooting', to: '/help/overview'},
           {label: 'Community', to: '/example/overview'},
           {label: 'Support the project', to: '/support'},
         ]},
         {title: 'Project', items: [
+          {label: 'GitHub', href: GITHUB_REPO_URL},
+          {label: 'Videos by Niklas', href: 'https://www.youtube.com/@niklasvilnersson'},
           {label: 'Contribute', href: `${GITHUB_REPO_URL}/blob/dev/CONTRIBUTING.md`},
           {label: 'Security', href: `${GITHUB_REPO_URL}/security/policy`},
           {label: 'Token Helper privacy', to: '/help/f1tv-token-helper-privacy'},

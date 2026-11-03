@@ -4,19 +4,18 @@ title: "Race Control"
 description: "Race Control messages feed (flags, incidents, key updates) \u2014 state, attributes, and examples for F1 Sensor."
 ---
 
-Race Control messages feed (flags, incidents, key updates). Use `sensor.f1_race_control` in dashboards, templates, and automations.
+import {EntityMeta, RelatedReferences} from '@site/src/components/Docs';
 
-See [live data availability](/entities/live-data#availability-model) for session and data-source requirements. The details below describe any additional conditions for this entity.
+Race Control messages feed (flags, incidents, key updates).
 
-:::info[Find your entity]
-These are standard entity IDs. If Home Assistant assigned a different ID, or you renamed an entity, use your existing ID in the examples.
-:::
+<EntityMeta id="race-control" />
 
-## State and attributes
+<span id="state-and-attributes"></span>
 
 Feed-style sensor exposing Race Control messages such as flags, incidents, and key session updates. This data is also sent on the [event bus](/entities/events).
 
-**State**
+## State
+
 - The latest Race Control message text (max 255 characters), or `unknown` when none are available.
 
 **Example**
@@ -24,7 +23,7 @@ Feed-style sensor exposing Race Control messages such as flags, incidents, and k
 YELLOW FLAG IN TURN 4
 ```
 
-**Attributes**
+## Attributes
 
 | Attribute | Type | Description |
 | --- | --- | --- |
@@ -41,9 +40,8 @@ YELLOW FLAG IN TURN 4
 | history | list | Rolling list of recent messages (up to 5), each with `event_id`, `utc`, `category`, `flag`, and `message` |
 | raw_message | object | Full source message details |
 
+## Related references
 
-## Next steps
+<span id="next-steps"></span>
 
-- [Browse the entity reference](/reference/overview)
-- [Build an automation](/automation)
-- [Choose a dashboard card](/cards/cards-overview)
+<RelatedReferences id="race-control" />

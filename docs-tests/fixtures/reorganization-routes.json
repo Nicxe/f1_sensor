@@ -1,0 +1,1188 @@
+{
+  "source_commit": "6db6c226ddf96d9bfc5faa7ecf319ef4f820fb85",
+  "description": "Content anchors captured from a production build of all 103 documents before the documentation reorganization. This supplements, never replaces, docs-legacy-routes.json.",
+  "routes": [
+    {
+      "path": "/",
+      "anchors": [
+        "blueprints",
+        "dashboards-and-automations",
+        "features",
+        "flag-demo-caption",
+        "flags-at-home",
+        "getting-started",
+        "support",
+        "timing-modes",
+        "version-54",
+        "your-home-in-sync-with-formula-1"
+      ]
+    },
+    {
+      "path": "/automation",
+      "anchors": [
+        "build-a-device-automation",
+        "choose-your-starting-point",
+        "dashboard-trigger-for-active-incidents",
+        "device-automation-triggers",
+        "drivers-device",
+        "notify-when-race-week-begins",
+        "officials-device",
+        "optional-candidate-incident-notification",
+        "possible-on-track-incident-notification",
+        "race-about-to-start--formation-lap",
+        "race-control-event-notifications",
+        "race-device",
+        "reminder-before-a-session-starts",
+        "safety-car-deployed",
+        "session-device",
+        "session-goes-live",
+        "system-device",
+        "yaml-examples"
+      ]
+    },
+    {
+      "path": "/blueprints/incident-notifications",
+      "anchors": [
+        "check-your-automation",
+        "import-the-blueprint",
+        "notification-wording",
+        "related",
+        "requirements",
+        "step-1---create-an-automation-from-the-blueprint",
+        "step-2---choose-notification-targets",
+        "step-3---review-filters",
+        "step-4---add-activation-conditions",
+        "step-by-step-setup"
+      ]
+    },
+    {
+      "path": "/blueprints/race-control-notifications",
+      "anchors": [
+        "example-configurations",
+        "exclude-administrative-messages",
+        "first-working-notification",
+        "import-the-blueprint",
+        "notify-only-during-the-race",
+        "notify-only-for-safety-car-and-red-flag",
+        "race-control-notifications",
+        "related",
+        "requirements",
+        "silence-blue-flag-spam",
+        "step-1--create-an-automation-from-the-blueprint",
+        "step-2--configure-source",
+        "step-3--session-scope-optional",
+        "step-4--configure-filters-optional",
+        "step-5--configure-notifications",
+        "step-6--add-a-notification-action",
+        "step-by-step-setup",
+        "template-variables"
+      ]
+    },
+    {
+      "path": "/blueprints/replay-sync",
+      "anchors": [
+        "behavior",
+        "f1-replay-sync",
+        "import-the-blueprint",
+        "related",
+        "requirements",
+        "setup",
+        "step-1--create-an-automation-from-the-blueprint",
+        "step-2--configure-inputs"
+      ]
+    },
+    {
+      "path": "/blueprints/track-status-light",
+      "anchors": [
+        "behavior",
+        "first-working-setup",
+        "import-the-blueprint",
+        "per-state-playlists-and-presets",
+        "related",
+        "requirements",
+        "sc-and-vsc",
+        "step-1--create-an-automation-from-the-blueprint",
+        "step-10--session-end-behavior-optional",
+        "step-11--notifications-optional",
+        "step-2--data-sources",
+        "step-3--session-scope-optional",
+        "step-4--light-behavior",
+        "step-5--wled-advanced-optional",
+        "step-6--flag-colors",
+        "step-7--alert-behavior",
+        "step-8--clear-behavior",
+        "step-9--activation-conditions-optional",
+        "step-by-step-setup",
+        "testing",
+        "track-status-light",
+        "yellow-and-red"
+      ]
+    },
+    {
+      "path": "/cards/installation",
+      "anchors": [
+        "card-loading-checks",
+        "install-the-card",
+        "manual-resource-fallback",
+        "next-steps",
+        "remove-a-standalone-resource",
+        "update-the-card"
+      ]
+    },
+    {
+      "path": "/cards/modular-accessibility",
+      "anchors": [
+        "check-your-own-devices",
+        "keep-meaning-independent-of-color",
+        "reduce-motion-and-increase-contrast",
+        "start-with-a-readable-layout",
+        "use-a-keyboard-or-switch-input"
+      ]
+    },
+    {
+      "path": "/cards/modular-migration",
+      "anchors": [
+        "build-the-replacement-manually",
+        "convert-an-existing-card",
+        "finish-the-new-configuration",
+        "read-the-conversion-review",
+        "restore-or-export-the-original",
+        "understand-what-the-converter-creates"
+      ]
+    },
+    {
+      "path": "/cards/modular-styling",
+      "anchors": [
+        "add-custom-css",
+        "start-with-the-visual-editor",
+        "style-public-parts",
+        "target-one-module",
+        "understand-the-boundaries",
+        "use-the-supported-variables"
+      ]
+    },
+    {
+      "path": "/cards/modular",
+      "anchors": [
+        "arrange-modules-in-columns",
+        "choose-and-lock-a-session",
+        "choose-the-information-you-want",
+        "compare-a-push-lap-with-the-best-qualifying-lap",
+        "compare-driver-details",
+        "compare-practice-lap-times",
+        "drag-modules-into-place",
+        "follow-push-laps",
+        "give-the-card-enough-space",
+        "live-delay-spoilers-and-replay",
+        "make-the-card-your-own",
+        "preview-your-card",
+        "read-timing-colors-and-symbols",
+        "reuse-your-own-template",
+        "save-reuse-and-migrate",
+        "show-minisectors",
+        "show-modules-conditionally",
+        "show-pit-stops",
+        "show-team-radio-experimental",
+        "start-with-a-preset",
+        "times-and-saved-data"
+      ]
+    },
+    {
+      "path": "/cards/cards-overview",
+      "anchors": [
+        "add-your-first-card",
+        "adding-cards",
+        "available-cards",
+        "bundled-installation",
+        "card-reference",
+        "choose-a-starting-preset",
+        "choose-which-cards-to-install",
+        "combine-the-available-modules",
+        "configure-the-card-visually",
+        "continue-from-here",
+        "f1-championship-prediction-drivers-card",
+        "f1-championship-prediction-teams-card",
+        "f1-driver-lap-times-card",
+        "f1-fia-documents-card",
+        "f1-investigations-card",
+        "f1-lap-position-progression-card",
+        "f1-live-session-card",
+        "f1-next-race-card",
+        "f1-pit-stop-overview-card",
+        "f1-practice-timing-card",
+        "f1-qualifying-timing-card",
+        "f1-race-control-card",
+        "f1-race-lap-card",
+        "f1-race-weather-card",
+        "f1-replay-control-card",
+        "f1-results-card",
+        "f1-season-calendar-card",
+        "f1-season-progression-card",
+        "f1-starting-grid-card",
+        "f1-track-limits-card",
+        "f1-track-map-card",
+        "f1-tyre-statistics-card",
+        "f1-weekend-hub-card",
+        "installation",
+        "migrating-from-the-old-standalone-card",
+        "related",
+        "shared-options"
+      ]
+    },
+    {
+      "path": "/cards/shared-options",
+      "anchors": [
+        "choose-appearance",
+        "choose-layout-and-shared-focus",
+        "control-unavailable-data",
+        "export-or-reuse-a-configuration",
+        "follow-or-pin-a-session",
+        "keep-timing-meaning-visible",
+        "related",
+        "select-an-f1-sensor-installation",
+        "use-spoilers-live-delay-and-replay-controls"
+      ]
+    },
+    {
+      "path": "/entities/championship-prediction-drivers",
+      "anchors": [
+        "next-steps",
+        "state-and-attributes"
+      ]
+    },
+    {
+      "path": "/entities/championship-prediction-teams",
+      "anchors": [
+        "next-steps",
+        "state-and-attributes"
+      ]
+    },
+    {
+      "path": "/entities/constructor-points-progression",
+      "anchors": [
+        "next-steps",
+        "state-and-attributes"
+      ]
+    },
+    {
+      "path": "/entities/constructor-standings",
+      "anchors": [
+        "next-steps",
+        "state-and-attributes"
+      ]
+    },
+    {
+      "path": "/entities/current-season",
+      "anchors": [
+        "next-steps",
+        "state-and-attributes"
+      ]
+    },
+    {
+      "path": "/entities/current-session",
+      "anchors": [
+        "next-steps",
+        "state-and-attributes"
+      ]
+    },
+    {
+      "path": "/entities/current-tyres",
+      "anchors": [
+        "next-steps",
+        "state-and-attributes"
+      ]
+    },
+    {
+      "path": "/entities/diagnostics",
+      "anchors": [
+        "download-diagnostics",
+        "entities-summary",
+        "f1tv-token-expires-at",
+        "f1tv-token-status",
+        "incident-detection-diagnostics",
+        "live-timing-mode",
+        "live-timing-online",
+        "replay-status",
+        "start-with-the-symptom",
+        "track-map-diagnostics"
+      ]
+    },
+    {
+      "path": "/entities/driver-list",
+      "anchors": [
+        "next-steps",
+        "state-and-attributes"
+      ]
+    },
+    {
+      "path": "/entities/driver-points-progression",
+      "anchors": [
+        "next-steps",
+        "state-and-attributes"
+      ]
+    },
+    {
+      "path": "/entities/driver-positions",
+      "anchors": [
+        "next-steps",
+        "personal-best-and-session-fastest-lap",
+        "state-and-attributes"
+      ]
+    },
+    {
+      "path": "/entities/driver-standings",
+      "anchors": [
+        "next-steps",
+        "state-and-attributes"
+      ]
+    },
+    {
+      "path": "/entities/events",
+      "anchors": [
+        "event-fields",
+        "event-streams",
+        "event-vs-sensor",
+        "example-payload",
+        "example-payloads",
+        "favorite-driver",
+        "future-event-streams",
+        "home-assistant-events",
+        "on-track-incident",
+        "race-control",
+        "race-control-vs-incident-events"
+      ]
+    },
+    {
+      "path": "/entities/favorite-driver",
+      "anchors": [
+        "attributes",
+        "automation-events",
+        "next-steps",
+        "select-a-driver",
+        "state",
+        "state-and-attributes"
+      ]
+    },
+    {
+      "path": "/entities/fia-decision-documents",
+      "anchors": [
+        "next-steps",
+        "state-and-attributes"
+      ]
+    },
+    {
+      "path": "/entities/formation-start",
+      "anchors": [
+        "next-steps",
+        "state-and-attributes"
+      ]
+    },
+    {
+      "path": "/entities/investigations",
+      "anchors": [
+        "next-steps",
+        "state-and-attributes"
+      ]
+    },
+    {
+      "path": "/entities/lap-position-progression",
+      "anchors": [
+        "next-steps",
+        "state-and-attributes"
+      ]
+    },
+    {
+      "path": "/entities/last-race-results",
+      "anchors": [
+        "next-steps",
+        "state-and-attributes"
+      ]
+    },
+    {
+      "path": "/entities/live-data",
+      "anchors": [
+        "availability-model",
+        "browse-all-reference-topics",
+        "championship-prediction-drivers",
+        "championship-prediction-teams",
+        "current-session",
+        "current-tyres",
+        "driver-list",
+        "driver-positions",
+        "entities-summary",
+        "favorite-driver",
+        "formation-start",
+        "grid-context-and-source",
+        "investigations",
+        "on-track-incident",
+        "overtake-mode",
+        "pit-stops",
+        "possible-on-track-incident",
+        "race-control",
+        "race-lap",
+        "race-three-hour-limit",
+        "reference-enum-values",
+        "safety-car",
+        "session-status",
+        "session-time-elapsed",
+        "session-time-remaining",
+        "starting-grid",
+        "straight-mode",
+        "team-radio",
+        "top-three",
+        "track-limits",
+        "track-status",
+        "track-weather",
+        "tyre-statistics",
+        "weekend-flow"
+      ]
+    },
+    {
+      "path": "/entities/next-race-weather",
+      "anchors": [
+        "next-steps",
+        "state-and-attributes"
+      ]
+    },
+    {
+      "path": "/entities/next-race",
+      "anchors": [
+        "between-the-2026-and-2027-seasons",
+        "next-steps",
+        "state-and-attributes"
+      ]
+    },
+    {
+      "path": "/entities/on-track-incident",
+      "anchors": [
+        "next-steps",
+        "state-and-attributes"
+      ]
+    },
+    {
+      "path": "/entities/overtake-mode",
+      "anchors": [
+        "next-steps",
+        "state-and-attributes"
+      ]
+    },
+    {
+      "path": "/entities/pit-stops",
+      "anchors": [
+        "counts-without-stop-details",
+        "live-and-replay-coverage",
+        "next-steps",
+        "pit-lane-time-during-live-sessions",
+        "state-and-attributes",
+        "understand-the-three-time-fields"
+      ]
+    },
+    {
+      "path": "/entities/possible-on-track-incident",
+      "anchors": [
+        "next-steps",
+        "state-and-attributes"
+      ]
+    },
+    {
+      "path": "/entities/race-control",
+      "anchors": [
+        "next-steps",
+        "state-and-attributes"
+      ]
+    },
+    {
+      "path": "/entities/race-lap",
+      "anchors": [
+        "next-steps",
+        "state-and-attributes"
+      ]
+    },
+    {
+      "path": "/entities/race-three-hour-limit",
+      "anchors": [
+        "next-steps",
+        "state-and-attributes"
+      ]
+    },
+    {
+      "path": "/entities/race-week",
+      "anchors": [
+        "between-seasons",
+        "next-steps",
+        "state-and-attributes"
+      ]
+    },
+    {
+      "path": "/entities/safety-car",
+      "anchors": [
+        "next-steps",
+        "state-and-attributes"
+      ]
+    },
+    {
+      "path": "/entities/season-calendar",
+      "anchors": [
+        "next-steps",
+        "state-and-attributes"
+      ]
+    },
+    {
+      "path": "/entities/season-results",
+      "anchors": [
+        "next-steps",
+        "state-and-attributes"
+      ]
+    },
+    {
+      "path": "/entities/session-status",
+      "anchors": [
+        "next-steps",
+        "state-and-attributes"
+      ]
+    },
+    {
+      "path": "/entities/session-time-elapsed",
+      "anchors": [
+        "next-steps",
+        "source-quality",
+        "state-and-attributes"
+      ]
+    },
+    {
+      "path": "/entities/session-time-remaining",
+      "anchors": [
+        "next-steps",
+        "state-and-attributes"
+      ]
+    },
+    {
+      "path": "/entities/sprint-results",
+      "anchors": [
+        "next-steps",
+        "state-and-attributes"
+      ]
+    },
+    {
+      "path": "/entities/starting-grid",
+      "anchors": [
+        "grid-context-and-source",
+        "next-steps",
+        "state-and-attributes",
+        "weekend-flow"
+      ]
+    },
+    {
+      "path": "/entities/static-data",
+      "anchors": [
+        "browse-all-reference-topics",
+        "constructor-points-progression",
+        "constructor-standings",
+        "current-season",
+        "driver-points-progression",
+        "driver-standings",
+        "entities-summary",
+        "fia-decision-documents",
+        "lap-position-progression",
+        "last-race-results",
+        "next-race",
+        "next-race-weather",
+        "race-week",
+        "season-calendar",
+        "season-results",
+        "sprint-results",
+        "track-time",
+        "weather-summary"
+      ]
+    },
+    {
+      "path": "/entities/straight-mode",
+      "anchors": [
+        "next-steps",
+        "state-and-attributes"
+      ]
+    },
+    {
+      "path": "/entities/team-radio",
+      "anchors": [
+        "before-you-start",
+        "cost-privacy-and-limitations",
+        "experimental-transcription",
+        "next-steps",
+        "state-and-attributes",
+        "transcribe-the-latest-clip",
+        "troubleshooting",
+        "view-the-result"
+      ]
+    },
+    {
+      "path": "/entities/top-three",
+      "anchors": [
+        "next-steps",
+        "state-and-attributes"
+      ]
+    },
+    {
+      "path": "/entities/track-limits",
+      "anchors": [
+        "next-steps",
+        "state-and-attributes"
+      ]
+    },
+    {
+      "path": "/entities/track-status",
+      "anchors": [
+        "next-steps",
+        "state-and-attributes"
+      ]
+    },
+    {
+      "path": "/entities/track-time",
+      "anchors": [
+        "next-steps",
+        "state-and-attributes"
+      ]
+    },
+    {
+      "path": "/entities/track-weather",
+      "anchors": [
+        "next-steps",
+        "state-and-attributes"
+      ]
+    },
+    {
+      "path": "/entities/tyre-statistics",
+      "anchors": [
+        "next-steps",
+        "state-and-attributes"
+      ]
+    },
+    {
+      "path": "/entities/weather-summary",
+      "anchors": [
+        "next-steps",
+        "state-and-attributes"
+      ]
+    },
+    {
+      "path": "/example/custom-card-by",
+      "anchors": [
+        "constructors-standings-card",
+        "create-a-template-helper-for-the-missing-info",
+        "drivers-standings-card",
+        "examples",
+        "install-f1-font-to-use",
+        "prerequisites",
+        "steps",
+        "the-cards"
+      ]
+    },
+    {
+      "path": "/example/custom-card",
+      "anchors": [
+        "custom-f1-card-by-the-community"
+      ]
+    },
+    {
+      "path": "/example/e-ink",
+      "anchors": [
+        "getting-started",
+        "related",
+        "what-it-shows",
+        "what-you-need"
+      ]
+    },
+    {
+      "path": "/example/overview",
+      "anchors": [
+        "a-dashboard-built-around-your-style",
+        "a-race-schedule-on-your-desk",
+        "share-your-setup"
+      ]
+    },
+    {
+      "path": "/features/card-data-and-sensors",
+      "anchors": [
+        "availability-and-protection",
+        "choose-modules-and-sensors-independently",
+        "collection-follows-need",
+        "data-without-standings-sensors",
+        "keep-automation-entities",
+        "updating-an-existing-installation"
+      ]
+    },
+    {
+      "path": "/features/context7",
+      "anchors": [
+        "direct-library-id",
+        "how-to-use-it",
+        "what-the-ai-gets-access-to",
+        "why-this-matters",
+        "with-claude-code-or-any-mcp-compatible-agent",
+        "with-cursor-or-other-ai-editors"
+      ]
+    },
+    {
+      "path": "/features/f1tv-auth",
+      "anchors": [
+        "availability-matrix",
+        "how-f1tv-auth-changes-live-timing",
+        "limitations",
+        "privacy-and-safety",
+        "related-pages",
+        "subscription-requirement",
+        "token-helper-and-renewal",
+        "what-f1tv-auth-can-add-during-live-sessions",
+        "what-the-live-checks-establish",
+        "what-works-without-f1tv-auth"
+      ]
+    },
+    {
+      "path": "/features/favorite-driver",
+      "anchors": [
+        "add-it-to-a-dashboard",
+        "enable-and-select",
+        "favorite-driver-or-focus-driver",
+        "if-no-driver-data-appears",
+        "react-to-that-drivers-session"
+      ]
+    },
+    {
+      "path": "/features/historical-results",
+      "anchors": [
+        "add-the-archive-module",
+        "archive-or-replay",
+        "before-you-start",
+        "open-the-archive-first",
+        "when-data-is-missing"
+      ]
+    },
+    {
+      "path": "/features/incident-detection",
+      "anchors": [
+        "confidence-and-phases",
+        "entities-and-events",
+        "good-automation-wording",
+        "improvements-with-f1tv-auth",
+        "limitations",
+        "notification-blueprint",
+        "public-live-behavior-without-f1tv-auth",
+        "related-pages",
+        "start-with-a-notification",
+        "track-map-location-context",
+        "what-it-detects",
+        "what-it-does-not-detect"
+      ]
+    },
+    {
+      "path": "/features/live-delay",
+      "anchors": [
+        "_R_5a7dalbah_",
+        "_R_5a7dalbah_-title",
+        "choose-the-calibration-reference",
+        "entity-reference",
+        "incident-alerts-and-notifications",
+        "option-1---manual-delay-adjustment",
+        "option-2---guided-calibration",
+        "optional-controls-in-the-f1-sensor-card",
+        "step-1---arm-the-calibration",
+        "step-2---match-the-tv-broadcast",
+        "typical-broadcast-delays"
+      ]
+    },
+    {
+      "path": "/features/no-spoiler-mode",
+      "anchors": [
+        "example-activate-automatically-at-session-time",
+        "limitations",
+        "the-complete-workflow",
+        "the-switch-entity",
+        "using-replay-mode-while-blocked",
+        "what-is-blocked",
+        "what-to-expect"
+      ]
+    },
+    {
+      "path": "/features/overview",
+      "anchors": [
+        "build-your-race-day-setup",
+        "choose-card-data-and-sensors",
+        "explore-the-new-features",
+        "find-an-exact-field",
+        "watch-later",
+        "watch-live"
+      ]
+    },
+    {
+      "path": "/features/replay-mode",
+      "anchors": [
+        "additional-entities-in-replay-mode",
+        "best-way-to-use-it",
+        "configuration-entities",
+        "dashboard-card",
+        "dragging-the-playbar",
+        "entities",
+        "example-sync-with-apple-tv",
+        "how-the-30-second-buttons-work",
+        "limitations",
+        "media-player",
+        "media-player-entity",
+        "replay-improvements",
+        "replay-mode-vs-developer-mode",
+        "replay-mode-vs-live-f1tv-auth",
+        "replay-seek-controls",
+        "replay-status-sensor",
+        "status-sensor",
+        "step-1---select-a-session",
+        "step-2---choose-the-start-reference",
+        "step-3---load-the-session",
+        "step-4---sync-with-your-broadcast",
+        "step-5---control-playback",
+        "syncing-to-a-lap-or-qualifying-part",
+        "using-replay-mode",
+        "what-replay-mode-can-replay",
+        "what-to-expect",
+        "what-to-expect-1"
+      ]
+    },
+    {
+      "path": "/features/track-map",
+      "anchors": [
+        "add-the-track-map-card",
+        "add-the-track-map-module",
+        "availability",
+        "card-options",
+        "cars-do-not-show-during-a-live-session",
+        "incident-location-context",
+        "limitations",
+        "optional-circuit-markings",
+        "optional-demonstration",
+        "related-pages",
+        "replay-shows-a-map-but-live-does-not",
+        "status-messages",
+        "the-card-says-no-geometry",
+        "the-card-says-stale",
+        "troubleshooting",
+        "what-to-expect"
+      ]
+    },
+    {
+      "path": "/features/weekend-analysis",
+      "anchors": [
+        "build-an-analysis-card",
+        "choose-the-right-module-after-a-session",
+        "compare-replay-laps",
+        "read-the-session-timeline",
+        "spoilers-and-empty-modules",
+        "understand-battles-and-position-changes",
+        "understand-strategy-estimates"
+      ]
+    },
+    {
+      "path": "/features/whats-new",
+      "anchors": [
+        "combine-20-modules",
+        "configure-content-and-presentation-together",
+        "know-the-data-limits",
+        "move-an-existing-dashboard",
+        "start-with-one-card",
+        "use-archive-replay-and-analysis-deliberately"
+      ]
+    },
+    {
+      "path": "/getting-started/add-integration",
+      "anchors": [
+        "check-your-setup",
+        "configuration-choices",
+        "device-structure",
+        "live-data-setup",
+        "manual-configuration"
+      ]
+    },
+    {
+      "path": "/getting-started/first-dashboard",
+      "anchors": [
+        "add-live-timing",
+        "add-your-first-card",
+        "before-you-start",
+        "if-the-card-does-not-appear",
+        "make-it-yours",
+        "yaml-alternative"
+      ]
+    },
+    {
+      "path": "/getting-started/installation",
+      "anchors": [
+        "done",
+        "how-it-works",
+        "option-a-my-home-assistant",
+        "option-b-directly-in-hacs",
+        "recommended-install-via-hacs",
+        "step-1---install-the-integration",
+        "step-2---add-the-integration-to-home-assistant",
+        "step-3---select-which-sensors-to-create"
+      ]
+    },
+    {
+      "path": "/getting-started/release-channels",
+      "anchors": [
+        "beta-channel",
+        "channel-overview",
+        "dev-channel",
+        "documentation-previews",
+        "release-candidates",
+        "reporting-issues",
+        "stable-channel",
+        "switch-back-to-stable",
+        "upgrading-an-existing-setup"
+      ]
+    },
+    {
+      "path": "/getting-started/replay-mode",
+      "anchors": []
+    },
+    {
+      "path": "/getting-started/required-data-choice",
+      "anchors": [
+        "existing-access-and-protection",
+        "optionally-reduce-sensors",
+        "read-the-information-notification"
+      ]
+    },
+    {
+      "path": "/help/beta-tester",
+      "anchors": [
+        "beta-vs-dev",
+        "developer-mode-testing",
+        "enable-debug-logging",
+        "install-a-beta-version",
+        "report-issues-and-feedback",
+        "test-incident-detection",
+        "what-it-means-to-be-a-beta-tester",
+        "what-to-test",
+        "write-a-useful-issue"
+      ]
+    },
+    {
+      "path": "/help/contact",
+      "anchors": [
+        "contact",
+        "found-a-bug",
+        "have-a-feature-request",
+        "have-a-question"
+      ]
+    },
+    {
+      "path": "/help/debug-logging",
+      "anchors": [
+        "disable-debug-logging",
+        "enable-debug-logging",
+        "enable-debug-logging-with-yaml",
+        "find-raw-logs",
+        "incident-detection-reports",
+        "reproduce-the-problem",
+        "what-to-include-in-an-issue"
+      ]
+    },
+    {
+      "path": "/help/developer-mode",
+      "anchors": [
+        "benefits-for-development",
+        "developer-mode-vs-replay-mode",
+        "enable-developer-mode",
+        "limitations",
+        "related-pages",
+        "replay-dump-requirements",
+        "return-to-live-mode",
+        "step-1---confirm-the-controls-are-available",
+        "step-2---select-the-replay-dump",
+        "step-3---verify-the-data-source",
+        "when-to-use-developer-mode"
+      ]
+    },
+    {
+      "path": "/help/f1tv-auth-setup",
+      "anchors": [
+        "availability",
+        "home-assistant-rejects-the-pairing",
+        "how-it-works",
+        "incident-detection-and-f1tv-auth",
+        "prerequisites",
+        "public-live-timing-stops-working",
+        "step-1---start-pairing-from-home-assistant",
+        "step-2---send-f1tv-access-to-home-assistant",
+        "step-3---understand-token-lifetime",
+        "step-4---verify-public-fallback-first",
+        "the-helper-does-not-show-home-assistant-pairing",
+        "the-helper-opens-but-only-manual-export-is-available",
+        "the-token-is-valid-but-an-extra-feature-has-no-data",
+        "troubleshooting"
+      ]
+    },
+    {
+      "path": "/help/f1tv-token-helper-privacy",
+      "anchors": [
+        "contact",
+        "data-the-helper-can-access",
+        "data-the-helper-sends",
+        "data-the-helper-stores",
+        "permissions",
+        "removing-access",
+        "summary",
+        "what-the-helper-does-not-do"
+      ]
+    },
+    {
+      "path": "/help/f1tv-token-helper",
+      "anchors": [
+        "privacy",
+        "step-1---keep-this-tab-open",
+        "step-2---sign-in-if-needed",
+        "step-3---send-to-home-assistant",
+        "step-by-step",
+        "troubleshooting",
+        "what-this-does"
+      ]
+    },
+    {
+      "path": "/help/faq",
+      "anchors": [
+        "can-i-display-the-lap-counter-and-total-laps",
+        "can-i-show-minisector-times",
+        "can-i-show-the-data-on-an-esphome-display",
+        "can-i-watch-a-session-later-without-seeing-results-first",
+        "cant-find-the-answer-youre-looking-for",
+        "do-i-install-the-cards-separately",
+        "do-i-need-an-api-key-or-a-separate-weather-account",
+        "do-i-need-f1tv-auth-or-an-f1-tv-pro-subscription",
+        "general-questions",
+        "how-do-i-find-race-control-flags-or-the-current-session",
+        "how-do-i-match-updates-to-the-tv",
+        "live-data-questions",
+        "replay-mode-or-developer-mode",
+        "troubleshooting",
+        "where-are-practice-and-qualifying-times",
+        "which-release-channel-should-i-use",
+        "why-are-newly-added-sensors-missing",
+        "why-are-pit-stops-team-radio-or-championship-prediction-unavailable",
+        "why-do-i-still-see-an-old-card-after-updating",
+        "why-do-live-sensors-stop-between-sessions",
+        "why-does-my-entity-name-differ-from-the-documentation",
+        "why-does-pit-stops-have-a-count-but-no-stop-times",
+        "why-does-track-map-work-in-replay-but-not-live"
+      ]
+    },
+    {
+      "path": "/help/issues",
+      "anchors": [
+        "large-season-result-attributes"
+      ]
+    },
+    {
+      "path": "/help/overview",
+      "anchors": [
+        "a-replay-session-is-missing",
+        "missing-entity-or-old-card",
+        "no-live-updates",
+        "still-not-working",
+        "where-to-start"
+      ]
+    },
+    {
+      "path": "/help/translations",
+      "anchors": [
+        "choose-how-to-help",
+        "get-an-ai-assisted-first-pass",
+        "request-an-ai-assisted-translation",
+        "review-an-ai-assisted-translation",
+        "translate-in-weblate",
+        "when-translations-become-available"
+      ]
+    },
+    {
+      "path": "/maintainers/dependency-and-source-policy",
+      "anchors": [
+        "documentation-changes",
+        "evidence-and-security-reporting",
+        "external-data-and-media",
+        "release-archive",
+        "runtime-and-build-dependencies"
+      ]
+    },
+    {
+      "path": "/reference/card-data-api",
+      "anchors": [
+        "discover-support",
+        "read-envelopes",
+        "shared-ownership-and-special-transports",
+        "subscribe",
+        "upgrade-metadata"
+      ]
+    },
+    {
+      "path": "/reference/device-triggers",
+      "anchors": [
+        "choose-a-device",
+        "drivers-device",
+        "incident-triggers-and-event-payloads",
+        "next-steps",
+        "officials-device",
+        "race-device",
+        "session-device",
+        "system-device",
+        "timing-and-replay"
+      ]
+    },
+    {
+      "path": "/reference/live-delay-controls",
+      "anchors": [
+        "calibration-outcomes",
+        "calibration-switch",
+        "controls-at-a-glance",
+        "live-delay-number",
+        "reference-selector-and-match-button"
+      ]
+    },
+    {
+      "path": "/reference/overview",
+      "anchors": [
+        "availability-before-troubleshooting",
+        "choose-a-reference",
+        "drivers-and-timing",
+        "officials-and-incidents",
+        "results-and-championship",
+        "schedule-and-weather",
+        "session-and-track"
+      ]
+    },
+    {
+      "path": "/reference/replay-controls",
+      "anchors": [
+        "configuration-entities",
+        "media-player-entity",
+        "next-steps",
+        "playback-position-and-seeking",
+        "replay-status-sensor"
+      ]
+    },
+    {
+      "path": "/reference/values",
+      "anchors": [
+        "related-references"
+      ]
+    },
+    {
+      "path": "/support",
+      "anchors": [
+        "1-financial-support",
+        "2-contributing",
+        "3-community-support",
+        "help-another-user",
+        "improve-the-integration-or-documentation",
+        "sponsor-development",
+        "supporting-f1-sensor",
+        "thank-you"
+      ]
+    }
+  ]
+}

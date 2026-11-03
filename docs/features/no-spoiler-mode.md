@@ -73,4 +73,4 @@ This example runs daily while enabled. Check the switch before the session and t
 - Replay data depends on the session archive.
 - Rewinding a replay can trigger historical automations and notifications again.
 
-Continue with [Replay Mode](/features/replay-mode) or [troubleshooting](/help/overview).
+Use the optional [card viewing panel](/cards/shared-options#use-spoilers-live-delay-and-replay-controls) for the same global spoiler control. Continue with [Replay Mode](/features/replay-mode), [replay seeking](/features/replay-seeking) or [troubleshooting](/help/overview).

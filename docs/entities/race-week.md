@@ -4,19 +4,19 @@ title: "Race Week"
 description: "on during race week \u2014 state, attributes, and examples for F1 Sensor."
 ---
 
-on during race week. Use `binary_sensor.f1_race_week` in dashboards, templates, and automations.
+import {EntityMeta, RelatedReferences} from '@site/src/components/Docs';
 
-This reference covers the state and attributes. For setup, see [Configuration](/getting-started/add-integration).
+on during race week.
 
-:::info[Find your entity]
-These are standard entity IDs. If Home Assistant assigned a different ID, or you renamed an entity, use your existing ID in the examples.
-:::
+<EntityMeta id="race-week" />
 
-## State and attributes
+<span id="state-and-attributes"></span>
 
 `binary_sensor.f1_race_week` - True when the next race is scheduled in the current calendar week.
 
-**State (on/off)**
+## State
+
+State type: on/off.
 - `on` during weeks containing the next race date; otherwise `off`.
 
 **Example**
@@ -24,7 +24,7 @@ These are standard entity IDs. If Home Assistant assigned a different ID, or you
 on
 ```
 
-**Attributes**
+## Attributes
 
 | Attribute | Type | Description |
 | --- | --- | --- |
@@ -38,8 +38,8 @@ on
 
 If the temporary [2027 opener fallback](/entities/next-race#between-the-2026-and-2027-seasons) is active, `days_until_next_race` counts down to the Bahrain Grand Prix on 14 March 2027. The sensor remains `off` until that race's calendar week. The source attributes identify the fallback and its provisional start time; an upcoming Jolpica race takes priority when the schedule refresh supplies it.
 
-## Next steps
+## Related references
 
-- [Browse the entity reference](/reference/overview)
-- [Build an automation](/automation)
-- [Choose a dashboard card](/cards/cards-overview)
+<span id="next-steps"></span>
+
+<RelatedReferences id="race-week" />

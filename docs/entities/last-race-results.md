@@ -4,19 +4,18 @@ title: "Last Race Results"
 description: "Most recent race results \u2014 state, attributes, and examples for F1 Sensor."
 ---
 
-Most recent race results. Use `sensor.f1_last_race_results` in dashboards, templates, and automations.
+import {EntityMeta, RelatedReferences} from '@site/src/components/Docs';
 
-This reference covers the state and attributes. For setup, see [Configuration](/getting-started/add-integration).
+Most recent race results.
 
-:::info[Find your entity]
-These are standard entity IDs. If Home Assistant assigned a different ID, or you renamed an entity, use your existing ID in the examples.
-:::
+<EntityMeta id="last-race-results" />
 
-## State and attributes
+<span id="state-and-attributes"></span>
 
 `sensor.f1_last_race_results` - Results of the most recent race; state is the winner’s family name.
 
-**State**
+## State
+
   - String: winner surname, or `unknown`.
 
 **Example**
@@ -24,7 +23,7 @@ These are standard entity IDs. If Home Assistant assigned a different ID, or you
 Verstappen
 ```
 
-**Attributes**
+## Attributes
 
 | Attribute | Type | Description |
 | --- | --- | --- |
@@ -44,10 +43,8 @@ Verstappen
 | race_start_local | string | Race start in circuit local time |
 | results | list | Cleaned results array: `{number, grid, position, laps, time, points, status, driver{permanentNumber, code, givenName, familyName}, constructor{constructorId, name}}`. `time` contains the total time or gap supplied by Jolpica |
 
+## Related references
 
+<span id="next-steps"></span>
 
-## Next steps
-
-- [Browse the entity reference](/reference/overview)
-- [Build an automation](/automation)
-- [Choose a dashboard card](/cards/cards-overview)
+<RelatedReferences id="last-race-results" />

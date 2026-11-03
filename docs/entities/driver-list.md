@@ -4,19 +4,18 @@ title: "Driver List"
 description: "Show list and details on all drivers, including team color, headshot URL etc \u2014 state, attributes, and examples for F1 Sensor."
 ---
 
-Look up drivers, team colors, and headshots for your dashboard. Use `sensor.f1_driver_list` in dashboards, templates, and automations.
+import {EntityMeta, RelatedReferences} from '@site/src/components/Docs';
 
-See [live data availability](/entities/live-data#availability-model) for session and data-source requirements. The details below describe any additional conditions for this entity.
+Look up drivers, team colors, and headshots for your dashboard.
 
-:::info[Find your entity]
-These are standard entity IDs. If Home Assistant assigned a different ID, or you renamed an entity, use your existing ID in the examples.
-:::
+<EntityMeta id="driver-list" />
 
-## State and attributes
+<span id="state-and-attributes"></span>
 
 Live roster of drivers with identity and team information for the session.
 
-**State**
+## State
+
 - Integer: number of drivers in the list.
 
 **Example**
@@ -24,13 +23,13 @@ Live roster of drivers with identity and team information for the session.
 20
 ```
 
-**Attributes**
+## Attributes
 
 | Attribute | Type | Description |
 | --- | --- | --- |
 | drivers | list | List of driver information, sorted by car number |
 
-Each entry in `drivers` contains:
+### `drivers` entries
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -45,6 +44,8 @@ Each entry in `drivers` contains:
 | headshot_small | string | URL to small driver headshot image |
 | headshot_large | string | URL to large driver headshot image |
 | reference | string | External reference URL or ID |
+
+## Examples
 
 <details>
 <summary>JSON Structure Example</summary>
@@ -89,8 +90,8 @@ Each entry in `drivers` contains:
 
 **Get a driver's headshot URL:**
 ```jinja2
-{% set drivers = state_attr('sensor.f1_driver_list', 'drivers') %}
-{% set ver = drivers | selectattr('tla', 'eq', 'VER') | first %}
+{% set drivers = state_attr('sensor.f1_driver_list', 'drivers') or [] %}
+{% set ver = drivers | selectattr('tla', 'eq', 'VER') | first | default(none) %}
 {% if ver %}
   {{ ver.headshot_large }}
 {% endif %}
@@ -98,8 +99,8 @@ Each entry in `drivers` contains:
 
 **Get team color for styling:**
 ```jinja2
-{% set drivers = state_attr('sensor.f1_driver_list', 'drivers') %}
-{% set driver = drivers | selectattr('racing_number', 'eq', '44') | first %}
+{% set drivers = state_attr('sensor.f1_driver_list', 'drivers') or [] %}
+{% set driver = drivers | selectattr('racing_number', 'eq', '44') | first | default(none) %}
 {% if driver %}
   background-color: {{ driver.team_color }};
 {% endif %}
@@ -107,8 +108,8 @@ Each entry in `drivers` contains:
 
 **Set a light to a driver's team color:**
 ```jinja2
-{% set drivers = state_attr('sensor.f1_driver_list', 'drivers') %}
-{% set ver = drivers | selectattr('tla', 'eq', 'VER') | first %}
+{% set drivers = state_attr('sensor.f1_driver_list', 'drivers') or [] %}
+{% set ver = drivers | selectattr('tla', 'eq', 'VER') | first | default(none) %}
 {% if ver and ver.team_color_rgb %}
 service: light.turn_on
 data:
@@ -119,7 +120,7 @@ data:
 
 **List all drivers for a team:**
 ```jinja2
-{% set drivers = state_attr('sensor.f1_driver_list', 'drivers') %}
+{% set drivers = state_attr('sensor.f1_driver_list', 'drivers') or [] %}
 {% for d in drivers if d.team == 'Ferrari' %}
   {{ d.name }} (#{{ d.racing_number }})
 {% endfor %}
@@ -127,14 +128,20 @@ data:
 
 **Create a driver lookup by TLA:**
 ```jinja2
-{% set drivers = state_attr('sensor.f1_driver_list', 'drivers') %}
-{% set lookup = dict.from_keys(drivers | map(attribute='tla') | list, drivers) %}
-{{ lookup.VER.name }} drives for {{ lookup.VER.team }}
+{% set drivers = state_attr('sensor.f1_driver_list', 'drivers') or [] %}
+{% set pairs = namespace(items=[]) %}
+{% for driver in drivers if driver.tla is defined %}
+  {% set pairs.items = pairs.items + [(driver.tla, driver)] %}
+{% endfor %}
+{% set lookup = dict(pairs.items) %}
+{% if lookup.VER is defined %}
+  {{ lookup.VER.name }} drives for {{ lookup.VER.team }}
+{% endif %}
 ```
 
 **Generate image elements for all drivers:**
 ```jinja2
-{% set drivers = state_attr('sensor.f1_driver_list', 'drivers') %}
+{% set drivers = state_attr('sensor.f1_driver_list', 'drivers') or [] %}
 {% for d in drivers %}
   <img src="{{ d.headshot_small }}" alt="{{ d.name }}" style="border: 2px solid {{ d.team_color }}">
 {% endfor %}
@@ -145,9 +152,8 @@ data:
 The headshot URLs are provided by F1 and may change between sessions. This sensor retains its last known state between sessions to support dashboard graphics even when no session is active.
 :::
 
+## Related references
 
-## Next steps
+<span id="next-steps"></span>
 
-- [Browse the entity reference](/reference/overview)
-- [Build an automation](/automation)
-- [Choose a dashboard card](/cards/cards-overview)
+<RelatedReferences id="driver-list" />

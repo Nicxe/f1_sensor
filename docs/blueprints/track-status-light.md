@@ -21,6 +21,14 @@ For the light to change at the same time as you see the flag on screen, configur
 
 <FlagLegend />
 
+## Requirements
+
+- F1 Sensor integration installed with live data enabled
+- An RGB-capable light entity (or a group entity containing lights) in Home Assistant
+- For WLED Advanced mode: a [WLED](https://kno.wled.ge/) light with its companion playlist and/or preset entities, plus optional palette, intensity, and speed helper entities exposed in Home Assistant (optional)
+
+---
+
 ## First working setup
 
 1. Import the blueprint below and create an automation from it.
@@ -28,7 +36,13 @@ For the light to change at the same time as you see the flag on screen, configur
 3. Choose an RGB light. Keep the default colors and session phases for the first test.
 4. Save, then verify the behavior during a suitable session or controlled replay. Review presence, TV and quiet-hour conditions before adding the automation to your everyday setup.
 
-The remaining sections explain each setting. WLED playlists and presets are optional advanced choices.
+Stop here for a basic RGB setup. Use the setting groups below only when you need to change behavior:
+
+- [Sources and active phases](#step-2--data-sources)
+- [Light behavior](#step-4--light-behavior), [flag colors](#step-6--flag-colors) and [alerts](#step-7--alert-behavior)
+- [Presence, TV and quiet-hour conditions](#step-9--activation-conditions-optional)
+- [WLED playlists and presets](#step-5--wled-advanced-optional)
+- [End-of-session restoration](#step-10--session-end-behavior-optional) and [notifications](#step-11--notifications-optional)
 
 ## Import the Blueprint
 
@@ -42,17 +56,10 @@ https://raw.githubusercontent.com/Nicxe/f1_sensor/main/blueprints/f1_track_statu
 
 ---
 
-## Requirements
-
-- F1 Sensor integration installed with live data enabled
-- An RGB-capable light entity (or a group entity containing lights) in Home Assistant
-- For WLED Advanced mode: a [WLED](https://kno.wled.ge/) light with its companion playlist and/or preset entities, plus optional palette, intensity, and speed helper entities exposed in Home Assistant (optional)
-
----
 
 ## Step-by-step Setup
 
-### Step 1 — Create an automation from the blueprint
+## Create the automation {/* #step-1--create-an-automation-from-the-blueprint */}
 
 1. Go to **Settings > Automations & Scenes > Blueprints**
 2. Find **F1 Sensor - Track Status Light (Modern)**
@@ -60,7 +67,7 @@ https://raw.githubusercontent.com/Nicxe/f1_sensor/main/blueprints/f1_track_statu
 
 ---
 
-### Step 2 — Data Sources
+## Data sources {/* #step-2--data-sources */}
 
 Link the blueprint to the correct F1 Sensor entities.
 :::info[Finding the right entities]
@@ -80,7 +87,7 @@ The session goes through a sequence of phases during an event. During `pre`, `br
 
 ---
 
-### Step 3 — Session Scope (Optional)
+## Optional session scope {/* #step-3--session-scope-optional */}
 
 Limit the automation to specific session types, for example only during Race and Qualifying, while ignoring Practice sessions.
 
@@ -95,7 +102,7 @@ When this filter is enabled, the automation checks the [Current Session](/entiti
 
 ---
 
-### Step 4 — Light Behavior
+## Light behavior {/* #step-4--light-behavior */}
 
 | Setting | Description |
 | --- | --- |
@@ -110,51 +117,8 @@ Snapshots are temporary scenes stored in Home Assistant for the duration of the 
 
 ---
 
-### Step 5 — WLED Advanced (Optional)
 
-If your light is a WLED device, you can map track states directly to WLED playlists or presets instead of using plain RGB colors. This gives you full control over animations, segments, and palettes for each flag state. This section is collapsed by default.
-:::info
-WLED Advanced mode only applies to a single light entity. If the light target is a group, normal light behavior is used instead.
-:::
-
-| Setting | Description |
-| --- | --- |
-| **Enable WLED Advanced Mode** | Master switch for WLED playlist and preset control. Disabled by default |
-| **WLED Playlist Entity** | Optional. Select the WLED playlist `select` entity from the same device as the target light |
-| **WLED Preset Entity** | Optional. Select the WLED preset `select` entity from the same device as the target light |
-| **WLED Palette Entity** | Optional companion `select` entity, used only for snapshot and restore |
-| **WLED Intensity Entity** | Optional companion `number` entity, used only for snapshot and restore |
-| **WLED Speed Entity** | Optional companion `number` entity, used only for snapshot and restore |
-
-You can configure a playlist entity, a preset entity, or both. When both are configured for the same track state, the playlist takes priority over the preset.
-
-#### Per-state playlists and presets
-
-Each track state can be assigned a WLED playlist and/or preset by name. The name must match an existing playlist or preset on the WLED device exactly. Leave a field empty to fall back to the other option or the normal color and flash behavior for that state.
-
-| Setting | Description |
-| --- | --- |
-| **Playlist — CLEAR** | Playlist activated when the track is clear |
-| **Preset — CLEAR** | Preset activated when the track is clear (used if no playlist is set) |
-| **Playlist — YELLOW** | Playlist activated on a yellow flag |
-| **Preset — YELLOW** | Preset activated on a yellow flag (used if no playlist is set) |
-| **Playlist — RED** | Playlist activated on a red flag |
-| **Preset — RED** | Preset activated on a red flag (used if no playlist is set) |
-| **Playlist — VSC** | Playlist activated when Virtual Safety Car is deployed |
-| **Preset — VSC** | Preset activated when Virtual Safety Car is deployed (used if no playlist is set) |
-| **Playlist — SC** | Playlist activated when the Safety Car is deployed |
-| **Preset — SC** | Preset activated when the Safety Car is deployed (used if no playlist is set) |
-| **Playlist — Finished / Checkered Flag** | Playlist shown when the session transitions to finished, before the end action runs |
-| **Preset — Finished / Checkered Flag** | Preset shown when the session transitions to finished, before the end action runs (used if no playlist is set) |
-| **Playlist — Session End Neutral** | Playlist used when the session end action is **Set neutral color** |
-| **Preset — Session End Neutral** | Preset used when the session end action is **Set neutral color** (used if no playlist is set) |
-:::tip
-Create your playlists and presets in the WLED web UI first, then enter the exact matching name in the blueprint. Both playlists and presets can include custom effects, color palettes, segment layouts, and brightness — anything WLED supports.
-:::
-
----
-
-### Step 6 — Flag Colors
+## Flag colors {/* #step-6--flag-colors */}
 
 Set the RGB color for each track status. These settings are collapsed by default and come with sensible defaults.
 
@@ -168,13 +132,13 @@ Set the RGB color for each track status. These settings are collapsed by default
 
 ---
 
-### Step 7 — Alert Behavior
+## Alert behavior {/* #step-7--alert-behavior */}
 
 Configure how the light behaves during flag alerts. YELLOW and RED share one set of options, while SC and VSC share another. All settings in this section are collapsed by default.
 
 **Flash Interval** controls the time between on and off pulses for any flashing mode.
 
-#### YELLOW and RED
+### YELLOW and RED
 
 | Setting | Description |
 | --- | --- |
@@ -182,7 +146,7 @@ Configure how the light behaves during flag alerts. YELLOW and RED share one set
 | **YELLOW/RED Flash Duration** | How long the light flashes before switching to the after-flash behavior. Used only in timed mode. Defaults to `10s` |
 | **YELLOW/RED After Timed Flash** | What the light does after timed flashing ends |
 
-#### SC and VSC
+### SC and VSC
 
 | Setting | Description |
 | --- | --- |
@@ -207,7 +171,7 @@ Configure how the light behaves during flag alerts. YELLOW and RED share one set
 
 ---
 
-### Step 8 — CLEAR Behavior
+## When the track clears {/* #step-8--clear-behavior */}
 
 Configure what the light does when the track status returns to CLEAR. This section is collapsed by default.
 
@@ -229,7 +193,7 @@ The restore options require **Snapshot Before Alerts** to be enabled in the Ligh
 
 ---
 
-### Step 9 — Activation Conditions (Optional)
+## Optional activation conditions {/* #step-9--activation-conditions-optional */}
 
 These optional gates must all pass before the light updates. All are disabled by default.
 
@@ -243,7 +207,7 @@ These optional gates must all pass before the light updates. All are disabled by
 
 ---
 
-### Step 10 — Session End Behavior (Optional)
+## Optional session end behavior {/* #step-10--session-end-behavior-optional */}
 
 Configure what happens to the light after the session leaves the active phases. This section is collapsed by default.
 
@@ -265,7 +229,7 @@ Configure what happens to the light after the session leaves the active phases. 
 
 ---
 
-### Step 11 — Notifications (Optional)
+## Optional notifications {/* #step-11--notifications-optional */}
 
 The blueprint can also send notifications on track status changes and session end. This section is collapsed and disabled by default.
 
@@ -284,6 +248,50 @@ The blueprint can also send notifications on track status changes and session en
 | `{{ notification_message }}` | Pre-built message describing the change |
 | `{{ notification_track_state }}` | Current track status in uppercase |
 | `{{ notification_session_phase }}` | Current session phase in lowercase |
+
+---
+
+## Optional WLED control {/* #step-5--wled-advanced-optional */}
+
+If your light is a WLED device, you can map track states directly to WLED playlists or presets instead of using plain RGB colors. This gives you full control over animations, segments, and palettes for each flag state. This section is collapsed by default.
+:::info
+WLED Advanced mode only applies to a single light entity. If the light target is a group, normal light behavior is used instead.
+:::
+
+| Setting | Description |
+| --- | --- |
+| **Enable WLED Advanced Mode** | Master switch for WLED playlist and preset control. Disabled by default |
+| **WLED Playlist Entity** | Optional. Select the WLED playlist `select` entity from the same device as the target light |
+| **WLED Preset Entity** | Optional. Select the WLED preset `select` entity from the same device as the target light |
+| **WLED Palette Entity** | Optional companion `select` entity, used only for snapshot and restore |
+| **WLED Intensity Entity** | Optional companion `number` entity, used only for snapshot and restore |
+| **WLED Speed Entity** | Optional companion `number` entity, used only for snapshot and restore |
+
+You can configure a playlist entity, a preset entity, or both. When both are configured for the same track state, the playlist takes priority over the preset.
+
+### Per-state playlists and presets
+
+Each track state can be assigned a WLED playlist and/or preset by name. The name must match an existing playlist or preset on the WLED device exactly. Leave a field empty to fall back to the other option or the normal color and flash behavior for that state.
+
+| Setting | Description |
+| --- | --- |
+| **Playlist — CLEAR** | Playlist activated when the track is clear |
+| **Preset — CLEAR** | Preset activated when the track is clear (used if no playlist is set) |
+| **Playlist — YELLOW** | Playlist activated on a yellow flag |
+| **Preset — YELLOW** | Preset activated on a yellow flag (used if no playlist is set) |
+| **Playlist — RED** | Playlist activated on a red flag |
+| **Preset — RED** | Preset activated on a red flag (used if no playlist is set) |
+| **Playlist — VSC** | Playlist activated when Virtual Safety Car is deployed |
+| **Preset — VSC** | Preset activated when Virtual Safety Car is deployed (used if no playlist is set) |
+| **Playlist — SC** | Playlist activated when the Safety Car is deployed |
+| **Preset — SC** | Preset activated when the Safety Car is deployed (used if no playlist is set) |
+| **Playlist — Finished / Checkered Flag** | Playlist shown when the session transitions to finished, before the end action runs |
+| **Preset — Finished / Checkered Flag** | Preset shown when the session transitions to finished, before the end action runs (used if no playlist is set) |
+| **Playlist — Session End Neutral** | Playlist used when the session end action is **Set neutral color** |
+| **Preset — Session End Neutral** | Preset used when the session end action is **Set neutral color** (used if no playlist is set) |
+:::tip
+Create your playlists and presets in the WLED web UI first, then enter the exact matching name in the blueprint. Both playlists and presets can include custom effects, color palettes, segment layouts, and brightness — anything WLED supports.
+:::
 
 ---
 

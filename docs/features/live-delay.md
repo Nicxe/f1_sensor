@@ -8,7 +8,18 @@ The live update delay lets you delay delivery of live messages and live Track Ma
 
 This is especially useful for dashboards and automations, for example flashing lights on a red flag or reacting to safety car deployments, so they happen at the same moment you see them on screen.
 
+[See dashboards and Live Delay in the introduction on YouTube (01:55)](https://www.youtube.com/watch?v=R72LXKdiNxA&t=115s).
+
 import {DelayDemo} from '@site/src/components/Docs';
+
+## Choose a control
+
+| You want | Use |
+| --- | --- |
+| Enter a known delay | [Manual delay](#option-1---manual-delay-adjustment) |
+| Match a reference from the card | [Card calibration controls](#optional-controls-in-the-f1-sensor-card) |
+| Use Home Assistant helper entities | [Guided calibration](#option-2---guided-calibration) |
+| Align a recorded session | [Replay seeking](/features/replay-seeking) |
 
 ## Typical broadcast delays
 
@@ -48,7 +59,7 @@ Use a reference visible both in the timing and in the broadcast, such as the ses
 
 Live Delay also applies to live Track Map updates and likely on-track incident updates. This means the Track Map card, `f1_sensor_incident` events, the On-track Incident and Possible On-track Incident binary sensors, and notification blueprints can be delayed to match what you see on TV.
 
-Weekend Hub's live analysis follows the same Live Delay.
+The card's live analysis modules follow the same Live Delay.
 
 Use this when you want a possible stopped-car notification to arrive with the broadcast pictures instead of ahead of them.
 
