@@ -165,16 +165,7 @@ def _map_session_status_payload(
         return "pre"
     if message == "Aborted":
         if started_hint == "Started":
-            track_state = None
-            try:
-                cache = hass.data.get(LATEST_TRACK_STATUS) if hass is not None else None
-                track_state = (
-                    normalize_track_status(cache) if isinstance(cache, dict) else None
-                )
-            except Exception:
-                track_state = None
-            if track_state and track_state != "RED":
-                return "live"
+            # Track flags can clear during a suspension; only Started resumes it.
             return "suspended"
         return "pre"
     return "pre"
