@@ -33180,7 +33180,7 @@ class F1TrackMapCard extends LitElement {
     return width > 0 && width <= 560 ? 'compact' : 'full';
   }
 
-  _entityFromConfig(name, candidates) {
+  _entityFromConfig(name, candidates, { allowUnknown = false } = {}) {
     const hasExplicit = Object.prototype.hasOwnProperty.call(this.config || {}, name);
     const configured = this.config?.[name];
     const text = String(configured ?? 'auto').trim();
@@ -33190,7 +33190,7 @@ class F1TrackMapCard extends LitElement {
     }
     for (const entityId of candidates) {
       const state = getEntityStateWithFallback(this.hass, entityId);
-      if (state && !isUnavailableLikeEntityState(state)) return state;
+      if (state && (!isUnavailableLikeEntityState(state) || allowUnknown && state.state === 'unknown')) return state;
     }
     return null;
   }
@@ -33497,7 +33497,8 @@ class F1TrackMapCard extends LitElement {
   _statusMarksRetired(info) {
     if (!info || typeof info !== 'object') return false;
     const status = String(info.status || '').trim().toLowerCase();
-    return info.retired === true || status === 'retired' || status === 'out';
+    const eliminatedInPit = info.in_pit === true && (info.q1_knocked_out === true || info.q2_knocked_out === true);
+    return info.retired === true || info.stopped === true || status === 'retired' || status === 'out' || eliminatedInPit;
   }
 
   _retiredDriverKeys() {
@@ -33506,8 +33507,10 @@ class F1TrackMapCard extends LitElement {
       'sensor.f1_driver_positions',
       'sensor.f1_session_f1_driver_positions',
       'sensor.f1_session_driver_positions',
-    ]);
-    if (!entity || isUnavailableLikeEntityState(entity)) return new Set();
+    ], { allowUnknown: true });
+    // The race-only leader lap count is unknown during qualifying, while
+    // driver timing attributes remain usable for marker visibility.
+    if (!entity || String(entity.state || '').trim().toLowerCase() === 'unavailable') return new Set();
     const drivers = entity.attributes?.drivers;
     const keys = new Set();
     const addDriver = (driver, fallbackKey = '') => {

@@ -4,15 +4,13 @@ title: "Session Time Remaining"
 description: "Time remaining in the current session (beta) \u2014 state, attributes, and examples for F1 Sensor."
 ---
 
-Time remaining in the current session (beta). Use `sensor.f1_session_time_remaining` in dashboards, templates, and automations.
+import {EntityMeta, RelatedReferences} from '@site/src/components/Docs';
 
-See [live data availability](/entities/live-data#availability-model) for session and data-source requirements. The details below describe any additional conditions for this entity.
+Time remaining in the current session (beta).
 
-:::info[Find your entity]
-These are standard entity IDs. If Home Assistant assigned a different ID, or you renamed an entity, use your existing ID in the examples.
-:::
+<EntityMeta id="session-time-remaining" />
 
-## State and attributes
+<span id="state-and-attributes"></span>
 
 :::warning[Beta]
 This sensor is currently in beta. The behavior has not been verified across all session types, edge cases (red flags, suspensions, qualifying segments), and timing scenarios. Treat the values as indicative rather than definitive until further testing is complete.
@@ -20,7 +18,8 @@ This sensor is currently in beta. The behavior has not been verified across all 
 
 `sensor.f1_session_time_remaining` - How much scheduled session time is left, based on the F1 ExtrapolatedClock feed. Like the elapsed sensor, this value follows the available clock data and its running flag. Check `clock_running` and `clock_phase` rather than assuming every interruption pauses the clock.
 
-**State**
+## State
+
 - String: remaining time formatted as `H:MM:SS` (e.g., `0:36:15`), or `unavailable` when no data is available.
 
 **Example**
@@ -28,7 +27,7 @@ This sensor is currently in beta. The behavior has not been verified across all 
 0:36:15
 ```
 
-**Attributes**
+## Attributes
 
 | Attribute | Type | Description |
 | --- | --- | --- |
@@ -49,9 +48,8 @@ This sensor is currently in beta. The behavior has not been verified across all 
 The session clock counts down the scheduled duration of the session. It does not account for race laps — in a race, the session ends when the leader completes the required number of laps, which may happen before or (rarely) after the scheduled time expires. Use `sensor.f1_race_lap_count` for lap-based progress.
 :::
 
+## Related references
 
-## Next steps
+<span id="next-steps"></span>
 
-- [Browse the entity reference](/reference/overview)
-- [Build an automation](/automation)
-- [Choose a dashboard card](/cards/cards-overview)
+<RelatedReferences id="session-time-remaining" />

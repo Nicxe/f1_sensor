@@ -4,6 +4,8 @@ title: Community cards by Boredmthfkr
 description: Adapt a community dashboard using button-card, custom fonts and a shared asset helper.
 ---
 
+import Link from '@docusaurus/Link';
+
 
 Build a standings dashboard with **custom:button-card**, a shared image helper and your own font. This contributed recipe is by **Boredmthfkr**; the full YAML below preserves the author's design.
 
@@ -13,7 +15,20 @@ For questions about this setup, use the [original Home Assistant forum discussio
 This is a third-party dashboard example. Check entity IDs, current image URLs and button-card compatibility in your own setup. For the bundled card with maintained configuration guidance, start with the [F1 Sensor card](/cards/cards-overview).
 :::
 
-## Prerequisites:
+## Download complete files
+
+These files contain the exact snippets shown below, with Boredmthfkr’s original card design preserved. Each file belongs in a different place; they are not one Home Assistant configuration.
+
+| File | Where to use it |
+| --- | --- |
+| <Link href="pathname:///downloads/community/boredmthfkr/templates.yaml" target="_self" download="templates.yaml">Download template helper YAML</Link> | Merge the helper into `/config/templates.yaml`, then include it under `template:` as explained below. Keep any existing templates. |
+| <Link href="pathname:///downloads/community/boredmthfkr/drivers-standings-card.yaml" target="_self" download="drivers-standings-card.yaml">Download Drivers Standings card YAML</Link> | Paste into a **Manual** dashboard card. This is a card configuration, not `configuration.yaml`. |
+| <Link href="pathname:///downloads/community/boredmthfkr/constructors-standings-card.yaml" target="_self" download="constructors-standings-card.yaml">Download Constructors Standings card YAML</Link> | Paste into a separate **Manual** dashboard card. |
+| <Link href="pathname:///downloads/community/boredmthfkr/myfont.css" target="_self" download="myfont.css">Download font stylesheet</Link> | Save as `/config/www/fonts/myfont.css` and register the stylesheet as described below. Supply your own licensed font file. |
+
+Follow the prerequisites and setup below before using the files. The download does not enable the required sensors or install button-card, images or fonts.
+
+## Prerequisites {/* #prerequisites */}
 
 - Choose a web font that you have permission to use
 - Create a template helper for the “missing” info, like teams logos and cars pictures
@@ -25,17 +40,16 @@ This is a third-party dashboard example. Check entity IDs, current image URLs an
 
 Choose a licensed `.woff2` font and place it in `/config/www/fonts/`. The example calls it `f1regular.woff2`; change the file name and family name to match your font. The font is optional: you can also use a system font in the card styles.
 
-In the same folder, I created another file, myfont.css, with the following content:
+In the same folder, create `myfont.css` with the following content:
 
 ```css
 @font-face {
     font-family: 'f1regular';
     src: url('/local/fonts/f1regular.woff2') format('woff2');
     }
-
 ```
 
-I went to **Settings \-\> Dashboards \-\> Resources** (located in the More menu of Dashboards, the 3 vertical dots) and added a new resource of type **Stylesheet**, pointing to (URL) **/local/fonts/myfont.css**
+Open **Settings > Dashboards > Resources** from the three-dot menu. Add a **Stylesheet** resource with URL `/local/fonts/myfont.css`.
 
 
 ![Resources fonts](/img/dashboard_resources_fonts.png)
@@ -44,7 +58,14 @@ Reload your browser after adding the resource. If the old font remains, clear th
 
 ### Create a template helper for the “missing” info
 
+The shared `sensor.f1_assets` helper holds the team-logo and car-image URLs used by this community design. Keep these seasonal assets in one place and check the links before using the cards.
+
+<details>
+<summary>Original author’s asset notes</summary>
+
 This helper is used by the cards to get the car pictures and teams logos, that are not provided by the integration. My latest version of the cards gets this data from here. Why? Because I want consistency and to have only one place where I have to make changes before a season. Links to images and logos are taken from the Official F1 website ( [https://www.formula1.com/](https://www.formula1.com/) ). I just went and looked for teams and copied the links to the logos and cars. I noticed for some logos that their colors kind of conflict with the teams color, so they are not displayed properly and a black and white logo is more suitable. Also, I noticed that some logos had “white” in their name, meaning you can “manipulate” the logo by adding “white” before extension .wepb and you get the logo in black and white. There might be some more colors there, but I do not need them, in order to look further. Also, while I am writing this, I also noticed that the cars pictures have “right” in their name. I tried now and if you replace “right” with “left”, you see the picture of the other side of the car. Cool, right? Use this as you please.
+
+</details>
 
 #### Examples:
 
@@ -110,6 +131,8 @@ After merging the template configuration, check the configuration and reload tem
 ---
 ## The cards
 
+These examples use sensor entities; keep Driver standings, Constructor standings and Driver List selected, along with the asset helper you created. The bundled card’s automatic data does not supply attributes to third-party button-card templates.
+
 Adjustments can be done as you like. I got to this version of the cards that I like and that is also responsive to mobile/tablet. If there is a team color missing in the sensors, it falls back to grey and for drivers, if the headshot link is not present in the sensor.f1\_driver\_list, also falls back to the icon mdi:racing-helmet
 Font can be adjusted to your own liking. Just replace all **f1regular** with the name you used in the css file for the fonts, under **font-family**.
 Here are the codes.
@@ -119,7 +142,7 @@ Here are the codes.
 ![Drivers standings](/img/Drivers_standings_card.png)
 
 <details>
-<summary>Show asset helper YAML</summary>
+<summary>Show Drivers Standings card YAML</summary>
 
 ```yaml
 type: custom:button-card
@@ -382,8 +405,6 @@ custom_fields:
         `;
       }).join('');
     ]]]
-
-
 ```
 
 </details>
@@ -626,8 +647,6 @@ custom_fields:
         `;
       }).join('');
     ]]]
-
-
 ```
 
 </details>

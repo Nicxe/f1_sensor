@@ -1,0 +1,519 @@
+{
+  "description": "Recorded race starts, suspensions, track changes and resumptions. Repeated SessionStatus snapshots are injected separately by the tests.",
+  "cases": [
+    {
+      "event": "Monaco",
+      "archive_path": "2026-06-05_Monaco_Grand_Prix/2026-06-07_Race",
+      "source_url": "https://livetiming.formula1.com/static/2026/2026-06-07_Monaco_Grand_Prix/2026-06-07_Race/SessionStatus.jsonStream",
+      "frames": [
+        {
+          "stream": "TrackStatus",
+          "source_line": 7,
+          "source_time": "00:18:11.662",
+          "payload": {
+            "Status": "1",
+            "Message": "AllClear"
+          }
+        },
+        {
+          "stream": "SessionStatus",
+          "source_line": 4,
+          "source_time": "00:55:19.645",
+          "payload": {
+            "Status": "Started",
+            "Started": "Started"
+          }
+        },
+        {
+          "stream": "TrackStatus",
+          "source_line": 8,
+          "source_time": "00:55:25.051",
+          "payload": {
+            "Status": "2",
+            "Message": "Yellow"
+          }
+        },
+        {
+          "stream": "TrackStatus",
+          "source_line": 9,
+          "source_time": "00:55:39.270",
+          "payload": {
+            "Status": "1",
+            "Message": "AllClear"
+          }
+        },
+        {
+          "stream": "TrackStatus",
+          "source_line": 10,
+          "source_time": "02:11:52.958",
+          "payload": {
+            "Status": "2",
+            "Message": "Yellow"
+          }
+        },
+        {
+          "stream": "TrackStatus",
+          "source_line": 11,
+          "source_time": "02:12:09.958",
+          "payload": {
+            "Status": "4",
+            "Message": "SCDeployed"
+          }
+        },
+        {
+          "stream": "TrackStatus",
+          "source_line": 12,
+          "source_time": "02:22:41.389",
+          "payload": {
+            "Status": "1",
+            "Message": "AllClear"
+          }
+        },
+        {
+          "stream": "TrackStatus",
+          "source_line": 13,
+          "source_time": "02:22:57.045",
+          "payload": {
+            "Status": "2",
+            "Message": "Yellow"
+          }
+        },
+        {
+          "stream": "TrackStatus",
+          "source_line": 14,
+          "source_time": "02:23:26.070",
+          "payload": {
+            "Status": "4",
+            "Message": "SCDeployed"
+          }
+        },
+        {
+          "stream": "SessionStatus",
+          "source_line": 5,
+          "source_time": "02:27:14.713",
+          "payload": {
+            "Status": "Aborted",
+            "Started": "Started"
+          }
+        },
+        {
+          "stream": "TrackStatus",
+          "source_line": 15,
+          "source_time": "02:27:14.994",
+          "payload": {
+            "Status": "5",
+            "Message": "Red"
+          }
+        },
+        {
+          "stream": "TrackStatus",
+          "source_line": 16,
+          "source_time": "02:52:56.195",
+          "payload": {
+            "Status": "1",
+            "Message": "AllClear"
+          }
+        },
+        {
+          "stream": "SessionStatus",
+          "source_line": 6,
+          "source_time": "03:04:07.813",
+          "payload": {
+            "Status": "Started",
+            "Started": "Started"
+          }
+        }
+      ]
+    },
+    {
+      "event": "Dutch",
+      "archive_path": "2026-08-21_Dutch_Grand_Prix/2026-08-23_Race",
+      "source_url": "https://livetiming.formula1.com/static/2026/2026-08-23_Dutch_Grand_Prix/2026-08-23_Race/SessionStatus.jsonStream",
+      "frames": [
+        {
+          "stream": "TrackStatus",
+          "source_line": 6,
+          "source_time": "00:46:11.141",
+          "payload": {
+            "Status": "1",
+            "Message": "AllClear"
+          }
+        },
+        {
+          "stream": "SessionStatus",
+          "source_line": 4,
+          "source_time": "00:56:45.791",
+          "payload": {
+            "Status": "Started",
+            "Started": "Started"
+          }
+        },
+        {
+          "stream": "TrackStatus",
+          "source_line": 7,
+          "source_time": "00:58:13.788",
+          "payload": {
+            "Status": "2",
+            "Message": "Yellow"
+          }
+        },
+        {
+          "stream": "SessionStatus",
+          "source_line": 5,
+          "source_time": "00:58:45.180",
+          "payload": {
+            "Status": "Aborted",
+            "Started": "Started"
+          }
+        },
+        {
+          "stream": "TrackStatus",
+          "source_line": 8,
+          "source_time": "00:58:45.416",
+          "payload": {
+            "Status": "5",
+            "Message": "Red"
+          }
+        },
+        {
+          "stream": "TrackStatus",
+          "source_line": 9,
+          "source_time": "01:01:17.062",
+          "payload": {
+            "Status": "1",
+            "Message": "AllClear"
+          }
+        },
+        {
+          "stream": "TrackStatus",
+          "source_line": 10,
+          "source_time": "01:01:17.928",
+          "payload": {
+            "Status": "2",
+            "Message": "Yellow"
+          }
+        },
+        {
+          "stream": "TrackStatus",
+          "source_line": 11,
+          "source_time": "01:14:01.635",
+          "payload": {
+            "Status": "1",
+            "Message": "AllClear"
+          }
+        },
+        {
+          "stream": "TrackStatus",
+          "source_line": 12,
+          "source_time": "01:14:51.949",
+          "payload": {
+            "Status": "2",
+            "Message": "Yellow"
+          }
+        },
+        {
+          "stream": "TrackStatus",
+          "source_line": 13,
+          "source_time": "01:15:00.732",
+          "payload": {
+            "Status": "1",
+            "Message": "AllClear"
+          }
+        },
+        {
+          "stream": "TrackStatus",
+          "source_line": 14,
+          "source_time": "01:15:04.133",
+          "payload": {
+            "Status": "2",
+            "Message": "Yellow"
+          }
+        },
+        {
+          "stream": "TrackStatus",
+          "source_line": 15,
+          "source_time": "01:15:24.460",
+          "payload": {
+            "Status": "1",
+            "Message": "AllClear"
+          }
+        },
+        {
+          "stream": "TrackStatus",
+          "source_line": 16,
+          "source_time": "01:15:42.851",
+          "payload": {
+            "Status": "2",
+            "Message": "Yellow"
+          }
+        },
+        {
+          "stream": "TrackStatus",
+          "source_line": 17,
+          "source_time": "01:16:34.279",
+          "payload": {
+            "Status": "1",
+            "Message": "AllClear"
+          }
+        },
+        {
+          "stream": "SessionStatus",
+          "source_line": 6,
+          "source_time": "01:26:17.312",
+          "payload": {
+            "Status": "Started",
+            "Started": "Started"
+          }
+        }
+      ]
+    },
+    {
+      "event": "Italian",
+      "archive_path": "2026-09-04_Italian_Grand_Prix/2026-09-06_Race",
+      "source_url": "https://livetiming.formula1.com/static/2026/2026-09-06_Italian_Grand_Prix/2026-09-06_Race/SessionStatus.jsonStream",
+      "frames": [
+        {
+          "stream": "TrackStatus",
+          "source_line": 6,
+          "source_time": "00:33:21.548",
+          "payload": {
+            "Status": "1",
+            "Message": "AllClear"
+          }
+        },
+        {
+          "stream": "SessionStatus",
+          "source_line": 4,
+          "source_time": "00:56:55.761",
+          "payload": {
+            "Status": "Started",
+            "Started": "Started"
+          }
+        },
+        {
+          "stream": "TrackStatus",
+          "source_line": 7,
+          "source_time": "00:59:57.947",
+          "payload": {
+            "Status": "2",
+            "Message": "Yellow"
+          }
+        },
+        {
+          "stream": "TrackStatus",
+          "source_line": 8,
+          "source_time": "01:00:14.412",
+          "payload": {
+            "Status": "4",
+            "Message": "SCDeployed"
+          }
+        },
+        {
+          "stream": "SessionStatus",
+          "source_line": 5,
+          "source_time": "01:01:07.587",
+          "payload": {
+            "Status": "Aborted",
+            "Started": "Started"
+          }
+        },
+        {
+          "stream": "TrackStatus",
+          "source_line": 9,
+          "source_time": "01:01:07.837",
+          "payload": {
+            "Status": "5",
+            "Message": "Red"
+          }
+        },
+        {
+          "stream": "TrackStatus",
+          "source_line": 10,
+          "source_time": "01:02:50.487",
+          "payload": {
+            "Status": "1",
+            "Message": "AllClear"
+          }
+        },
+        {
+          "stream": "TrackStatus",
+          "source_line": 11,
+          "source_time": "01:03:06.486",
+          "payload": {
+            "Status": "2",
+            "Message": "Yellow"
+          }
+        },
+        {
+          "stream": "TrackStatus",
+          "source_line": 12,
+          "source_time": "01:23:14.089",
+          "payload": {
+            "Status": "1",
+            "Message": "AllClear"
+          }
+        },
+        {
+          "stream": "SessionStatus",
+          "source_line": 6,
+          "source_time": "01:32:24.927",
+          "payload": {
+            "Status": "Started",
+            "Started": "Started"
+          }
+        }
+      ]
+    },
+    {
+      "event": "Mexico_City",
+      "archive_path": "2026-10-30_Mexico_City_Grand_Prix/2026-11-01_Race",
+      "source_url": "https://livetiming.formula1.com/static/2026/2026-11-01_Mexico_City_Grand_Prix/2026-11-01_Race/SessionStatus.jsonStream",
+      "frames": [
+        {
+          "stream": "TrackStatus",
+          "source_line": 5,
+          "source_time": "00:20:22.396",
+          "payload": {
+            "Status": "1",
+            "Message": "AllClear"
+          }
+        },
+        {
+          "stream": "SessionStatus",
+          "source_line": 6,
+          "source_time": "1.02:40:51.858",
+          "payload": {
+            "Status": "Started",
+            "Started": "Started"
+          }
+        },
+        {
+          "stream": "TrackStatus",
+          "source_line": 6,
+          "source_time": "1.02:41:44.946",
+          "payload": {
+            "Status": "2",
+            "Message": "Yellow"
+          }
+        },
+        {
+          "stream": "TrackStatus",
+          "source_line": 7,
+          "source_time": "1.02:41:49.272",
+          "payload": {
+            "Status": "1",
+            "Message": "AllClear"
+          }
+        },
+        {
+          "stream": "TrackStatus",
+          "source_line": 8,
+          "source_time": "1.02:49:17.273",
+          "payload": {
+            "Status": "2",
+            "Message": "Yellow"
+          }
+        },
+        {
+          "stream": "TrackStatus",
+          "source_line": 9,
+          "source_time": "1.02:49:31.862",
+          "payload": {
+            "Status": "6",
+            "Message": "VSCDeployed"
+          }
+        },
+        {
+          "stream": "TrackStatus",
+          "source_line": 10,
+          "source_time": "1.02:52:08.473",
+          "payload": {
+            "Status": "7",
+            "Message": "VSCEnding"
+          }
+        },
+        {
+          "stream": "TrackStatus",
+          "source_line": 11,
+          "source_time": "1.02:52:19.450",
+          "payload": {
+            "Status": "1",
+            "Message": "AllClear"
+          }
+        },
+        {
+          "stream": "TrackStatus",
+          "source_line": 12,
+          "source_time": "1.03:41:17.764",
+          "payload": {
+            "Status": "2",
+            "Message": "Yellow"
+          }
+        },
+        {
+          "stream": "TrackStatus",
+          "source_line": 13,
+          "source_time": "1.03:41:32.706",
+          "payload": {
+            "Status": "4",
+            "Message": "SCDeployed"
+          }
+        },
+        {
+          "stream": "SessionStatus",
+          "source_line": 7,
+          "source_time": "1.03:43:28.360",
+          "payload": {
+            "Status": "Aborted",
+            "Started": "Started"
+          }
+        },
+        {
+          "stream": "TrackStatus",
+          "source_line": 14,
+          "source_time": "1.03:43:28.684",
+          "payload": {
+            "Status": "5",
+            "Message": "Red"
+          }
+        },
+        {
+          "stream": "TrackStatus",
+          "source_line": 15,
+          "source_time": "1.03:45:30.497",
+          "payload": {
+            "Status": "1",
+            "Message": "AllClear"
+          }
+        },
+        {
+          "stream": "TrackStatus",
+          "source_line": 16,
+          "source_time": "1.03:45:36.386",
+          "payload": {
+            "Status": "2",
+            "Message": "Yellow"
+          }
+        },
+        {
+          "stream": "TrackStatus",
+          "source_line": 17,
+          "source_time": "1.04:14:07.691",
+          "payload": {
+            "Status": "1",
+            "Message": "AllClear"
+          }
+        },
+        {
+          "stream": "SessionStatus",
+          "source_line": 8,
+          "source_time": "1.04:22:26.504",
+          "payload": {
+            "Status": "Started",
+            "Started": "Started"
+          }
+        }
+      ]
+    }
+  ]
+}

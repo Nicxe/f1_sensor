@@ -4,7 +4,7 @@ title: F1 Pit Wall e-ink display
 description: Build a separate ESPHome display using your Home Assistant race schedule.
 ---
 
-# E-ink Display — F1 Pit Wall
+<span id="e-ink-display--f1-pit-wall" />
 
 A dedicated F1 schedule display built with ESPHome and an e-ink screen. It reads F1 Sensor entities through Home Assistant and shows the upcoming race weekend — circuit, date, session times — in a clean, always-on format that works without a running screen or dashboard.
 

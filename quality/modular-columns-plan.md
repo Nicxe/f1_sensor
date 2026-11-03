@@ -59,4 +59,6 @@ stacked at 318 px content width while retaining their saved spans. The temporary
 card was cancelled without saving dashboard configuration. Console warnings and
 errors were empty. Physical-device follow-up is in the manual handover.
 
-Validation details and final counts are recorded in `modular-card-development.md`.
+Rerun the [documented verification commands](../CONTRIBUTING.md#automated-checks)
+for the source revision under review; the measurements above describe the
+2026-09-19 checkpoint.

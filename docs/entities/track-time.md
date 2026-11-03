@@ -4,19 +4,18 @@ title: "Track Time"
 description: "Current local time at the next race circuit \u2014 state, attributes, and examples for F1 Sensor."
 ---
 
-Current local time at the next race circuit. Use `sensor.f1_track_time` in dashboards, templates, and automations.
+import {EntityMeta, RelatedReferences} from '@site/src/components/Docs';
 
-This reference covers the state and attributes. For setup, see [Configuration](/getting-started/add-integration).
+Current local time at the next race circuit.
 
-:::info[Find your entity]
-These are standard entity IDs. If Home Assistant assigned a different ID, or you renamed an entity, use your existing ID in the examples.
-:::
+<EntityMeta id="track-time" />
 
-## State and attributes
+<span id="state-and-attributes"></span>
 
 `sensor.f1_track_time` - Current local time at the next race circuit.
 
-**State**
+## State
+
 - String: local time at the circuit, formatted as `HH:MM`, or `unknown`.
 
 **Example**
@@ -24,7 +23,7 @@ These are standard entity IDs. If Home Assistant assigned a different ID, or you
 14:05
 ```
 
-**Attributes**
+## Attributes
 
 | Attribute | Type | Description |
 | --- | --- | --- |
@@ -35,9 +34,8 @@ These are standard entity IDs. If Home Assistant assigned a different ID, or you
 | circuit_locality | string | City/area |
 | circuit_country | string | Country |
 
+## Related references
 
-## Next steps
+<span id="next-steps"></span>
 
-- [Browse the entity reference](/reference/overview)
-- [Build an automation](/automation)
-- [Choose a dashboard card](/cards/cards-overview)
+<RelatedReferences id="track-time" />

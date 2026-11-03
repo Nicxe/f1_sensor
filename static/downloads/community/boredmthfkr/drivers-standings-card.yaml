@@ -1,0 +1,260 @@
+type: custom:button-card
+entity: sensor.f1_driver_standings
+show_name: false
+show_state: false
+show_icon: false
+layout: custom
+styles:
+  grid:
+    - grid-template-areas: |
+        "header"
+        "results"
+    - row-gap: 12px
+  card:
+    - padding: 12px
+    - border-radius: 8px
+    - background: linear-gradient(135deg, rgba(30, 30, 30, 0.8), rgba(10, 10, 10, 0.8))
+    - color: white
+    - box-shadow: 0px 4px 10px rgba(0,0,0,0.3)
+  custom_fields:
+    header:
+      - font-size: 20px
+      - font-weight: 600
+      - text-align: center
+      - padding-bottom: 6px
+      - border-bottom: 1px solid rgba(255,255,255,0.2)
+      - cursor: default
+      - font-family: f1regular
+    results:
+      - font-size: 14px
+      - line-height: 1.6
+      - display: flex
+      - flex-direction: column
+      - gap: 6px
+      - font-family: f1regular
+      - overflow-y: auto
+      - max-height: 600px
+custom_fields:
+  header: |
+    [[[
+      return `
+        <div style="width: 100%; text-align: center;">
+          <div style="display: inline-flex; align-items: center; gap: 8px;">
+            <span style="font-weight: 600; font-family: 'f1regular';">🏁 DRIVERS STANDINGS</span>
+          </div>
+        </div>
+      `;
+    ]]]
+  results: |
+    [[[
+      const results = entity.attributes?.driver_standings || [];
+      const displayResults = results.slice(0, 25);
+
+      // Build team color map from driver list
+      const getTeamColors = () => {
+        const driverList = states['sensor.f1_driver_list']?.attributes?.drivers || [];
+        const colorMap = {};
+        driverList.forEach(d => {
+          if (d.team && d.team_color) {
+            colorMap[d.team] = d.team_color;
+          }
+        });
+        return colorMap;
+      };
+
+      const getDriverData = () => {
+        const driverList = states['sensor.f1_driver_list']?.attributes?.drivers || [];
+        const dataMap = {};
+        driverList.forEach(d => {
+          if (d.tla) {
+            dataMap[d.tla] = {
+              color: d.team_color,
+              headshot: d.headshot_small,
+              racing_number: d.racing_number,
+              team: d.team
+            };
+          }
+        });
+        return dataMap;
+      };
+
+      // Get team logos from sensor.f1_assets
+      const getTeamLogos = () => {
+        console.log('=== F1 ASSETS DEBUG ===');
+
+        // List all f1-related sensors to help debug
+        const allF1Sensors = Object.keys(states).filter(e => e.includes('f1'));
+        console.log('All F1 sensors found:', allF1Sensors.join(', '));
+
+        const assetsEntity = states['sensor.f1_assets'];
+        console.log('Entity exists:', !!assetsEntity);
+
+        if (assetsEntity && assetsEntity.attributes && assetsEntity.attributes.team_logos) {
+          const rawData = assetsEntity.attributes.team_logos;
+          const dataType = typeof rawData;
+
+          console.log('Data type:', dataType);
+          console.log('Raw data:', JSON.stringify(rawData).substring(0, 200) + '...');
+
+          try {
+            // Check if it's already an object
+            if (dataType === 'object') {
+              console.log('✓ team_logos is already an object - using directly');
+              console.log('Teams found:', Object.keys(rawData).join(', '));
+              return rawData;
+            }
+            // Otherwise parse as JSON
+            const parsed = JSON.parse(rawData);
+            console.log('✓ Parsed successfully');
+            console.log('Teams found:', Object.keys(parsed).join(', '));
+            return parsed;
+          } catch (e) {
+            console.error('✗ Error parsing team_logos:', e.message);
+            return {};
+          }
+        }
+        console.log('✗ sensor.f1_assets not found or missing team_logos');
+        return {};
+      };
+
+      const teamColors = getTeamColors();
+      const teamLogos = getTeamLogos();
+      const driverData = getDriverData();
+      const FALLBACK_COLOR = '#888';
+      const FALLBACK_ICON = 'mdi:racing-helmet';
+
+      const FONT_STYLE = "font-family: 'f1regular';";
+
+      // Detect mobile screen
+      const isMobile = window.innerWidth <= 768;
+
+      // Responsive sizing
+      const IMG_SIZE = isMobile ? '35px' : '45px';
+      const ICON_SIZE = isMobile ? '35px' : '45px';
+      const POS_FONT = isMobile ? '24px' : '30px';
+      const NAME_FONT = isMobile ? '11px' : '13px';
+      const TEAM_FONT = isMobile ? '9px' : '10px';
+      const PTS_FONT = isMobile ? '14px' : '18px';
+      const PTS_LABEL_FONT = isMobile ? '8px' : '10px';
+      const GAP = isMobile ? '4px' : '8px';
+      const PADDING = isMobile ? '1px 4px' : '1px 6px';
+      const POS_WIDTH = isMobile ? '30px' : '40px';
+      const BADGE_FONT = isMobile ? '12px' : '15px';
+
+      return displayResults.map((r, idx) => {
+        const pos = r.position !== undefined ? r.position : (r.positionText || '-');
+
+        const code = r.Driver?.code;
+        const name = `${r.Driver?.givenName || ''} ${r.Driver?.familyName || ''}`.trim();
+        const team = r.Constructors?.[0]?.name || '';
+        const points = r.points || '0';
+
+        const driverSpecificData = driverData[code] || {};
+        const color = driverSpecificData.color || teamColors[team] || FALLBACK_COLOR;
+        const teamLogoUrl = teamLogos[team] || '';
+        const headshotUrl = driverSpecificData.headshot;
+        const racingNumber = driverSpecificData.racing_number || '';
+
+        const bgColor = color.length === 7 ? color + '1A' : color;
+        const posTextColor = color === FALLBACK_COLOR ? 'white' : color;
+
+        let headshotTag;
+        if (headshotUrl) {
+          headshotTag = `
+            <div style="position: relative; width: ${IMG_SIZE}; height: ${IMG_SIZE};">
+              <img src="${headshotUrl}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">
+              ${racingNumber ? `
+                <div style="
+                  position: absolute;
+                  bottom: -2px;
+                  right: -2px;
+                  color: ${color};
+                  font-size: ${BADGE_FONT};
+                  font-weight: 900;
+                  text-shadow:
+                    -1px -1px 0 #000,
+                    1px -1px 0 #000,
+                    -1px 1px 0 #000,
+                    1px 1px 0 #000,
+                    0 0 3px rgba(0,0,0,0.8);
+                ">${racingNumber}</div>
+              ` : ''}
+            </div>
+          `;
+        } else {
+          headshotTag = `
+            <div style="
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              width: ${IMG_SIZE};
+              height: ${IMG_SIZE};
+              border-radius: 50%;
+              background: rgba(255, 255, 255, 0);
+              line-height: 1;
+            ">
+              <ha-icon icon="${FALLBACK_ICON}" style="--mdc-icon-size: ${ICON_SIZE}; color: ${posTextColor};"></ha-icon>
+            </div>
+          `;
+        }
+
+        const logoTag = teamLogoUrl
+            ? `<img src="${teamLogoUrl}" style="width: ${IMG_SIZE}; height: auto; max-height: ${ICON_SIZE};">`
+            : '';
+
+        return `
+          <div style="
+            display: grid;
+            grid-template-columns: ${POS_WIDTH} 1fr auto;
+            column-gap: 2px;
+            align-items: center;
+            background: ${bgColor};
+            padding: ${PADDING};
+            border-radius: 6px;
+            ${FONT_STYLE}
+          ">
+
+            <div style="
+              font-size: ${POS_FONT};
+              font-weight: 900;
+              color: ${posTextColor};
+              text-align: center;
+              ${FONT_STYLE}
+            ">
+              ${pos}
+            </div>
+
+            <div style="display: flex; align-items: center; gap: ${GAP};">
+
+              <div style="
+                display: flex;
+                align-items: center;
+                height: 30px;
+                gap: 2px;
+                padding-right: 2px;
+              ">
+                ${headshotTag}
+                ${logoTag}
+              </div>
+
+              <div style="display: flex; flex-direction: column; line-height: 1.2;">
+                <div style="color: var(--primary-text-color); font-weight: 600; font-size: ${NAME_FONT};">${code} - ${name}</div>
+                <div style="font-size: ${TEAM_FONT}; color: rgba(255, 255, 255, 0.8);">${team}</div>
+              </div>
+
+            </div>
+
+            <div style="
+              font-size: ${PTS_FONT};
+              font-weight: 900;
+              color: var(--primary-text-color);
+              text-align: right;
+              ${FONT_STYLE}
+            ">
+              ${points} <span style="font-size: ${PTS_LABEL_FONT}; font-weight: 600;">PTS</span>
+            </div>
+
+          </div>
+        `;
+      }).join('');
+    ]]]

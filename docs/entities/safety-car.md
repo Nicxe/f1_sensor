@@ -4,19 +4,19 @@ title: "Safety Car"
 description: "Safety Car (SC) or Virtual Safety Car (VSC) is active \u2014 state, attributes, and examples for F1 Sensor."
 ---
 
-Safety Car (SC) or Virtual Safety Car (VSC) is active. Use `binary_sensor.f1_safety_car` in dashboards, templates, and automations.
+import {EntityMeta, RelatedReferences} from '@site/src/components/Docs';
 
-See [live data availability](/entities/live-data#availability-model) for session and data-source requirements. The details below describe any additional conditions for this entity.
+Safety Car (SC) or Virtual Safety Car (VSC) is active.
 
-:::info[Find your entity]
-These are standard entity IDs. If Home Assistant assigned a different ID, or you renamed an entity, use your existing ID in the examples.
-:::
+<EntityMeta id="safety-car" />
 
-## State and attributes
+<span id="state-and-attributes"></span>
 
 On while the Safety Car or Virtual Safety Car is in effect.
 
-**State (on/off)**
+## State
+
+State type: on/off.
 - `on` when track status is `SC` or `VSC`; otherwise `off`.
 
 **Example**
@@ -24,15 +24,14 @@ On while the Safety Car or Virtual Safety Car is in effect.
 on
 ```
 
-**Attributes**
+## Attributes
 
 | Attribute | Type | Description |
 | --- | --- | --- |
 | track_status | string | Normalized track status (`CLEAR`, `YELLOW`, `VSC`, `SC`, `RED`) |
 
+## Related references
 
-## Next steps
+<span id="next-steps"></span>
 
-- [Browse the entity reference](/reference/overview)
-- [Build an automation](/automation)
-- [Choose a dashboard card](/cards/cards-overview)
+<RelatedReferences id="safety-car" />

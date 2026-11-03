@@ -4,19 +4,18 @@ title: "Investigations"
 description: "Active steward investigations and pending penalties \u2014 state, attributes, and examples for F1 Sensor."
 ---
 
-Active steward investigations and pending penalties. Use `sensor.f1_investigations` in dashboards, templates, and automations.
+import {EntityMeta, RelatedReferences} from '@site/src/components/Docs';
 
-See [live data availability](/entities/live-data#availability-model) for session and data-source requirements. The details below describe any additional conditions for this entity.
+Active steward investigations and pending penalties.
 
-:::info[Find your entity]
-These are standard entity IDs. If Home Assistant assigned a different ID, or you renamed an entity, use your existing ID in the examples.
-:::
+<EntityMeta id="investigations" />
 
-## State and attributes
+<span id="state-and-attributes"></span>
 
 `sensor.f1_investigations` - Active steward investigations and pending penalties. Shows only currently relevant information with automatic lifecycle management.
 
-**State**
+## State
+
 - Integer: count of actionable items (noted incidents + under investigation + pending penalties).
 
 **Example**
@@ -24,7 +23,7 @@ These are standard entity IDs. If Home Assistant assigned a different ID, or you
 3
 ```
 
-**Attributes**
+## Attributes
 
 | Attribute | Type | Description |
 | --- | --- | --- |
@@ -52,7 +51,7 @@ Each entry in `no_further_action` contains the same fields plus:
 | --- | --- | --- |
 | nfi_utc | string | ISO-8601 timestamp when NFI was decided (used for auto-expiry) |
 
-Each entry in `penalties` contains:
+### `penalties` entries
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -62,6 +61,8 @@ Each entry in `penalties` contains:
 | reason | string | Reason for the penalty |
 | utc | string | ISO-8601 timestamp when penalty was issued |
 | lap | number | Lap number when penalty was issued |
+
+## Examples
 
 <details>
 <summary>JSON Structure Example</summary>
@@ -129,7 +130,7 @@ Each entry in `penalties` contains:
 
 **Check if a driver is under investigation:**
 ```jinja2
-{% set investigations = state_attr('sensor.f1_investigations', 'under_investigation') %}
+{% set investigations = state_attr('sensor.f1_investigations', 'under_investigation') or [] %}
 {% set ver_involved = investigations | selectattr('drivers', 'contains', 'VER') | list %}
 {% if ver_involved | length > 0 %}
   VER is under investigation!
@@ -138,7 +139,7 @@ Each entry in `penalties` contains:
 
 **List all pending penalties:**
 ```jinja2
-{% set penalties = state_attr('sensor.f1_investigations', 'penalties') %}
+{% set penalties = state_attr('sensor.f1_investigations', 'penalties') or [] %}
 {% for p in penalties %}
   {{ p.driver }}: {{ p.penalty }} ({{ p.reason }})
 {% endfor %}
@@ -146,14 +147,14 @@ Each entry in `penalties` contains:
 
 **Count active investigations:**
 ```jinja2
-{% set noted = state_attr('sensor.f1_investigations', 'noted') | length %}
-{% set investigating = state_attr('sensor.f1_investigations', 'under_investigation') | length %}
+{% set noted = (state_attr('sensor.f1_investigations', 'noted') or []) | length %}
+{% set investigating = (state_attr('sensor.f1_investigations', 'under_investigation') or []) | length %}
 Noted: {{ noted }}, Under Investigation: {{ investigating }}
 ```
 
 **Get post-race investigations:**
 ```jinja2
-{% set investigations = state_attr('sensor.f1_investigations', 'under_investigation') %}
+{% set investigations = state_attr('sensor.f1_investigations', 'under_investigation') or [] %}
 {% for inv in investigations if inv.after_race %}
   {{ inv.drivers | join(' vs ') }} - {{ inv.reason }} (after race)
 {% endfor %}
@@ -161,7 +162,7 @@ Noted: {{ noted }}, Under Investigation: {{ investigating }}
 
 **Show recent NFI decisions:**
 ```jinja2
-{% set nfi = state_attr('sensor.f1_investigations', 'no_further_action') %}
+{% set nfi = state_attr('sensor.f1_investigations', 'no_further_action') or [] %}
 {% for item in nfi %}
   {{ item.drivers | join('/') }}: No Further Action ({{ item.reason }})
 {% endfor %}
@@ -170,10 +171,12 @@ Noted: {{ noted }}, Under Investigation: {{ investigating }}
 **Create investigation summary:**
 ```jinja2
 {% set sensor = 'sensor.f1_investigations' %}
-{% set total = states(sensor) | int %}
-{% if total > 0 %}
+{% set total = states(sensor) | int(none) %}
+{% if total is none %}
+  Investigation data is unavailable
+{% elif total > 0 %}
   {{ total }} active matter{{ 's' if total > 1 else '' }}:
-  {% set penalties = state_attr(sensor, 'penalties') %}
+  {% set penalties = state_attr(sensor, 'penalties') or [] %}
   {% for p in penalties %}
     - {{ p.driver }}: {{ p.penalty }}
   {% endfor %}
@@ -190,9 +193,8 @@ Noted: {{ noted }}, Under Investigation: {{ investigating }}
 - **PENALTY** → Stays until PENALTY SERVED message received
 :::
 
+## Related references
 
-## Next steps
+<span id="next-steps"></span>
 
-- [Browse the entity reference](/reference/overview)
-- [Build an automation](/automation)
-- [Choose a dashboard card](/cards/cards-overview)
+<RelatedReferences id="investigations" />

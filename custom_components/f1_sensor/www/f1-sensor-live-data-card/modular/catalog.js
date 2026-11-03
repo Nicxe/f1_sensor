@@ -253,6 +253,8 @@ export const MODULES = {
   }, ['next_race', 'current_season']),
   timing: module('timing', 'Timing', TIMING_FIELDS.map(field => field.id), {
     profile: { type: 'enum', values: ['custom', 'auto', 'practice', 'qualifying', 'sprint_qualifying', 'sprint', 'race'], default: 'custom', label: 'Column profile' },
+    push_laps: { type: 'enum', values: ['off', 'first', 'only'], default: 'off', label: 'Push laps' },
+    push_lap_deltas: { type: 'boolean', default: false, label: 'modular.push_lap_deltas' },
     sort: { type: 'enum', values: ['position', 'best_lap', 'driver'], default: 'position', label: 'Sort by' },
     direction: { type: 'enum', values: ['asc', 'desc'], default: 'asc', label: 'Direction' },
     rows: { type: 'integer', min: 1, max: 100, default: 30, label: 'Maximum drivers' },
@@ -415,7 +417,7 @@ export const MODULES = {
     show_track_status: { type: 'boolean', default: true, label: 'Show track status' },
     track_status_line_mode: { type: 'enum', values: ['accent', 'full', 'off'], default: 'accent', label: 'Track-status line' },
     show_driver_count: { type: 'boolean', default: true, label: 'Show driver count' },
-  }, ['track_map', 'current_session', 'race_lap_count', 'track_status'], { spoiler: true, stream: 'track_map', focus: ['driver', 'team'], defaultFields: ['track_map', 'map_drivers'] }),
+  }, ['track_map', 'driver_positions', 'current_session', 'race_lap_count', 'track_status'], { spoiler: true, stream: 'track_map', focus: ['driver', 'team'], defaultFields: ['track_map', 'map_drivers'] }),
   battles: module('battles', 'Battles and position changes', ['battle_status', 'incident_drivers', 'battle_gap', 'exchange_positions', 'analysis_source', 'analysis_quality'], {
     content: { type: 'enum', values: ['active_battles', 'battle_history', 'position_exchanges'], default: 'active_battles', label: 'Observations' },
     presentation: { type: 'enum', values: ['list', 'table'], default: 'list', label: 'Presentation' },

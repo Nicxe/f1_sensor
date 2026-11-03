@@ -153,7 +153,7 @@ async def test_current_session_keeps_label_when_status_is_inactive_started(
 
 
 @pytest.mark.asyncio
-async def test_current_session_keeps_label_when_status_is_aborted_started(hass) -> None:
+async def test_current_session_is_inactive_when_status_is_aborted_started(hass) -> None:
     entry_id = "test_entry_current_session_aborted"
     status_coordinator = _build_coordinator(
         hass,
@@ -185,13 +185,14 @@ async def test_current_session_keeps_label_when_status_is_aborted_started(hass) 
 
     status_state = hass.states.get(status_sensor.entity_id)
     assert status_state is not None
-    assert status_state.state == "live"
+    assert status_state.state == "suspended"
 
     current_state = hass.states.get(current_sensor.entity_id)
     assert current_state is not None
-    assert current_state.state == "Practice 3"
+    assert current_state.state == STATE_UNKNOWN
     assert current_state.attributes["live_status"] == "Aborted"
-    assert current_state.attributes["active"] is True
+    assert current_state.attributes["active"] is False
+    assert current_state.attributes["last_label"] == "Practice 3"
 
 
 @pytest.mark.asyncio

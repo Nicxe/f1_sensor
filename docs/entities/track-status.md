@@ -4,19 +4,19 @@ title: "Track Status"
 description: "Current track status \u2014 state, attributes, and examples for F1 Sensor."
 ---
 
-Current track status. Use `sensor.f1_track_status` in dashboards, templates, and automations.
+import {EntityMeta, RelatedReferences} from '@site/src/components/Docs';
 
-See [live data availability](/entities/live-data#availability-model) for session and data-source requirements. The details below describe any additional conditions for this entity.
+Current track status.
 
-:::info[Find your entity]
-These are standard entity IDs. If Home Assistant assigned a different ID, or you renamed an entity, use your existing ID in the examples.
-:::
+<EntityMeta id="track-status" />
 
-## State and attributes
+<span id="state-and-attributes"></span>
 
 Current track status from live or replay timing. Outside an active data window the entity can become unavailable; do not interpret a previous `CLEAR` value as confirmation that a session is running.
 
-**State (enum)**
+## State
+
+State type: enum.
   - One of: `CLEAR`, `YELLOW`, `VSC`, `SC`, `RED`.
 
 **Example**
@@ -24,15 +24,14 @@ Current track status from live or replay timing. Outside an active data window t
 CLEAR
 ```
 
-**Attributes**
+## Attributes
 
 | Attribute | Type | Description |
 | --- | --- | --- |
 | (none) |  | No extra attributes |
 
+## Related references
 
-## Next steps
+<span id="next-steps"></span>
 
-- [Browse the entity reference](/reference/overview)
-- [Build an automation](/automation)
-- [Choose a dashboard card](/cards/cards-overview)
+<RelatedReferences id="track-status" />

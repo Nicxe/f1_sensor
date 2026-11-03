@@ -4,15 +4,13 @@ title: "Overtake Mode"
 description: "ON when track-wide overtake mode is enabled (2026 regulation, experimental) \u2014 state, attributes, and examples for F1 Sensor."
 ---
 
-Check whether track-wide overtake mode is enabled. This 2026 feature is experimental. Use `binary_sensor.f1_overtake_mode` in dashboards, templates, and automations.
+import {EntityMeta, RelatedReferences} from '@site/src/components/Docs';
 
-See [live data availability](/entities/live-data#availability-model) for session and data-source requirements. The details below describe any additional conditions for this entity.
+Check whether track-wide overtake mode is enabled. This 2026 feature is experimental.
 
-:::info[Find your entity]
-These are standard entity IDs. If Home Assistant assigned a different ID, or you renamed an entity, use your existing ID in the examples.
-:::
+<EntityMeta id="overtake-mode" />
 
-## State and attributes
+<span id="state-and-attributes"></span>
 
 :::warning[Experimental — 2026 regulation]
 This sensor is based on data observed during 2026 pre-season testing. It should be considered experimental until confirmed against live race conditions. The exact message format from Formula 1 may be adjusted in a future update once the first race weekend has been evaluated.
@@ -20,7 +18,9 @@ This sensor is based on data observed during 2026 pre-season testing. It should 
 
 `binary_sensor.f1_overtake_mode` - Indicates whether the track-wide overtake mode is currently enabled. This is a 2026 Formula 1 regulation feature that allows a driver who was within one second of the car ahead at the final corner detection point to deploy an additional 0.5 MJ of electrical energy on the following straight.
 
-**State (on/off)**
+## State
+
+State type: on/off.
 - `on` when overtake mode is enabled track-wide; otherwise `off`.
 
 **Example**
@@ -28,7 +28,7 @@ This sensor is based on data observed during 2026 pre-season testing. It should 
 on
 ```
 
-**Attributes**
+## Attributes
 
 | Attribute | Type | Description |
 | --- | --- | --- |
@@ -38,9 +38,8 @@ on
 Active only during sessions where the 2026 overtake mode regulation applies. The state is restored from history when Home Assistant restarts during an active session.
 :::
 
+## Related references
 
-## Next steps
+<span id="next-steps"></span>
 
-- [Browse the entity reference](/reference/overview)
-- [Build an automation](/automation)
-- [Choose a dashboard card](/cards/cards-overview)
+<RelatedReferences id="overtake-mode" />

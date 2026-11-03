@@ -4,19 +4,17 @@ title: "Current Season"
 description: "Full race schedule \u2014 state, attributes, and examples for F1 Sensor."
 ---
 
-Full race schedule. Use `sensor.f1_current_season` in dashboards, templates, and automations.
+import {EntityMeta, RelatedReferences} from '@site/src/components/Docs';
 
-This reference covers the state and attributes. For setup, see [Configuration](/getting-started/add-integration).
+Full race schedule.
 
-:::info[Find your entity]
-These are standard entity IDs. If Home Assistant assigned a different ID, or you renamed an entity, use your existing ID in the examples.
-:::
+<EntityMeta id="current-season" />
 
-## State and attributes
+<span id="state-and-attributes"></span>
 
 `sensor.f1_current_season` - Number of races in the current season.
 
-**State**
+## State
 
   - Integer: count of races in the season.
 
@@ -25,7 +23,7 @@ These are standard entity IDs. If Home Assistant assigned a different ID, or you
 24
 ```
 
-**Attributes**
+## Attributes
 
 | Attribute | Type | Description |
 | --- | --- | --- |
@@ -44,9 +42,8 @@ Each entry in `races` contains the standard Ergast race data plus:
 
 On sprint weekends, the nested `Sprint` object also includes `scheduled_laps` when Jolpica provides it. These planned counts can differ from the laps actually completed.
 
+## Related references
 
-## Next steps
+<span id="next-steps"></span>
 
-- [Browse the entity reference](/reference/overview)
-- [Build an automation](/automation)
-- [Choose a dashboard card](/cards/cards-overview)
+<RelatedReferences id="current-season" />

@@ -16,16 +16,18 @@ function loadConfig(channel, baseUrl, {
   const configUrl = pathToFileURL(path.join(directory, 'docusaurus.config.js')).href;
   const script = `
     import config from ${JSON.stringify(configUrl)};
-    const channelLink = config.themeConfig.navbar.items.find(
-      (item) => item.label === 'Beta docs' || item.label === 'Stable docs',
+    const channelMenu = config.themeConfig.navbar.items.find(
+      item => item.items?.some(link => link.label === 'Stable documentation'),
+    );
+    const channelLink = channelMenu.items.find(
+      item => item.label === ${JSON.stringify(channel === 'beta' ? 'Stable documentation' : 'Beta documentation')},
     );
     console.log(JSON.stringify({
       baseUrl: config.baseUrl,
       announcement: config.themeConfig.announcementBar?.content,
+      channelMenu,
       channelLink,
-      versionLink: config.themeConfig.navbar.items.find(
-        item => item.className === 'navbar-version-chip',
-      ),
+      versionLink: channelMenu.items.find(item => item.label === 'Release notes'),
       editUrl: config.presets[0][1].docs.editUrl({docPath: 'cards/modular.md'}),
     }));
   `;
@@ -52,9 +54,10 @@ test('stable documentation links to the beta channel', () => {
 
   assert.equal(config.baseUrl, '/f1_sensor/');
   assert.equal(config.announcement, undefined);
+  assert.equal(config.channelMenu.label, 'Stable · v5.6.0');
+  assert.equal(config.channelMenu.position, 'right');
   assert.deepEqual(config.channelLink, {
-    label: 'Beta docs',
-    position: 'right',
+    label: 'Beta documentation',
     href: 'https://Nicxe.github.io/f1_sensor/beta/',
   });
   assert.match(config.editUrl, /\/edit\/content\/docs\/cards\/modular\.md$/);
@@ -65,9 +68,10 @@ test('beta documentation uses its nested path and beta branch', () => {
 
   assert.equal(config.baseUrl, '/f1_sensor/beta/');
   assert.match(config.announcement, /^Beta documentation/);
+  assert.equal(config.channelMenu.label, 'Beta · v5.7.0-beta.1');
+  assert.equal(config.channelMenu.position, 'right');
   assert.deepEqual(config.channelLink, {
-    label: 'Stable docs',
-    position: 'right',
+    label: 'Stable documentation',
     href: 'https://Nicxe.github.io/f1_sensor/',
   });
   assert.match(config.editUrl, /\/edit\/beta\/docs\/cards\/modular\.md$/);
@@ -131,7 +135,8 @@ for (const [channel, version] of [['stable', '42.0.0'], ['beta', '42.1.0-beta.1'
       directory: checkout,
       version: null,
     });
-    assert.equal(config.versionLink.label, `v${version}`);
+    assert.equal(config.channelMenu.label, `${channel === 'beta' ? 'Beta' : 'Stable'} · v${version}`);
+    assert.equal(config.versionLink.label, 'Release notes');
     assert.equal(config.versionLink.href, `https://github.com/Nicxe/f1_sensor/releases/tag/v${version}`);
     assert.equal(git(checkout, 'rev-parse', 'HEAD'), fixture[channel]);
     assert.equal(git(checkout, 'rev-parse', 'HEAD^{tree}'), tree);

@@ -177,6 +177,8 @@ from .minisector_websocket import (
 from .minisectors import MiniSectorStateStore
 from .no_spoiler import NoSpoilerModeManager
 from .providers import ProviderRegistry
+from .push_laps import PushLapTracker, empty_push_lap
+from .qualifying_deltas import empty_push_lap_delta
 from .race_weather import F1RaceWeatherCoordinator
 from .replay import ReplaySignalRClient
 from .replay_mode import ReplayController, ReplayState
@@ -2939,6 +2941,8 @@ async def _async_setup_entry(
             return resolve_team_radio_source_url(
                 capture,
                 session_path=getattr(window, "path", None),
+                session_key=getattr(window, "session_key", None),
+                session_info=getattr(session_info_coordinator, "data", None),
                 year=session_coordinator.year,
             )
 
@@ -5809,6 +5813,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         self._replay_mode = False
         entry_id = config_entry.entry_id if config_entry is not None else None
         self._minisectors = MiniSectorStateStore(entry_id=entry_id)
+        self._push_laps = PushLapTracker()
         if delay_controller is not None:
             self._delay_listener = delay_controller.add_listener(self.set_delay)
         self.available = True
@@ -5891,6 +5896,9 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         self._reset_session_state("replay_reset")
 
     def _on_sessioninfo(self, payload: dict) -> None:
+        self._push_laps.update("SessionInfo", payload)
+        if self._publish_push_laps():
+            self._schedule_deliver()
         session_key = _stream_session_key(payload)
         if session_key is None or session_key == self._live_session_key:
             return
@@ -5908,6 +5916,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             reason,
             source="replay" if self._replay_mode else "live",
         )
+        self._push_laps.reset()
         self._state = {
             "drivers": {},
             "leader_rn": None,
@@ -5920,6 +5929,43 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             "fastest_lap": self._empty_fastest_lap(),
         }
         self.async_set_updated_data(self._state)
+
+    def _publish_push_laps(self, *, update_stream_time: bool = True) -> bool:
+        """Update the bounded effort projection alongside existing driver timing."""
+        changed = False
+        for rn, driver in self._state.get("drivers", {}).items():
+            value = self._push_laps.driver_snapshot(rn)
+            if driver.get("push_lap", empty_push_lap()) != value:
+                changed = True
+            driver["push_lap"] = value
+            delta = self._push_laps.delta_snapshot(rn)
+            if driver.get("push_lap_delta", empty_push_lap_delta()) != delta:
+                changed = True
+            driver["push_lap_delta"] = delta
+        status = self._push_laps.status if self.available else "unavailable"
+        values = {"push_laps_status": status}
+        if update_stream_time:
+            values["push_laps_stream_time"] = (
+                self._push_laps.stream_time if status == "available" else None
+            )
+        for key, value in values.items():
+            default = "waiting" if key == "push_laps_status" else None
+            if self._state.get(key, default) != value:
+                changed = True
+            self._state[key] = value
+        return changed
+
+    def _on_push_lap_clock(self, payload: dict) -> None:
+        """Expire activity using the delayed provider clock, including replay pause."""
+        self._push_laps.update("Heartbeat", payload)
+        if self._publish_push_laps(update_stream_time=False):
+            self._schedule_deliver()
+
+    def _on_push_lap_race_control(self, payload: dict) -> None:
+        """Apply delayed lap invalidations to active qualifying comparisons."""
+        self._push_laps.update("RaceControlMessages", payload)
+        if self._publish_push_laps(update_stream_time=False):
+            self._schedule_deliver()
 
     def _merge_driverlist(self, payload: dict) -> bool:
         # payload: { rn: {Tla, FullName, TeamName, TeamColour, ...}, ... }
@@ -6219,6 +6265,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
     def _merge_timingdata(self, payload: dict) -> bool:
         # payload: {"Lines": { rn: {...timing...} } }
         self._minisectors.merge_timing_data(payload)
+        self._push_laps.update("TimingData", payload)
         lines = (payload or {}).get("Lines", {})
         if not isinstance(lines, dict):
             return False
@@ -6437,7 +6484,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                                 self._reset_sector_state(s, reset_best=True)
         if position_changed:
             self._recompute_leader_from_state()
-        return changed
+        return self._publish_push_laps() or changed
 
     def _official_best_lap_reference(self) -> float | None:
         """Return the current corrected best, without using observed lap history."""
@@ -6484,6 +6531,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             "personal_best": {
                 idx: cls._empty_personal_best_sector() for idx in (0, 1, 2)
             },
+            "raw": {},
             "current_lap": None,
             "pending_completed_lap": None,
             "last_completed_sector": None,
@@ -6612,6 +6660,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
     @classmethod
     def _reset_sector_state(cls, sectors: dict[str, Any], *, reset_best: bool) -> None:
         sectors["current"] = {idx: cls._empty_current_sector() for idx in (0, 1, 2)}
+        sectors["raw"] = {}
         if reset_best:
             sectors["best"] = {0: None, 1: None, 2: None}
             sectors["personal_best"] = {
@@ -6692,32 +6741,64 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         else:
             return False
 
-        # Collect valid final sector times from this message
+        # Feed flags are deltas too, independent of the displayed lap progress.
+        # Keep their last value and timing candidate even when current S1/S2
+        # are cleared after S3, so late flags cannot revive those sectors.
+        raw = sectors.setdefault("raw", {})
         updates: dict[int, dict] = {}
+        flag_updates: dict[int, dict] = {}
         for idx, sd in items:
             if not isinstance(sd, dict) or idx not in (0, 1, 2):
                 continue
-            value_str = (sd.get("Value") or "").strip()
+            stored = raw.setdefault(
+                idx, {"overall_fastest": False, "personal_fastest": False}
+            )
+            has_flags = False
+            for source_key, target_key in (
+                ("OverallFastest", "overall_fastest"),
+                ("PersonalFastest", "personal_fastest"),
+            ):
+                if source_key in sd:
+                    stored[target_key] = bool(sd[source_key])
+                    has_flags = True
+
             # Status is absent in many real/replay messages when a sector is
             # completed — treat absent Status as "valid" when Value is present.
-            # Only explicitly reject when Status == 2048 ("no time").
-            status = sd.get("Status")
-            if not value_str or sd.get("Stopped") or status == 2048:
+            # An explicit reset invalidates the candidate, but its flags still
+            # carry forward to a later Value unless the feed changes them.
+            if sd.get("Stopped") or sd.get("Status") == 2048:
+                stored.pop("candidate", None)
                 continue
+            if "Value" not in sd:
+                candidate = stored.get("candidate")
+                if has_flags and isinstance(candidate, dict):
+                    data = {
+                        **candidate,
+                        "overall_fastest": stored["overall_fastest"],
+                        "personal_fastest": stored["personal_fastest"],
+                    }
+                    stored["candidate"] = data
+                    flag_updates[idx] = data
+                continue
+
+            value_str = (sd.get("Value") or "").strip()
             time_secs = self._parse_laptime_secs(value_str)
             if time_secs is None:
+                stored.pop("candidate", None)
                 continue
             sector_lap = self._current_sector_lap(entry, sectors, idx)
-            updates[idx] = {
+            data = {
                 "time": time_secs,
                 "value": value_str,
                 "lap": sector_lap,
-                "overall_fastest": bool(sd.get("OverallFastest", False)),
-                "personal_fastest": bool(sd.get("PersonalFastest", False)),
+                "overall_fastest": stored["overall_fastest"],
+                "personal_fastest": stored["personal_fastest"],
                 "source": "current",
             }
+            stored["candidate"] = data
+            updates[idx] = data
 
-        if not updates:
+        if not updates and not flag_updates:
             return False
 
         changed = False
@@ -6745,7 +6826,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 if clear_idx not in updates and current[clear_idx]["time"] is not None:
                     changed = self._clear_current_sector(sectors, clear_idx) or changed
 
-        # Apply sector updates and refresh personal best
+        # Only Value updates advance lap progress or clear other sectors.
         for idx, data in updates.items():
             if current.get(idx) != data:
                 current[idx] = data
@@ -6754,6 +6835,39 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 sectors["pending_completed_lap"] = None
                 pending_completed_lap = None
                 changed = True
+            sectors["last_completed_sector"] = {
+                "number": idx + 1,
+                **data,
+            }
+
+        if 2 in updates and not full_lap_update:
+            for clear_idx in (0, 1):
+                changed = self._clear_current_sector(sectors, clear_idx) or changed
+            if sectors.get("current_lap") != updates[2]["lap"]:
+                sectors["current_lap"] = updates[2]["lap"]
+                changed = True
+
+        for idx, data in flag_updates.items():
+            visible = current[idx]
+            if (
+                visible["time"] == data["time"]
+                and visible["lap"] == data["lap"]
+                and visible != data
+            ):
+                current[idx] = data
+                changed = True
+            last = sectors.get("last_completed_sector")
+            if (
+                isinstance(last, dict)
+                and last.get("number") == idx + 1
+                and last.get("time") == data["time"]
+                and last.get("lap") == data["lap"]
+                and last != {"number": idx + 1, **data}
+            ):
+                sectors["last_completed_sector"] = {"number": idx + 1, **data}
+                changed = True
+
+        for idx, data in (updates | flag_updates).items():
             if data["personal_fastest"] and (
                 best[idx] is None or data["time"] < best[idx]
             ):
@@ -6767,17 +6881,6 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                     "session_part": session_part,
                     "source": "personal_best",
                 }
-                changed = True
-            sectors["last_completed_sector"] = {
-                "number": idx + 1,
-                **data,
-            }
-
-        if 2 in updates and not full_lap_update:
-            for clear_idx in (0, 1):
-                changed = self._clear_current_sector(sectors, clear_idx) or changed
-            if sectors.get("current_lap") != updates[2]["lap"]:
-                sectors["current_lap"] = updates[2]["lap"]
                 changed = True
 
         state = self._derive_sector_progress_state(sectors)
@@ -6798,6 +6901,8 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         status = str((payload or {}).get("Status", "1"))
         prev = self._state.get("track_status")
         self._state["track_status"] = status
+        self._push_laps.update("TrackStatus", payload)
+        push_changed = self._publish_push_laps()
 
         # Only clear on transition INTO an SC/VSC period
         if status in _SC_VSC and prev not in _SC_VSC:
@@ -6807,11 +6912,16 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 if isinstance(s, dict):
                     self._reset_sector_state(s, reset_best=False)
             self._schedule_deliver()
+        elif push_changed:
+            self._schedule_deliver()
 
     def set_delay(self, seconds: int) -> None:
         new_delay = max(0, int(seconds or 0))
         if new_delay != self._delay:
             self._minisectors.reset("live_delay_change")
+            self._push_laps.reset()
+            if self._publish_push_laps():
+                self._schedule_deliver()
         _apply_delay_with_queue(self, seconds)
 
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
@@ -6820,12 +6930,14 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         replay_mode = _is_replay_delay_reason(reason)
         if replay_mode != self._replay_mode:
             self._minisectors.set_source("replay" if replay_mode else "live")
+            self._push_laps.reset()
         self._replay_mode = replay_mode
         if self._replay_mode:
             _clear_delayed_ingest_state(self)
         if _is_no_spoiler_live_state(reason):
             _clear_delayed_ingest_state(self)
             self._minisectors.reset("spoiler_protected")
+            self._push_laps.reset()
             return
         self.available = is_live
         self._tyre_live_started_mono = None
@@ -6836,6 +6948,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             # show stale driver/timing information before the first live frames.
             _clear_delayed_ingest_state(self)
             self._minisectors.reset("source_unavailable")
+            self._push_laps.reset()
             with suppress(Exception):
                 self._state = {
                     "drivers": {},
@@ -7345,6 +7458,13 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             for idx in (0, 1):
                 changed = self._clear_current_sector(sectors, idx) or changed
             if s3.get("lap") != lap_num:
+                candidate = sectors.get("raw", {}).get(2, {}).get("candidate")
+                if (
+                    isinstance(candidate, dict)
+                    and candidate.get("time") == s3_time
+                    and candidate.get("lap") == s3.get("lap")
+                ):
+                    candidate["lap"] = lap_num
                 s3["lap"] = lap_num
                 changed = True
             last_completed = {
@@ -7669,6 +7789,8 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             }
 
     def _merge_sessionstatus(self, payload: dict) -> None:
+        self._push_laps.update("SessionStatus", payload)
+        self._publish_push_laps()
         previous = self._state.get("session_status")
         was_running = self._session_status_is_running(previous)
         was_terminal = self._session_status_is_terminal(previous)
@@ -7902,6 +8024,17 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         except Exception:
             bus = None
         if bus is not None:
+            self._unsubs.append(
+                bus.subscribe(
+                    "Heartbeat", _wrap_delayed_handler(self, self._on_push_lap_clock)
+                )
+            )
+            self._unsubs.append(
+                bus.subscribe(
+                    "RaceControlMessages",
+                    _wrap_delayed_handler(self, self._on_push_lap_race_control),
+                )
+            )
             with suppress(Exception):
                 self._unsubs.append(
                     bus.subscribe(

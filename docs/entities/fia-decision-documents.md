@@ -4,15 +4,13 @@ title: "FIA Decision Documents"
 description: "FIA decisions and documents for the current weekend \u2014 state, attributes, and examples for F1 Sensor."
 ---
 
-FIA decisions and documents for the current weekend. Use `sensor.f1_fia_documents` in dashboards, templates, and automations.
+import {EntityMeta, RelatedReferences} from '@site/src/components/Docs';
 
-This reference covers the state and attributes. For setup, see [Configuration](/getting-started/add-integration).
+FIA decisions and documents for the current weekend.
 
-:::info[Find your entity]
-These are standard entity IDs. If Home Assistant assigned a different ID, or you renamed an entity, use your existing ID in the examples.
-:::
+<EntityMeta id="fia-decision-documents" />
 
-## State and attributes
+<span id="state-and-attributes"></span>
 
 :::warning[BETA]
 This sensor is in BETA. Data structure and availability may change as the upstream feed and parsing are refined.
@@ -20,7 +18,8 @@ This sensor is in BETA. Data structure and availability may change as the upstre
 
 Collects FIA decisions and official documents for the current race weekend.
 
-**State**
+## State
+
 - Integer: latest document number (e.g., 27 for "Doc 27"), or `0` when none are available.
 
 **Example**
@@ -28,7 +27,7 @@ Collects FIA decisions and official documents for the current race weekend.
 27
 ```
 
-**Attributes**
+## Attributes
 
 | Attribute | Type | Description |
 | --- | --- | --- |
@@ -38,7 +37,7 @@ Collects FIA decisions and official documents for the current race weekend.
 | documents | list | Rolling list of up to 100 documents for the current weekend |
 | race | object | Compact race context for the document set |
 
-Each entry in `documents` contains:
+### `documents` entries
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -47,7 +46,7 @@ Each entry in `documents` contains:
 | published | string | ISO-8601 timestamp when available |
 | document_number | number | FIA document number when it can be parsed from the title |
 
-The `race` object contains:
+### `race` object
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -62,9 +61,8 @@ The `race` object contains:
 
 The sensor maintains a history of up to 100 documents. When a new race weekend starts, detected by FIA "Document 1", the history is reset. The state prefers the highest parsed FIA document number so the sensor does not move backwards when the FIA page publishes older or incomplete metadata.
 
+## Related references
 
-## Next steps
+<span id="next-steps"></span>
 
-- [Browse the entity reference](/reference/overview)
-- [Build an automation](/automation)
-- [Choose a dashboard card](/cards/cards-overview)
+<RelatedReferences id="fia-decision-documents" />

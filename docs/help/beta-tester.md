@@ -33,12 +33,7 @@ Follow the [beta installation steps](/getting-started/release-channels#beta-chan
 
 ## Beta vs dev
 
-The beta channel contains changes that have been promoted from `dev` for pre-release testing.
-This is the preferred channel for normal beta testers.
-
-The `dev` branch contains all active unreleased work. It can include changes that have not yet been prepared for beta and may require maintainer-specific instructions. Use dev only when you are developing F1 Sensor locally or when the maintainer asks you to test a specific unreleased change.
-
-If you need a reliable fallback, switch back to the latest stable release through HACS by using **Redownload** and selecting the latest non-beta version.
+Beta is the normal prerelease testing channel. Dev contains active unreleased work and should be used only for development or a specific maintainer-led test. Follow [release channels](/getting-started/release-channels) for the full distinction and [switching back to stable](/getting-started/release-channels#switch-back-to-stable) for a reliable fallback.
 
 ## What to test
 
@@ -90,40 +85,10 @@ Using the correct channel helps keep development focused and easier to follow.
 
 ## Write a useful issue
 
-When creating an issue, include:
+Include the exact F1 Sensor and Home Assistant versions, release channel, public/authenticated live or replay/developer mode, steps to reproduce, expected behavior and actual behavior. Add token health, live timing diagnostics and Track Map status when relevant. The [complete log and report checklist](/help/debug-logging#what-to-include-in-an-issue) lists the fields and redaction requirements.
 
-1. The exact F1 Sensor version.
-2. Your Home Assistant version.
-3. Whether you are running public live timing, F1TV Auth live timing, Replay Mode, or Developer mode with a replay dump.
-4. Whether you are using a beta release.
-5. A clear description of the problem.
-6. What you expected to happen.
-7. What actually happened.
-8. The state of `sensor.f1_f1tv_token_status` if live auth is involved.
-9. The `sensor.f1_live_timing_mode` attributes if live timing is involved and the diagnostic entity is present.
-10. Track Map status, source, and stale state if the issue involves Track Map or incident location.
-11. Relevant debug logs from [Debug Logging and Logs](/help/debug-logging).
-
-Screenshots, screen recordings, or dashboard examples are helpful when they show sensor states, timing behavior, or visual problems.
-
-As a beta tester, you may be asked to test a proposed fix, verify a new release, or provide more details.
-Following up on your own issues helps close them faster.
+Screenshots, screen recordings or dashboard examples help when they show sensor states, timing or a visual problem. Follow up when the maintainer asks you to retest a fix or provide more detail.
 
 ## Test incident detection
 
-When testing likely on-track incident detection, focus on whether the wording, confidence, and timing make sense from a user perspective.
-
-For each report, note:
-
-1. Session type: Race, Sprint, Qualifying, Practice, or Testing.
-2. Driver or car number.
-3. Whether the alert was `candidate`, `confirmed`, `updated`, or `cleared`.
-4. Confidence value: `low`, `medium`, or `high`.
-5. Track Status and Race Control context at the time.
-6. Whether the driver was in pit lane, leaving the pit lane, or stopped on track.
-7. Whether Live Delay, Replay Mode, No Spoiler Mode, or F1TV Auth was active.
-8. Whether Track Map had live or replay car positions.
-9. The Track Map status, source, and stale state if visible.
-10. The `f1_sensor_incident` event payload for the relevant `incident_id`, including `location` when present.
-
-Use neutral language in reports. The feature is intended to detect likely stopped cars and on-track incidents, not guaranteed crashes.
+Use neutral wording and record the alert phase, confidence, driver, session and timing context. Follow the [complete beta incident checklist](/help/debug-logging#beta-incident-checks) when collecting logs; it includes pit-lane and Track Map context and the incident event payload.

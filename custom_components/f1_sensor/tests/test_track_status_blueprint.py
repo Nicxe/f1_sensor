@@ -9,6 +9,7 @@ from typing import Any
 from freezegun.api import FrozenDateTimeFactory
 from homeassistant.const import EVENT_CALL_SERVICE
 from homeassistant.core import Event, HomeAssistant, ServiceCall, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.setup import async_setup_component
 from homeassistant.util import dt as dt_util
 import pytest
@@ -138,6 +139,239 @@ def _last_triggered(hass: HomeAssistant) -> str | None:
     return state.attributes.get("last_triggered")
 
 
+async def _register_stateful_light(hass: HomeAssistant) -> None:
+    """Model immediate RGB light feedback, keeping real HA scene snapshots."""
+
+    async def update_light(call: ServiceCall) -> None:
+        entity_ids = call.data["entity_id"]
+        if isinstance(entity_ids, str):
+            entity_ids = [entity_ids]
+        for entity_id in entity_ids:
+            state = hass.states.get(entity_id)
+            attributes = dict(state.attributes) if state else {}
+            attributes.update(
+                {key: value for key, value in call.data.items() if key != "entity_id"}
+            )
+            hass.states.async_set(
+                entity_id, "on" if call.service == "turn_on" else "off", attributes
+            )
+
+    for service in ("turn_on", "turn_off"):
+        hass.services.async_register("light", service, update_light)
+
+
+async def _drain_blueprint_actions(hass: HomeAssistant) -> None:
+    """Drain runnable actions without waiting for a delayed restore."""
+    for _ in range(50):
+        await asyncio.sleep(0)
+
+
+@pytest.mark.parametrize("next_alert", ["YELLOW", "RED", "SC", "VSC"])
+@pytest.mark.parametrize("clear_gap", [4.205, 12])
+@pytest.mark.asyncio
+async def test_blueprint_preserves_snapshot_across_delayed_clear(
+    hass: HomeAssistant,
+    freezer: FrozenDateTimeFactory,
+    next_alert: str,
+    clear_gap: float,
+) -> None:
+    """Issue 969: a new alert must not snapshot the temporary green color."""
+    await _install_blueprint(hass)
+    await _register_services(hass)
+    await _register_stateful_light(hass)
+    original = [90, 60, 30]
+    await _set_states(
+        hass,
+        {
+            "sensor.test_track_status": "CLEAR",
+            "sensor.test_session_status": "suspended",
+            "light.test_track_status": (
+                "on",
+                {
+                    "rgb_color": original,
+                    "color_mode": "rgb",
+                    "supported_color_modes": ["rgb"],
+                    "brightness": 180,
+                },
+            ),
+        },
+    )
+    assert await _setup_blueprint_automation(
+        hass,
+        clear_color=[0, 255, 0],
+        extra_inputs={
+            "snapshot_before_alert": True,
+            "clear_behavior_mode": "restore_after_delay",
+            "clear_restore_delay_s": 10,
+        },
+    )
+
+    async def advance(seconds: float) -> None:
+        freezer.tick(timedelta(seconds=seconds))
+        async_fire_time_changed(hass)
+        await _drain_blueprint_actions(hass)
+        if seconds >= 10:
+            await hass.async_block_till_done()
+
+    await _set_states(hass, {"sensor.test_track_status": "RED"})
+    await _set_states_without_full_drain(hass, {"sensor.test_track_status": "CLEAR"})
+    await _drain_blueprint_actions(hass)
+    assert list(hass.states.get("light.test_track_status").attributes["rgb_color"]) == [
+        0,
+        255,
+        0,
+    ]
+    await advance(clear_gap)
+    await _set_states(hass, {"sensor.test_track_status": next_alert})
+    await advance(50.467)
+    await _set_states_without_full_drain(hass, {"sensor.test_track_status": "CLEAR"})
+    await _drain_blueprint_actions(hass)
+    await advance(11)
+    assert (
+        list(hass.states.get("light.test_track_status").attributes["rgb_color"])
+        == original
+    )
+
+    # Attribute-only updates must not start a fresh green/restore cycle.
+    await _set_states_without_full_drain(
+        hass, {"sensor.test_track_status": ("CLEAR", {"message": "AllClear"})}
+    )
+    await _drain_blueprint_actions(hass)
+    assert (
+        list(hass.states.get("light.test_track_status").attributes["rgb_color"])
+        == original
+    )
+
+    # A later independent alert must capture the user's new light setting.
+    new_color = [30, 60, 90]
+    await hass.services.async_call(
+        "light",
+        "turn_on",
+        {"entity_id": "light.test_track_status", "rgb_color": new_color},
+        blocking=True,
+    )
+    await _set_states(hass, {"sensor.test_track_status": "YELLOW"})
+    await _set_states_without_full_drain(hass, {"sensor.test_track_status": "CLEAR"})
+    await _drain_blueprint_actions(hass)
+    await advance(11)
+    assert (
+        list(hass.states.get("light.test_track_status").attributes["rgb_color"])
+        == new_color
+    )
+
+
+@pytest.mark.parametrize("cleanup_on_end", [False, True])
+@pytest.mark.asyncio
+async def test_blueprint_delayed_snapshot_session_boundaries(
+    hass: HomeAssistant,
+    freezer: FrozenDateTimeFactory,
+    cleanup_on_end: bool,
+) -> None:
+    """Protect session-start CLEAR and discard old snapshots for the next session."""
+    await _install_blueprint(hass)
+    await _register_services(hass)
+    await _register_stateful_light(hass)
+    await _set_states(
+        hass,
+        {
+            "sensor.test_track_status": "CLEAR",
+            "sensor.test_session_status": "pre",
+            "light.test_track_status": "off",
+        },
+    )
+    assert await _setup_blueprint_automation(
+        hass,
+        extra_inputs={
+            "snapshot_pre_race": True,
+            "snapshot_before_alert": True,
+            "clear_behavior_mode": "restore_after_delay",
+            "clear_restore_delay_s": 10,
+            "end_action": "restore_pre_race",
+            "cleanup_scenes_on_end": cleanup_on_end,
+        },
+    )
+
+    async def advance(seconds: float) -> None:
+        freezer.tick(timedelta(seconds=seconds))
+        async_fire_time_changed(hass)
+        await _drain_blueprint_actions(hass)
+        if seconds >= 10:
+            await hass.async_block_till_done()
+
+    await _set_states_without_full_drain(hass, {"sensor.test_session_status": "live"})
+    await _drain_blueprint_actions(hass)
+    await advance(4)
+    await _set_states(hass, {"sensor.test_track_status": "YELLOW"})
+    await _set_states_without_full_drain(hass, {"sensor.test_track_status": "CLEAR"})
+    await _drain_blueprint_actions(hass)
+    await advance(11)
+    assert hass.states.get("light.test_track_status").state == "off"
+
+    # End the session before the next pending restore can run.
+    await _set_states(hass, {"light.test_track_status": "on"})
+    await _set_states(hass, {"sensor.test_track_status": "RED"})
+    await _set_states_without_full_drain(hass, {"sensor.test_track_status": "CLEAR"})
+    await _drain_blueprint_actions(hass)
+    await advance(4)
+    await _set_states(hass, {"sensor.test_session_status": "finished"})
+    await advance(11)
+    assert hass.states.get("light.test_track_status").state == "off"
+
+    # A retained pre-alert snapshot was ON, while the new session starts OFF.
+    await _set_states_without_full_drain(hass, {"sensor.test_session_status": "live"})
+    await _drain_blueprint_actions(hass)
+    await advance(4)
+    await _set_states(hass, {"sensor.test_track_status": "SC"})
+    await _set_states_without_full_drain(hass, {"sensor.test_track_status": "CLEAR"})
+    await _drain_blueprint_actions(hass)
+    await advance(11)
+    assert hass.states.get("light.test_track_status").state == "off"
+
+
+@pytest.mark.asyncio
+async def test_blueprint_failed_delayed_restore_keeps_snapshot(
+    hass: HomeAssistant,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """A failed restore must not discard the only saved pre-alert state."""
+    await _install_blueprint(hass)
+    calls = await _register_services(hass)
+    await _set_states(
+        hass,
+        {
+            "sensor.test_track_status": "CLEAR",
+            "sensor.test_session_status": "live",
+            "light.test_track_status": "off",
+        },
+    )
+    assert await _setup_blueprint_automation(
+        hass,
+        extra_inputs={
+            "snapshot_before_alert": True,
+            "clear_behavior_mode": "restore_after_delay",
+            "clear_restore_delay_s": 10,
+        },
+    )
+
+    async def fail_restore(call: ServiceCall) -> None:
+        raise HomeAssistantError("Test restore failed")
+
+    hass.services.async_register("scene", "turn_on", fail_restore)
+    await _set_states(hass, {"sensor.test_track_status": "RED"})
+    calls.clear()
+    await _set_states_without_full_drain(hass, {"sensor.test_track_status": "CLEAR"})
+    await _drain_blueprint_actions(hass)
+    freezer.tick(timedelta(seconds=11))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert any(service == "scene.turn_on" for service, _ in calls)
+    assert not any(service == "scene.delete" for service, _ in calls)
+    assert hass.states.get("scene.automation_track_status_blueprint_test_pre_alert")
+    calls.clear()
+    await _set_states(hass, {"sensor.test_track_status": "YELLOW"})
+    assert not any(service == "scene.create" for service, _ in calls)
+
+
 @pytest.mark.asyncio
 async def test_blueprint_syncs_track_light_when_session_enters_active(
     hass: HomeAssistant,
@@ -207,6 +441,13 @@ async def test_blueprint_restores_pre_race_scene_after_start_clear_delay(
             },
         ),
         (
+            "scene.create",
+            {
+                "scene_id": "automation_track_status_blueprint_test_pre_alert",
+                "snapshot_entities": ["light.test_track_status"],
+            },
+        ),
+        (
             "light.turn_on",
             {
                 "entity_id": ["light.test_track_status"],
@@ -220,6 +461,10 @@ async def test_blueprint_restores_pre_race_scene_after_start_clear_delay(
             {
                 "entity_id": "scene.automation_track_status_blueprint_test_pre_race",
             },
+        ),
+        (
+            "scene.delete",
+            {"entity_id": "scene.automation_track_status_blueprint_test_pre_alert"},
         ),
     ]
     scene = hass.states.get("scene.automation_track_status_blueprint_test_pre_race")
@@ -647,6 +892,10 @@ async def test_blueprint_restores_pre_alert_scene_after_wled_clear_delay(
             {
                 "entity_id": "scene.automation_track_status_blueprint_test_pre_alert",
             },
+        ),
+        (
+            "scene.delete",
+            {"entity_id": "scene.automation_track_status_blueprint_test_pre_alert"},
         ),
     ]
 

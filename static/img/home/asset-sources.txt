@@ -1,0 +1,22 @@
+F1 Sensor documentation homepage assets
+
+YouTube video: https://www.youtube.com/watch?v=R72LXKdiNxA
+YouTube oEmbed metadata verified on 2026-11-03:
+Title: Meet F1 Sensor: Formula 1 in Home Assistant
+Author: Niklas Vilnersson
+Channel: https://www.youtube.com/@niklasvilnersson
+Thumbnail downloaded from: https://i.ytimg.com/vi/R72LXKdiNxA/maxresdefault.jpg
+The actual published thumbnail is used, without replacing its artwork or text.
+
+Flag lighting demonstration:
+Original preserved at ../flag-light-demo.gif.
+Source supplied by the project owner:
+https://github.com/user-attachments/assets/18a74679-76e2-4d10-8a0d-d3f111c42593
+flag-light-demo.mp4 is a silent H.264 conversion of the original GIF using ffmpeg.
+flag-light-demo-poster.jpg is a frame at 1.5 seconds from that GIF.
+The video does not autoplay or loop.
+
+Outline icons: Tabler Icons, MIT.
+https://github.com/tabler/tabler-icons/tree/main/icons/outline
+Downloaded on 2026-11-03; unmodified SVG files.
+Full license: tabler-license.txt

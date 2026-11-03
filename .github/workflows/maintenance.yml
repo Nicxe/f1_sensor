@@ -18,7 +18,7 @@ jobs:
         with:
           ref: dev
           persist-credentials: false
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.14'
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -37,7 +37,7 @@ jobs:
           custom_components/f1_sensor/tests/test_release_websocket_load.py
           custom_components/f1_sensor/tests/test_release_replay_load.py
           -m performance --durations=0
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         with:
           name: weekly-python
@@ -54,7 +54,7 @@ jobs:
         with:
           ref: dev
           persist-credentials: false
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.12'
           cache: pip
@@ -67,7 +67,7 @@ jobs:
         env:
           TEST_PROFILE: minimum
         run: python scripts/run_ci_tests.py
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         with:
           name: weekly-python-minimum
@@ -85,7 +85,8 @@ jobs:
       - run: python3 scripts/check_token_helper_review.py quality/token-helper-review.json
   browser:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    # Provisioning both engines must not consume either verification budget.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -98,17 +99,22 @@ jobs:
       - name: Use the project npm version
         run: node scripts/install_project_npm.cjs
       - run: npm ci --no-audit --no-fund
-      - run: npx playwright install --with-deps chromium webkit
+      - name: Install Chromium, WebKit and system dependencies
+        id: browser_install
+        timeout-minutes: 20
+        run: npx playwright install --with-deps chromium webkit
       - name: Chromium performance
+        timeout-minutes: 12
         env:
           F1_MAINTENANCE: 'true'
-        run: npx playwright test --grep '@performance'
+        run: npx playwright test --grep '@performance' --output=test-results/playwright/chromium
       - name: WebKit lifecycle, locale, keyboard and destructive-action smoke
-        if: always()
+        if: ${{ !cancelled() && steps.browser_install.outcome == 'success' }}
+        timeout-minutes: 8
         env:
           F1_BROWSER: webkit
-        run: npx playwright test --grep 'mounts and unmounts|keyboard actions|timezone wins|clear always'
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        run: npx playwright test --grep 'mounts and unmounts|keyboard actions|timezone wins|clear always' --output=test-results/playwright/webkit
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: failure()
         with:
           name: weekly-browser

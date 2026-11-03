@@ -73,5 +73,5 @@ portrait and landscape orientation in the Companion App. Report the exact device
 operating system, Home Assistant version, theme, card module and expected result
 when something is not usable.
 
-See [the F1 Sensor card guide](/cards/modular) for timing semantics and [reporting
+See [timing colors, shapes and lap comparisons](/cards/timing#read-timing-colors-and-symbols) for exact timing semantics and [reporting
 an issue](/help/contact) for support channels.

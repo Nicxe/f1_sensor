@@ -1,0 +1,13 @@
+F1 Sensor getting-started captures
+
+Captured 2026-11-03 in the existing HAdev instance at http://hadev.local:8123.
+Source: current F1 Sensor card visual editor, opened through Add card > By card.
+A new, unsaved card draft used the Race weekend preset. Preview data: Actual data.
+The draft was cancelled and edit mode exited; no dashboard configuration was saved.
+
+card-template-picker.png: crop of the actual template chooser (887 x 563 px).
+race-weekend-preview.png: crop of the Actual data preview, overview and start of schedule (500 x 511 px).
+The second image is an excerpt, not a complete card. Event dates/countdown are an example
+of the data displayed on the capture date, not a current schedule guarantee.
+Neither image contains authentication tokens or personal account controls.
+No UI was recreated or changed in these images. Cropping removed unrelated HA chrome.

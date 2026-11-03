@@ -29,6 +29,7 @@ f1_sensor.zip.sha256
 f1_sensor.zip.spdx.json
 playwright-report/
 test-results/
+/.playwright-cli/
 .venv-ci/
 .tools-ci/
 /F1 Live Timing API - Dumps/
@@ -41,8 +42,11 @@ custom_components/f1_sensor/skills/
 custom_components/f1_sensor/AGENTS.md
 custom_components/f1_sensor/CLAUDE.md
 custom_components/f1_sensor/github_bug_issue_audit_2026-03-08.md
-context7.md
-static/context7.json
+/context7.md
 custom_components/f1_sensor/debugging_prediction.md
 signalr_change_live_todo.md
 AGENTS.md
+
+# Local working notes and release drafts
+/quality/modular-card-development.md
+/quality/modular-release-scope.md

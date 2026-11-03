@@ -4,19 +4,18 @@ title: "Weather Summary"
 description: "Weather forecast at next race circuit \u2014 state, attributes, and examples for F1 Sensor."
 ---
 
-Weather forecast at next race circuit. Use `sensor.f1_weather` in dashboards, templates, and automations.
+import {EntityMeta, RelatedReferences} from '@site/src/components/Docs';
 
-This reference covers the state and attributes. For setup, see [Configuration](/getting-started/add-integration).
+Weather forecast at next race circuit.
 
-:::info[Find your entity]
-These are standard entity IDs. If Home Assistant assigned a different ID, or you renamed an entity, use your existing ID in the examples.
-:::
+<EntityMeta id="weather-summary" />
 
-## State and attributes
+<span id="state-and-attributes"></span>
 
 `sensor.f1_weather` provides compact weather data for the circuit location, both now and at race start.
 
-**State**
+## State
+
 - Number: current air temperature in Home Assistant's selected temperature unit, or `unknown`.
 
 **Example**
@@ -28,7 +27,7 @@ These are standard entity IDs. If Home Assistant assigned a different ID, or you
 Home Assistant may display the sensor state in another temperature unit, such as Fahrenheit, when your system uses that unit. The weather attributes remain in the documented source units, such as Celsius for temperatures and meters per second for wind speed.
 :::
 
-**Attributes**
+## Attributes
 
 | Attribute | Type | Description |
 | --- | --- | --- |
@@ -43,6 +42,11 @@ Home Assistant may display the sensor state in another temperature unit, such as
 | circuit_long | string | Longitude |
 | circuit_locality | string | City/area |
 | circuit_country | string | Country |
+
+### Current conditions
+
+| Attribute | Type | Description |
+| --- | --- | --- |
 | current_temperature | number | Current air temperature (°C) |
 | current_temperature_unit | string | “celsius” |
 | current_humidity | number | % RH |
@@ -66,6 +70,11 @@ Home Assistant may display the sensor state in another temperature unit, such as
 | current_visibility_unit | string | "m" |
 | current_weather_code | number | WMO weather interpretation code |
 | current_weather_source | string | "open-meteo" |
+
+### Forecast at race start
+
+| Attribute | Type | Description |
+| --- | --- | --- |
 | race_temperature | number | Projected air temperature at race start (°C) |
 | race_temperature_unit | string | “celsius” |
 | race_humidity | number | % RH at race start |
@@ -91,9 +100,8 @@ Home Assistant may display the sensor state in another temperature unit, such as
 | race_weather_source | string | "open-meteo" |
 | race_weather_icon | string | MDI icon name matching weather symbol |
 
+## Related references
 
-## Next steps
+<span id="next-steps"></span>
 
-- [Browse the entity reference](/reference/overview)
-- [Build an automation](/automation)
-- [Choose a dashboard card](/cards/cards-overview)
+<RelatedReferences id="weather-summary" />

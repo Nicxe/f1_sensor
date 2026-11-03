@@ -4,44 +4,11 @@ title: Configure F1 Sensor
 description: Choose your data, enable live features, and find the entities created by F1 Sensor.
 ---
 
-:::info[Automatic card data]
-Add the modules you want to the F1 Sensor card. Its [data is available automatically](/features/card-data-and-sensors), independently of the sensors exposed in Home Assistant. Existing installations keep their sensor choices and start normally after updating; see [Upgrading to automatic card data](/getting-started/required-data-choice).
-:::
-
-
-Choose the data you want on your dashboard. Complete [installation and restart](/getting-started/installation) first, then start the setup flow:
+Choose the live features and Home Assistant entities you need, then build your dashboard. Complete [installation and restart](/getting-started/installation) first.
 
 [![Open your Home Assistant instance and start configuration](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start?domain=f1_sensor)
 
-:::info
-During installation, you can choose exactly which sensors you want to include in your setup.
-This gives you control over which data points to load, for example, only the next race and weather, without standings or calendar.
-
-You can always change this selection later by reconfiguring the integration via Settings > Devices & Services in Home Assistant.
-:::
-:::info[Finding entities after setup]
-This documentation always refers to the standard `entity_id`, for example `sensor.f1_track_status` or `binary_sensor.f1_safety_car`.
-
-Display names in Home Assistant can be localized, and older installations may already have different registry IDs. When you search in Home Assistant, search for the `f1_` suffix or check the entity’s `entity_id` in the entity settings instead of relying on the display name alone.
-:::
-
-## Configuration choices
-
-The setup form lets you choose how much F1 data Home Assistant should create and update.
-
-| Setting | What to choose |
-| --- | --- |
-| **Device name** | Keep the default unless you run multiple F1 Sensor entries |
-| **Enabled sensors** | Select the static, live, and helper entities you want Home Assistant to create |
-| **Enable live F1 API** | Turn this on for live session status, track status, Safety Car, Race Control, weather, timing, tyres, and incident alerts |
-| **First day of race week** | Choose when `binary_sensor.f1_race_week` should turn on for your dashboards and automations |
-| **Connect F1TV access with Token Helper** | Optional. Use this only when you want extra live-auth features such as live Track Map, Pit Stops, Team Radio, Championship Prediction, or earlier incident candidates |
-
-:::info[F1TV Auth is optional]
-Public live timing works without F1TV Auth. Leave F1TV pairing off if you only need schedules, standings, public live timing, Race Control, weather, driver timing, tyres, and confirmed incident alerts.
-:::
-
-### Manual Configuration
+## Manual Configuration
 
 If the button above does not work, you can also perform the following steps manually:
 
@@ -51,6 +18,42 @@ If the button above does not work, you can also perform the following steps manu
 4. From the list, select **F1 Sensor**.
 5. Follow the on-screen instructions to complete the setup.
 
+## Choose modules and sensors separately
+
+Add the modules you want in the **F1 Sensor** card. Their [data is available automatically](/features/card-data-and-sensors), independently of sensor exposure. There is no separate card-data checklist.
+
+Select only the entities you want to use in Home Assistant, such as Next race and weather for standard cards, or Track Status for a light automation. You can change sensor choices later in the integration settings. Keep entities used by automations, templates or older F1 cards; reducing the selection can remove their registry entries.
+
+Existing installations keep their sensor choices and start normally after updating. See [the automatic card data upgrade notice](/getting-started/required-data-choice).
+
+## Configuration choices
+
+The setup form controls live access and the entities exposed in Home Assistant. The modular card gets data for its modules automatically; sensor selection is for automations, templates, standard cards and older F1 cards.
+
+| Setting | What to choose |
+| --- | --- |
+| **Device name** | Keep the default unless you run multiple F1 Sensor entries |
+| **Enabled sensors** | Select the static, live, and helper entities you want Home Assistant to create |
+| **Enable live F1 API** | Turn this on for live session status, track status, Safety Car, Race Control, weather, timing, tyres, and incident alerts |
+| **First day of race week** | Choose when `binary_sensor.f1_race_week` should turn on for your dashboards and automations |
+| **Connect F1TV access with Token Helper** | Optional. Connect account access for Replay Mode, Formula 1 timing archives, or extra live features such as Track Map, Pit Stops, Team Radio, Championship Prediction and earlier incident candidates |
+
+## Live data setup
+
+Enable **Enable live F1 API** for live session data, whether you display it in modular cards or selected entities. Public live timing works without F1TV pairing: session status, track flags, Safety Car, Race Control, weather, driver timing, tyres and confirmed incident alerts are available when the source publishes them.
+
+When live data is enabled, you can set an initial delay and then [calibrate Live Delay with your TV](/features/live-delay). Measure your own broadcast; no universal delay fits every service.
+
+Optional [F1TV access](/features/f1tv-auth) can enable or improve Track Map, Pit Stops, Team Radio, Championship Prediction, formation start and earlier incident candidates when the account receives the required live feeds. For practical pairing steps, use [Connect optional F1TV access](/help/f1tv-auth-setup).
+
+Replay Mode is separate. It downloads the completed-session timing archive using connected Formula 1 account access. It can show data that needed extra permissions live, but only when the archive contains it. See [Replay Mode](/features/replay-mode) and [Incident Detection](/features/incident-detection).
+
+## Check your setup
+
+1. Add the [Race weekend dashboard preset](/getting-started/first-dashboard). Schedule information is useful between sessions.
+2. If you selected the Next race entity, open the **Race** device and check its race name and schedule attributes.
+3. If you enabled live data, an inactive live state between sessions is normal. Use [data availability](/features/f1tv-auth) before treating waiting as a setup error.
+4. For an automation, confirm that its required entities are selected, then use a [device trigger or blueprint](/automation).
 
 ## Device Structure
 
@@ -70,26 +73,8 @@ The integration organizes all entities across **six dedicated sub-devices**, whi
 Each device exposes its own set of [device automation triggers](/automation#device-automation-triggers), making it straightforward to build automations directly from the UI without writing YAML.
 For device changes in older releases, see [upgrading an existing setup](/getting-started/release-channels#upgrading-an-existing-setup).
 
----
+## Find your entities
 
-## Live data setup
+This documentation always refers to the standard `entity_id`, for example `sensor.f1_track_status` or `binary_sensor.f1_safety_car`.
 
-Enable **Enable live F1 API** when you want Home Assistant to create and update live session entities. When live data is enabled, you can set an initial delay to better align live updates with your TV broadcast.
-
-For detailed instructions on syncing with your TV, including guided calibration, see [Live Delay](/features/live-delay).
-
-Public live timing works without F1TV Auth. This covers the normal live features most users need, including session status, track status, Safety Car, Race Control, weather, driver timing, tyres, and confirmed incident alerts.
-
-Optional [F1TV Auth](/features/f1tv-auth) can be paired with the [F1TV Token Helper](/help/f1tv-token-helper) when you want extra live timing features during a real live session. It can enable or improve features such as [Track Map](/features/track-map), Pit Stops, Team Radio, Championship Prediction, formation start data, and earlier incident candidates.
-
-Replay Mode is a separate mode. It can show some data that requires F1TV Auth during live sessions because replay uses Formula 1's public session archive after the session has completed.
-
-For the practical F1TV Auth setup, see [F1TV Auth Setup](/help/f1tv-auth-setup). For incident behavior, see [Incident Detection](/features/incident-detection).
-## Check your setup
-
-1. Open the **Race** device and find the Next race entity.
-2. Check that it has a race name and schedule attributes.
-3. Open **Session** if you enabled live data. An inactive state between sessions is normal.
-4. Add a [first dashboard card](/getting-started/first-dashboard).
-
-Use [Live Delay](/features/live-delay) to measure your own broadcast delay. No universal delay fits every service.
+Display names in Home Assistant can be localized, and older installations may already have different registry IDs. When you search in Home Assistant, search for the `f1_` suffix or check the entity’s `entity_id` in the entity settings instead of relying on the display name alone.

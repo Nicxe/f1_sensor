@@ -4,19 +4,18 @@ title: "Driver Positions"
 description: "Driver positions and lap times \u2014 state, attributes, and examples for F1 Sensor."
 ---
 
-Driver positions and lap times. Use `sensor.f1_driver_positions` in dashboards, templates, and automations.
+import {EntityMeta, RelatedReferences} from '@site/src/components/Docs';
 
-See [live data availability](/entities/live-data#availability-model) for session and data-source requirements. The details below describe any additional conditions for this entity.
+Driver positions and lap times.
 
-:::info[Find your entity]
-These are standard entity IDs. If Home Assistant assigned a different ID, or you renamed an entity, use your existing ID in the examples.
-:::
+<EntityMeta id="driver-positions" />
 
-## State and attributes
+<span id="state-and-attributes"></span>
 
 `sensor.f1_driver_positions` - Live driver positions and lap-by-lap timing data for all drivers in the session.
 
-**State**
+## State
+
 - Integer: current lap number (leader's lap), or `unknown` when not available.
 
 **Example**
@@ -24,7 +23,7 @@ These are standard entity IDs. If Home Assistant assigned a different ID, or you
 45
 ```
 
-**Attributes**
+## Attributes
 
 | Attribute | Type | Description |
 | --- | --- | --- |
@@ -33,7 +32,7 @@ These are standard entity IDs. If Home Assistant assigned a different ID, or you
 | fastest_lap | object | Fastest lap details during races and sprints; `null` in other session types |
 | current_qualifying_part | number | Active qualifying segment (1, 2, or 3); `null` outside qualifying sessions |
 
-Each entry in `drivers` contains:
+### `drivers` entries
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -43,6 +42,11 @@ Each entry in `drivers` contains:
 | team | string | Team name |
 | team_color | string | Team color as hex code (e.g., "#3671C6") |
 | team_color_rgb | list | Team color as RGB values (e.g., `[54, 113, 198]`) |
+
+### Positions and lap history
+
+| Field | Type | Description |
+| --- | --- | --- |
 | grid_position | string | Starting grid position |
 | current_position | string | Current position in the session |
 | laps | object | Map of lap numbers to lap times (e.g., `{"1": "1:32.456", "2": "1:31.789"}`) |
@@ -52,6 +56,11 @@ Each entry in `drivers` contains:
 | best_lap_time_source | string | `official` when supplied by live timing, `observed` when derived from received laps, or `null` when unavailable |
 | best_lap_lap | number | Lap number for the personal best; `null` when the source does not provide it |
 | best_lap_gap | number | Gap in seconds to the fastest practice best lap, supplied by live timing; `null` outside practice or when no valid source gap is available |
+
+### Track and pit status
+
+| Field | Type | Description |
+| --- | --- | --- |
 | status | string | Driver status: `on_track`, `pit_in`, `pit_out`, or `out` |
 | gap_to_leader | string | Public live timing gap to the session leader when available |
 | interval_to_position_ahead | string | Public live timing interval to the car directly ahead when available |
@@ -59,10 +68,20 @@ Each entry in `drivers` contains:
 | pit_out | boolean | Whether driver just exited pits |
 | retired | boolean | Whether driver has retired from the session |
 | stopped | boolean | Whether driver has stopped on track |
+
+### Session fastest lap
+
+| Field | Type | Description |
+| --- | --- | --- |
 | fastest_lap | boolean | True if this driver currently holds the session's fastest lap (race/sprint only) |
 | fastest_lap_time | string | Session's fastest lap time for its current holder; `null` for other drivers and outside races/sprints |
 | fastest_lap_time_secs | number | Session's fastest lap time in seconds for its current holder; otherwise `null` |
 | fastest_lap_lap | number | Lap number of the session's fastest lap for its current holder; otherwise `null` |
+
+### Current sectors
+
+| Field | Type | Description |
+| --- | --- | --- |
 | sector_1 | number | Current sector 1 time in seconds; `null` while sector has not been completed this lap |
 | sector_2 | number | Current sector 2 time in seconds; `null` while not yet completed |
 | sector_3 | number | Current sector 3 time in seconds; `null` while not yet completed |
@@ -78,6 +97,11 @@ Each entry in `drivers` contains:
 | sector_2_personal_fastest | boolean | True if the current sector 2 time is this driver's personal best |
 | sector_3_overall_fastest | boolean | True if the current sector 3 time is the overall fastest |
 | sector_3_personal_fastest | boolean | True if the current sector 3 time is this driver's personal best |
+
+### Personal best sectors
+
+| Field | Type | Description |
+| --- | --- | --- |
 | best_sector_1 | number | Driver's personal best sector 1 time this session (or segment, in qualifying) |
 | best_sector_2 | number | Driver's personal best sector 2 time this session (or segment, in qualifying) |
 | best_sector_3 | number | Driver's personal best sector 3 time this session (or segment, in qualifying) |
@@ -87,10 +111,20 @@ Each entry in `drivers` contains:
 | best_sector_1_session_part | string | Qualifying segment/session part for the best sector 1 value |
 | best_sector_2_session_part | string | Qualifying segment/session part for the best sector 2 value |
 | best_sector_3_session_part | string | Qualifying segment/session part for the best sector 3 value |
+
+### Sector tracking context
+
+| Field | Type | Description |
+| --- | --- | --- |
 | sector_state | string | Current sector tracking state for the driver |
 | sector_current_lap | number | Lap currently being tracked for sector timing |
 | last_completed_sector | number | Last completed sector number |
 | sectors | object | Structured sector details with `current` and `personal_best` sector objects |
+
+### Qualifying results
+
+| Field | Type | Description |
+| --- | --- | --- |
 | q1_time | string | Best lap time set in Q1; `null` if no time was set or outside qualifying |
 | q1_knocked_out | boolean | True if the driver did not advance past Q1; `null` outside qualifying |
 | q1_position | number | Finishing rank in Q1 based on best lap time; `null` if no time was set |
@@ -106,6 +140,8 @@ Each entry in `drivers` contains:
 Use `best_lap_time` for each driver's **BEST** time in practice, qualifying, races, and sprints. It follows the timing source's personal best even when earlier laps are missing from `laps`, for example after joining a session late. Before the source supplies a personal best value, the integration uses the best lap it has observed, when available.
 
 Source corrections replace the personal best even when the corrected time is slower. If the source removes the value, the personal best fields become `null` until a valid value arrives; an older observed lap is not restored. `best_lap_lap` can also be `null` when a time is available but its lap number is unknown. The separate `fastest_lap` fields continue to identify the overall fastest driver during races and sprints.
+
+## Examples
 
 <details>
 <summary>JSON Structure Example — Race</summary>
@@ -290,9 +326,9 @@ Source corrections replace the personal best even when the corrected time is slo
 
 **Get the race leader:**
 ```jinja2
-{% set drivers = state_attr('sensor.f1_driver_positions', 'drivers') %}
+{% set drivers = state_attr('sensor.f1_driver_positions', 'drivers') or [] %}
 {% if drivers %}
-  {% set leader = drivers | selectattr('current_position', 'eq', '1') | first %}
+  {% set leader = drivers | selectattr('current_position', 'eq', '1') | first | default(none) %}
   {% if leader %}
     Leader: {{ leader.tla }} ({{ leader.name }})
   {% endif %}
@@ -301,8 +337,8 @@ Source corrections replace the personal best even when the corrected time is slo
 
 **Get a specific driver by number:**
 ```jinja2
-{% set drivers = state_attr('sensor.f1_driver_positions', 'drivers') %}
-{% set driver = drivers | selectattr('racing_number', 'eq', '44') | first %}
+{% set drivers = state_attr('sensor.f1_driver_positions', 'drivers') or [] %}
+{% set driver = drivers | selectattr('racing_number', 'eq', '44') | first | default(none) %}
 {% if driver %}
   {{ driver.name }} is in P{{ driver.current_position }}
 {% endif %}
@@ -310,8 +346,8 @@ Source corrections replace the personal best even when the corrected time is slo
 
 **Get driver's last lap time:**
 ```jinja2
-{% set drivers = state_attr('sensor.f1_driver_positions', 'drivers') %}
-{% set driver = drivers | selectattr('racing_number', 'eq', '1') | first %}
+{% set drivers = state_attr('sensor.f1_driver_positions', 'drivers') or [] %}
+{% set driver = drivers | selectattr('racing_number', 'eq', '1') | first | default(none) %}
 {% if driver and driver.laps %}
   {% set last_lap = driver.completed_laps | string %}
   Last lap: {{ driver.laps.get(last_lap, 'N/A') }}
@@ -320,7 +356,7 @@ Source corrections replace the personal best even when the corrected time is slo
 
 **List all drivers in pit lane:**
 ```jinja2
-{% set drivers = state_attr('sensor.f1_driver_positions', 'drivers') %}
+{% set drivers = state_attr('sensor.f1_driver_positions', 'drivers') or [] %}
 {% for d in drivers if d.status == 'pit_in' %}
   {{ d.tla }} is in the pits
 {% endfor %}
@@ -329,15 +365,15 @@ Source corrections replace the personal best even when the corrected time is slo
 **Show race progress:**
 ```jinja2
 {% set current = states('sensor.f1_driver_positions') %}
-{% set total = state_attr('sensor.f1_driver_positions', 'total_laps') %}
-{% if current != 'unknown' and total %}
+{% set total = state_attr('sensor.f1_driver_positions', 'total_laps') or [] %}
+{% if current not in ['unknown', 'unavailable'] and total is not none %}
   Lap {{ current }} of {{ total }}
 {% endif %}
 ```
 
 **Get position changes from grid:**
 ```jinja2
-{% set drivers = state_attr('sensor.f1_driver_positions', 'drivers') %}
+{% set drivers = state_attr('sensor.f1_driver_positions', 'drivers') or [] %}
 {% for d in drivers %}
   {% set change = d.grid_position | int - d.current_position | int %}
   {{ d.tla }}: {% if change > 0 %}+{% endif %}{{ change }}
@@ -346,7 +382,7 @@ Source corrections replace the personal best even when the corrected time is slo
 
 **Get Q3 qualifying results sorted by position:**
 ```jinja2
-{% set drivers = state_attr('sensor.f1_driver_positions', 'drivers') %}
+{% set drivers = state_attr('sensor.f1_driver_positions', 'drivers') or [] %}
 {% set q3 = drivers | selectattr('q3_time', 'ne', None) | sort(attribute='q3_position') %}
 {% for d in q3 %}
   P{{ d.q3_position }}: {{ d.tla }} — {{ d.q3_time }}
@@ -355,7 +391,7 @@ Source corrections replace the personal best even when the corrected time is slo
 
 **List drivers knocked out in Q1:**
 ```jinja2
-{% set drivers = state_attr('sensor.f1_driver_positions', 'drivers') %}
+{% set drivers = state_attr('sensor.f1_driver_positions', 'drivers') or [] %}
 {% for d in drivers if d.q1_knocked_out %}
   {{ d.tla }} eliminated in Q1 ({{ d.q1_time or 'no time' }})
 {% endfor %}
@@ -363,7 +399,7 @@ Source corrections replace the personal best even when the corrected time is slo
 
 **Show active qualifying segment:**
 ```jinja2
-{% set part = state_attr('sensor.f1_driver_positions', 'current_qualifying_part') %}
+{% set part = state_attr('sensor.f1_driver_positions', 'current_qualifying_part') or [] %}
 {% if part %}
   Q{{ part }} in progress
 {% endif %}
@@ -380,12 +416,11 @@ Sector times (`sector_1`, `sector_2`, `sector_3`) update live as drivers complet
 Gap data (`gap_to_leader` and `interval_to_position_ahead`) comes from public live timing when available. These fields may be `null` or blank outside race/sprint running, at the start of a session, or when the broadcast feed withholds intervals.
 :::
 :::info
-Qualifying segment data (`q1_time`, `q2_time`, `q3_time` and their associated `_knocked_out` and `_position` fields) is only populated during qualifying and sprint shootout sessions. In all other session types these fields are `null`. All 20 drivers are always present regardless of whether they set a time. `q1_knocked_out: true` means the driver did not advance to Q2, and `q2_knocked_out: true` means the driver did not reach Q3.
+Qualifying segment data (`q1_time`, `q2_time`, `q3_time` and their associated `_knocked_out` and `_position` fields) is only populated during qualifying and sprint shootout sessions. In all other session types these fields are `null`. Driver rows include entrants even when they have not set a qualifying time; use the received driver list rather than assuming a fixed grid size. `q1_knocked_out: true` means the driver did not advance to Q2, and `q2_knocked_out: true` means the driver did not reach Q3.
 :::
 
+## Related references
 
-## Next steps
+<span id="next-steps"></span>
 
-- [Browse the entity reference](/reference/overview)
-- [Build an automation](/automation)
-- [Choose a dashboard card](/cards/cards-overview)
+<RelatedReferences id="driver-positions" />

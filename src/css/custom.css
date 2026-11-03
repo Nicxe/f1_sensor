@@ -67,14 +67,23 @@ body { -webkit-font-smoothing: antialiased; }
 a { text-underline-offset: 0.18em; }
 .markdown p a, .markdown li > a, .markdown td a, .markdown dd a { text-decoration: underline; }
 a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visible { outline: 3px solid var(--ifm-color-primary); outline-offset: 4px; }
-.navbar { border-bottom: 1px solid var(--f1-border); padding-inline: 1.6rem; }
+.navbar { --ifm-navbar-search-input-placeholder-color: var(--f1-ink); border-bottom: 1px solid var(--f1-border); padding-inline: 1.6rem; }
 .theme-announcement-bar .close { color: inherit; opacity: 1; }
-.navbar__brand { gap: 0.35rem; }
+.navbar__brand { gap: 0.35rem; flex-shrink: 0; }
+.navbar__title { white-space: nowrap; }
 .navbar__title { font-family: var(--ifm-heading-font-family); font-size: 1.45rem; letter-spacing: 0.035em; }
 .navbar__logo { height: 2rem; }
 .navbar kbd { color: var(--f1-ink); background-color: var(--f1-panel-muted); }
 .navbar__link { font-size: 0.88rem; font-weight: 600; }
 .navbar-version-chip { font-size: 0.7rem; }
+.navbar-channel-menu { font-size: 0.76rem; white-space: nowrap; }
+@media (min-width: 997px) and (max-width: 1199px) {
+  .navbar { --ifm-navbar-item-padding-horizontal: 0.4rem; padding-inline: 1rem; }
+  .navbar__title { font-size: 1.2rem; }
+  .navbar__link { white-space: nowrap; }
+  .navbar .navbar__search-input { width: 7rem; }
+  .navbar .navbar__search kbd { display: none; }
+}
 .theme-doc-sidebar-container { border-right-color: var(--f1-border) !important; }
 .menu { font-size: 0.86rem; padding: 1.2rem 0.8rem !important; }
 .menu__link { padding: 0.45rem 0.65rem; border-radius: 0.2rem; }

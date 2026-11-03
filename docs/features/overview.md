@@ -8,7 +8,7 @@ Choose what you want to do next. Each guide explains the setup, when data is ava
 
 ## Explore the new features
 
-See [What's new](/features/whats-new) for Weekend Hub, Results Archive, Favorite Driver and shared dashboard improvements.
+See [What's new](/features/whats-new) for the unified dashboard card, analysis modules, Historical archive, Favorite Driver and shared dashboard controls.
 
 ## Watch live
 
@@ -23,14 +23,14 @@ See [What's new](/features/whats-new) for Weekend Hub, Results Archive, Favorite
 
 Enable [No Spoiler Mode](/features/no-spoiler-mode) before the session. When the session archive is available, use [Replay Mode](/features/replay-mode) to follow the recording. The [Replay Sync blueprint](/blueprints/replay-sync) can follow your TV's play/pause changes after you align playback.
 
-For published classifications without playback, use [Results Archive](/features/historical-results).
+For published classifications without playback, use [Historical archive](/features/historical-results).
 
 ## Build your race-day setup
 
 - [Build the F1 Sensor card](/cards/cards-overview), from a simple next-race panel to live timing.
 - [Create your first automation](/automation), then use a blueprint for lights or notifications.
 - [Understand incident alerts](/features/incident-detection) and choose conservative notification filters.
-- [Explore Weekend Hub and results](/features/weekend-analysis) for an overview of the session and its history.
+- [Explore session analysis and results](/features/weekend-analysis) for an overview of the session and its history.
 
 ## Find an exact field
 

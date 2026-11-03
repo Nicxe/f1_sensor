@@ -8,44 +8,22 @@ F1 Sensor works with public live timing without a Formula 1 account token. Conne
 
 ## Availability matrix
 
-The live columns describe F1 Sensor's current behavior and the accounts tested during United States FP1 on 23 October and sampled race windows on 25 October 2026. They are observations rather than guaranteed subscription tiers; every live feature also needs Formula 1 to publish suitable data. The tests used separate observation windows, not an uninterrupted recording of every feed for the whole race.
+| You want | Account access | What to expect |
+| --- | --- | --- |
+| Schedules, standings and public live timing | No token | Session status, flags, Race Control, weather, driver timing, tyres and confirmed incident alerts |
+| Extra live features | Connected access plus permission for the feed | Track Map, Pit Stops, Team Radio, Championship Prediction and extra telemetry depend on the account and published session data |
+| Recorded timing with Replay Mode | Accepted Formula 1 account access | A free account worked for the tested archive resources; files and coverage vary by session |
+| Published historical classifications | No F1TV Auth | Use [Historical archive](/features/historical-results); it does not start Replay Mode |
 
-| Feature or data | Without an account token | Free account with accepted token | Paid account with accepted token |
-| --- | --- | --- | --- |
-| Session state, Track Status, Safety Car, Race Control, weather | Public live timing | Public live timing | Public live timing |
-| Driver classification, timing and tyres | Public live timing | Public live timing | Public live timing |
-| Confirmed incident detection | Uses public live timing | Uses public live timing | Uses public live timing |
-| Live Track Map and incident location context | Not available live | Position data not received by the tested account | Fresh position data verified with the tested account |
-| Car telemetry for earlier incident candidates and formation-start refinement | Not available live | Car telemetry not received by the tested account | Fresh car telemetry verified; each feature still needs a suitable session |
-| Team Radio | Connect access to enable it in F1 Sensor | Live clip metadata verified | Published clip metadata received |
-| Pit counts | Public source counts can exist, but the Pit Stops entity and card dataset require connected access | Count updates verified through Home Assistant | Count updates verified through Home Assistant |
-| Pit-lane duration | Connect access to enable Pit Stops in F1 Sensor | Alternative duration feed not tested with this account | One live duration record verified; broad coverage remains unverified |
-| Stationary pit-stop time | Connect access to enable Pit Stops in F1 Sensor | No live `PitStopSeries` details observed | No live `PitStopSeries` details observed |
-| Championship Prediction | Connect access to enable it in F1 Sensor | No feed observed in the sampled race comparison | Prediction data received during the race |
-
-Replay Mode uses archived data separately. A free account has accessed the tested replay resources, including archived telemetry and radio; playback still depends on the selected session's available files.
+For the complete feature-by-feature free/paid comparison, read the [dated availability matrix](/features/f1tv-access-evidence#availability-matrix). Live positions and telemetry were received with the tested paid account and not the tested free account; this is not a guarantee for every paid plan. Pit counts, pit-lane duration and stationary time have separate coverage.
 
 ### What the live checks establish
 
-Public timing delivered fresh updates without a token and with both accounts during practice and the race. Sequential free/paid comparisons received live car telemetry (`CarData.z`) and positions (`Position.z`) only with the tested paid account. During the race, that account also received fresh driver race information (`DriverRaceInfo`) and prediction data (`ChampionshipPrediction`). This supports observed access differences for these accounts and windows; it does not establish a rule for every paid plan or a change introduced on that date.
-
-Team Radio metadata also arrived with the free account. Anonymous live radio metadata was not tested, and the integration continues to request this feed only with connected access. A separate audio-file check succeeded without an account token and with both accounts; that does not establish anonymous access to live radio metadata. Playback through Home Assistant still requires Home Assistant authentication.
-
-Pit counts advanced during the race, but no `PitStopSeries` detail payload was received in the saved comparison windows with either account. This distinction is separate from token health: a count does not establish a stop's lap, stationary time or pit-lane time. The cause of the missing live detail feed remains unverified. See [Pit Stops](/entities/pit-stops) for count semantics and the available fields.
-
-A separate paid-account diagnostic received one `PitLaneTimeCollection` record containing a pit-lane duration and lap. Its duration matched the same event in the later detail archive, but contained no stationary time. Checks across 57 archived stops support that distinction. F1 Sensor uses this feed as a best-effort live [pit-lane-time fallback](/entities/pit-stops#pit-lane-time-during-live-sessions), retaining the observations it receives. The single captured live event does not prove complete live coverage or access with a free or anonymous account.
+[Read the full live observations](/features/f1tv-access-evidence#what-the-live-checks-establish), including quiet feeds, tested windows, radio metadata and partial pit timing. An accepted token alone never proves that a particular feed is available.
 
 ## How F1TV Auth changes live timing
 
-There are three useful access situations to consider:
-
-| Access situation | What to expect |
-| --- | --- |
-| No account token | Public live timing, schedules, standings and confirmed incident alerts continue to work. Formula 1 archive discovery and downloads need connected access. |
-| Free Formula 1 account | Public timing remains available. The tested account also received live radio metadata and accessed published archive resources, but did not receive live car telemetry or positions. |
-| Paid Formula 1 access | Public timing remains available. The tested account also received live car telemetry and positions. Other feeds still depend on account permissions and session publication. |
-
-F1TV Auth is optional for public live timing. If a token is missing, expired, invalid or rejected, F1 Sensor falls back to public live timing. Replay discovery, replay downloads, archive telemetry and archive team radio media need accepted account access.
+Public live timing continues when access is missing, expired, invalid or rejected. Connected access adds requests for extra live feeds and for Formula 1 archive discovery, downloads, telemetry and Team Radio media. Your account still needs permission and the session must publish suitable data.
 
 ## What works without F1TV Auth
 
@@ -59,7 +37,7 @@ Public live timing covers the normal live features most dashboards and automatio
 | Driver timing | Driver list, classification, timing app data, tyres, tyre statistics, top three |
 | Incident detection | Confirmed likely stopped-car or on-track incident alerts from public timing, Track Status, and Race Control context |
 
-The public stream classification is unchanged. Publication varies by session: for example, no lap-count feed was observed during the FP1 checks. A quiet event-driven feed does not by itself mean authentication has failed.
+A quiet event-driven feed does not by itself mean authentication has failed. See the [public-feed observations](/features/f1tv-access-evidence#public-feed-observations) for the tested session limits.
 
 ## What F1TV Auth can add during live sessions
 
@@ -67,26 +45,21 @@ Connected access lets F1 Sensor request additional live feeds for Track Map, Pit
 
 ## Account and access requirements {/* #subscription-requirement */}
 
-Connect your Formula 1 account through the [F1TV Token Helper](/help/f1tv-token-helper). On 21 October 2026, both a free account and a paid account accessed the archive index and the same 18 tested timing streams; the anonymous archive-index request returned 401. A paid subscription was not required for those verified archive resources.
+A free Formula 1 account accessed the tested timing archives, including Replay Mode resources. Live car positions and telemetry arrived only with the tested paid account. These findings do not establish every subscription plan or guarantee every archive file. [Read the dated account and archive checks](/features/f1tv-access-evidence#archive-access-checks).
 
-This is archived timing data, not F1 TV video replay access. It does not guarantee every file for every session: individual post-session `PitStopSeries` requests on 23 and 25 October returned 403, which was inconclusive about publication timing or access. The saved Singapore and United States race detail archives were available for later parser checks on 26 October. This does not identify when they became available or change the earlier live observations. Live feeds and archive files need separate checks. Formula 1 can change access or publication on its unofficial timing API.
+Timing archives do not provide F1 TV video replay access. Formula 1 can change permissions or publication on its unofficial timing API.
 
-:::info
-A locally valid token is not proof that Formula 1 accepts it. An accepted token is not proof of every account permission, and a permitted feed can remain quiet when no relevant data is published.
-Public live timing continues if connected access is missing, expired, invalid or rejected.
+:::info[Three separate checks]
+A locally valid token is not proof that Formula 1 accepts it. An accepted token is not proof of every account permission, and a permitted feed can remain quiet when no relevant data is published. Public live timing continues if connected access is missing, expired, invalid or rejected.
 :::
 
 ## Token Helper and renewal
 
-The recommended way to connect F1TV Auth is the [F1TV Token Helper](/help/f1tv-token-helper). The helper reads a short-lived live timing token from your own browser session and sends it to your own Home Assistant pairing callback.
+[Connect optional F1TV access](/help/f1tv-auth-setup) using the Token Helper. It reads a short-lived token from your own browser session and sends it to your own Home Assistant pairing callback; Home Assistant does not ask for your Formula 1 password.
 
-Home Assistant does not ask for your Formula 1 password. When your token contains a usable Formula 1 session, F1 Sensor automatically requests a replacement as the token enters its final 24 hours. Temporary connection failures are retried automatically. Your browser does not need to stay open. Renewal is best effort and does not guarantee permanent sign-in or uninterrupted access.
+F1 Sensor attempts renewal during the token's final 24 hours while its saved session is usable. Temporary connection failures are retried and your browser can be closed. Renewal is best effort: the observed underlying session lifetime is about 30 days from sign-in and can be revoked earlier. Tokens without a usable session need manual pairing.
 
-The underlying session has an observed lifetime of about 30 days from the original Formula 1 sign-in. Replacing the short-lived token does not extend that session. Formula 1 can also revoke it earlier. When the session can no longer renew access, Home Assistant shows a repair that leads you back to Token Helper. Tokens without a usable session continue to use manual pairing.
-
-The integration can check locally that a JWT is well-formed and unexpired. This does not prove that the token is authentic. F1TV access is confirmed only after Formula 1 accepts it during an upstream request; receiving a particular live feed is a further check.
-
-For the practical setup workflow, see [F1TV Auth Setup](/help/f1tv-auth-setup).
+See [token lifetime, status and renewal controls](/help/f1tv-auth-setup#step-3---understand-token-lifetime) for the complete workflow and authenticity checks.
 
 ## Privacy and safety
 

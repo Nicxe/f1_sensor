@@ -18,7 +18,7 @@ Combine analysis modules in the [F1 Sensor card](/cards/cards-overview) to move 
 ## Build an analysis card
 
 1. Add an **F1 Sensor** card with **Build your own**, or edit an existing card.
-2. Add **Overview** for session and track status.
+2. Add **Overview** for session and track status. Use the [Timing guide](/cards/timing) when you also want live sectors, push laps or driver details.
 3. Add the analysis modules that answer your questions: **Session timeline**, **Strategy analysis**, **Battles and position changes**, **Lap history chart**, **Track map** or **Replay telemetry**.
 4. Add **Race Control** for official messages and **Results** for published classifications.
 5. Under **Layout and shared focus**, choose the source and an optional driver or team.

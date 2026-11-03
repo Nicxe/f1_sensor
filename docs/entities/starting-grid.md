@@ -4,21 +4,21 @@ title: "Starting Grid"
 description: "Provisional or confirmed Sprint/Race starting grid \u2014 state, attributes, and examples for F1 Sensor."
 ---
 
-Provisional or confirmed Sprint/Race starting grid. Use `sensor.f1_starting_grid` in dashboards, templates, and automations.
+import {EntityMeta, RelatedReferences, FlowSteps} from '@site/src/components/Docs';
 
-See [live data availability](/entities/live-data#availability-model) for session and data-source requirements. The details below describe any additional conditions for this entity.
+Provisional or confirmed Sprint/Race starting grid.
 
-:::info[Find your entity]
-These are standard entity IDs. If Home Assistant assigned a different ID, or you renamed an entity, use your existing ID in the examples.
-:::
+<EntityMeta id="starting-grid" />
 
-## State and attributes
+<span id="state-and-attributes"></span>
 
 `sensor.f1_starting_grid` - Current weekend starting grid for the next relevant Sprint or Race. The sensor keeps old grid data from previous weekends from appearing as current data, and clears the grid when the related start is no longer relevant.
 
 On a normal race weekend, the sensor builds a Race grid from Qualifying. On a sprint weekend, it first builds a Sprint grid from Sprint Qualifying, then clears that grid after the Sprint and builds the Race grid from Qualifying.
 
-**State (enum)**
+## State
+
+State type: enum.
 - One of: `waiting_for_sprint_qualifying`, `waiting_for_qualifying`, `collecting`, `provisional`, `confirmed`, `unavailable`, `completed`.
 
 | Value | Description |
@@ -61,6 +61,15 @@ Archive data is only used while there is still a relevant upcoming Sprint or Rac
 
 ### Weekend flow
 
+These steps illustrate the usual order. The state table above includes waiting, collecting and unavailable states; it remains the complete reference for interpreting the entity.
+
+<FlowSteps label="Normal weekend overview" steps={[
+  {title: 'Qualifying', description: 'Wait for qualifying, then collect its timing.'},
+  {title: 'Provisional grid', description: 'Build the race grid from qualifying order.'},
+  {title: 'Confirmed grid', description: 'Use unambiguous Race grid-position data when it arrives.'},
+  {title: 'Race completed', description: 'Clear the active grid after the race finishes.'},
+]} />
+
 On a normal weekend, the expected flow is `waiting_for_qualifying` → `collecting` → `provisional` → `confirmed` → `completed`.
 
 On a sprint weekend, the expected flow is `waiting_for_sprint_qualifying` → `collecting` → `provisional` → `confirmed` for the Sprint. After the Sprint finishes, the Sprint grid is cleared and the sensor moves to `waiting_for_qualifying` for the Race grid. After the Race finishes, the sensor moves to `completed`.
@@ -69,7 +78,7 @@ When a new race weekend is detected, the sensor clears the previous grid, resets
 
 If Home Assistant first connects after a Sprint or Race has started and the live feed contains duplicate grid positions, the sensor checks the session's pre-start timing history once. It returns to `confirmed` only when that history resolves the duplicate. If the history is unavailable or inconclusive, the sensor stays `unavailable` until the live feed provides an unambiguous grid.
 
-**Attributes**
+## Attributes
 
 | Attribute | Type | Description |
 | --- | --- | --- |
@@ -88,7 +97,7 @@ If Home Assistant first connects after a Sprint or Race has started and the live
 | grid_count | number | Number of drivers in the grid |
 | grid | list | Ordered starting grid rows |
 
-Each entry in `grid` contains:
+### `grid` entries
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -113,9 +122,8 @@ Each entry in `grid` contains:
 The grid is provisional when it is built from qualifying timing and confirmed when final starting grid data becomes available. The `grid` attribute is marked as unrecorded to avoid storing large race-weekend data in the Home Assistant recorder.
 :::
 
+## Related references
 
-## Next steps
+<span id="next-steps"></span>
 
-- [Browse the entity reference](/reference/overview)
-- [Build an automation](/automation)
-- [Choose a dashboard card](/cards/cards-overview)
+<RelatedReferences id="starting-grid" />

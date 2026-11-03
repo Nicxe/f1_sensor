@@ -22,6 +22,36 @@ _LOGGER = logging.getLogger(__name__)
 
 StreamPayload = Any
 
+
+def timing_source_payload(
+    stream: str,
+    payload: StreamPayload,
+    *,
+    source_utc: object = None,
+    source_time: float | None = None,
+    snapshot: bool = False,
+) -> StreamPayload:
+    """Attach event time to timing inference without changing provider objects."""
+    if stream not in {"TimingData", "Heartbeat"} or not isinstance(payload, dict):
+        return payload
+    metadata: dict[str, Any] = {}
+    if isinstance(source_utc, str):
+        try:
+            timestamp = dt.datetime.fromisoformat(source_utc.replace("Z", "+00:00"))
+        except ValueError:
+            pass
+        else:
+            if timestamp.tzinfo is None:
+                timestamp = timestamp.replace(tzinfo=dt.UTC)
+            metadata["_f1_source_utc"] = timestamp.astimezone(dt.UTC).isoformat()
+            metadata["_f1_source_time"] = timestamp.timestamp()
+    if source_time is not None:
+        metadata["_f1_source_time"] = source_time
+    if snapshot and stream == "TimingData":
+        metadata["_f1_snapshot"] = True
+    return {**payload, **metadata} if metadata else payload
+
+
 NEGOTIATE_URL = "https://livetiming.formula1.com/signalr/negotiate"
 CONNECT_URL = "wss://livetiming.formula1.com/signalr/connect"
 HUB_DATA = '[{"name":"Streaming"}]'
@@ -782,7 +812,12 @@ class LiveBus:
                 stream, data = args[0], args[1]
                 if not isinstance(stream, str) or data is None:
                     continue
-                self._dispatch(stream, data)
+                self._dispatch(
+                    stream,
+                    timing_source_payload(
+                        stream, data, source_utc=args[2] if len(args) > 2 else None
+                    ),
+                )
                 meaningful = True
         result = payload.get("R")
         if isinstance(result, dict):
@@ -793,7 +828,9 @@ class LiveBus:
             ):
                 if not isinstance(stream, str) or data is None:
                     continue
-                self._dispatch(stream, data)
+                self._dispatch(
+                    stream, timing_source_payload(stream, data, snapshot=True)
+                )
                 meaningful = True
         return meaningful
 

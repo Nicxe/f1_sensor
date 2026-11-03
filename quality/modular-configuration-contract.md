@@ -299,7 +299,7 @@ Dessa exempel är tekniska verifieringsexempel. Användaren ska kunna göra mots
 | Återställning av gammalt kort | Migrationstester; full täckning av alla gamla alternativ är fortfarande F2 |
 | Exempel och aktuell katalogbilaga | Exempel normaliseras och import/export-kontrolleras mot koden; bilagans modulregister jämförs med samma katalog |
 
-Testerna bevisar de kontrollerade beteendena, inte att alla användarflöden, appar, enheter eller verkliga livehelger är godkända. Det aktuella verifieringsresultatet finns i [genomförandeloggen](modular-card-development.md).
+Testerna bevisar de kontrollerade beteendena, inte att alla användarflöden, appar, enheter eller verkliga livehelger är godkända. Verifieringskommandon och hur resultaten ska bedömas beskrivs i [bidragsguiden](../CONTRIBUTING.md#automated-checks).
 
 ## 12. Katalogbilaga för version 3
 
