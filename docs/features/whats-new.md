@@ -6,6 +6,8 @@ description: Discover the unified F1 Sensor dashboard card, its presets, modules
 
 F1 Sensor now provides one configurable dashboard card for the complete Formula 1 experience. The **F1 Sensor** card combines weekend planning, live timing, officials' messages, results, replay and analysis in a visual editor.
 
+Check your installed version and the documentation channel before following a new feature: [stable and beta documentation](/getting-started/release-channels#documentation-previews) can describe different release content.
+
 After updating F1 Sensor, restart Home Assistant and reload the dashboard to load the matching card files. See [card installation and updates](/cards/installation) if the card or an option is missing.
 
 ## Start with one card
@@ -23,9 +25,9 @@ Add **F1 Sensor** from the Home Assistant card picker and choose one of six pres
 
 Presets are editable starting points. All use `custom:f1-sensor-card` and the same editor.
 
-## Combine 20 modules
+## Combine modules {/* #combine-20-modules */}
 
-The card includes modules for Overview, Schedule, Timing, Race Control, Results, Championship, Historical archive, Replay, Replay telemetry, Lap history chart, Season progression, FIA documents, Track map, Battles and position changes, Strategy analysis, Session timeline, Tyres, Pit stops, Incidents and Weather.
+The card includes modules for Overview, Schedule, Timing, Race Control, Team Radio (experimental), Minisectors, Results, Championship, Historical archive, Replay, Replay telemetry, Lap history chart, Season progression, FIA documents, Track map, Battles and position changes, Strategy analysis, Session timeline, Tyres, Pit stops, Incidents and Weather.
 
 Modules can be reordered, duplicated, disabled or limited to selected session phases. They can inherit the card's driver, team and session focus or keep independent choices.
 
@@ -42,7 +44,7 @@ The visual editor now covers:
 - unavailable-data behavior, retained readings and Freeze view
 - reusable templates and complete JSON export/import
 
-See [Build your F1 Sensor card](/cards/modular) for the full workflow.
+See [Build your F1 Sensor card](/cards/modular) for the full workflow, [focused module guides](/cards/modular#choose-the-information-you-want) for detailed behavior and [shared settings](/cards/shared-options) for exact card-wide controls.
 
 ## Move an existing dashboard
 

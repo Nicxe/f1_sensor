@@ -4,15 +4,13 @@ title: "Race Three Hour Limit"
 description: "Time remaining until the FIA 3-hour race duration cap (beta) \u2014 state, attributes, and examples for F1 Sensor."
 ---
 
-Time remaining until the FIA 3-hour race duration cap (beta). Use `sensor.f1_race_time_to_three_hour_limit` in dashboards, templates, and automations.
+import {EntityMeta, RelatedReferences} from '@site/src/components/Docs';
 
-See [live data availability](/entities/live-data#availability-model) for session and data-source requirements. The details below describe any additional conditions for this entity.
+Time remaining until the FIA 3-hour race duration cap (beta).
 
-:::info[Find your entity]
-These are standard entity IDs. If Home Assistant assigned a different ID, or you renamed an entity, use your existing ID in the examples.
-:::
+<EntityMeta id="race-three-hour-limit" />
 
-## State and attributes
+<span id="state-and-attributes"></span>
 
 :::warning[Beta]
 This sensor is currently in beta. The behavior has not been verified across all edge cases and timing scenarios. Treat the values as indicative rather than definitive until further testing is complete.
@@ -22,7 +20,8 @@ This sensor is currently in beta. The behavior has not been verified across all 
 
 This sensor counts down to three hours after the recorded race start, independently of the session clock. It is a timing aid and does not predict the final lap or an official decision about when the race will end.
 
-**State**
+## State
+
 - String: remaining time formatted as `H:MM:SS` (e.g., `2:14:30`), or `unavailable` when no data is available or outside the main race.
 
 **Example**
@@ -30,7 +29,7 @@ This sensor counts down to three hours after the recorded race start, independen
 2:14:30
 ```
 
-**Attributes**
+## Attributes
 
 | Attribute | Type | Description |
 | --- | --- | --- |
@@ -52,9 +51,8 @@ This sensor counts down to three hours after the recorded race start, independen
 This sensor is only available during the main race session. It becomes unavailable during practice, qualifying, and sprint sessions.
 :::
 
+## Related references
 
-## Next steps
+<span id="next-steps"></span>
 
-- [Browse the entity reference](/reference/overview)
-- [Build an automation](/automation)
-- [Choose a dashboard card](/cards/cards-overview)
+<RelatedReferences id="race-three-hour-limit" />

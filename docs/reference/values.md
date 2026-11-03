@@ -6,8 +6,7 @@ description: "Look up F1 Sensor track flags, session phases, tyre compounds, and
 
 Use this section to understand the possible values for enum-type states and attributes across all live data sensors.
 
-<details>
-<summary>Tyre Compounds</summary>
+## Tyre Compounds
 
 | Value | Short | Color | Description |
 | --- | --- | --- | --- |
@@ -17,10 +16,8 @@ Use this section to understand the possible values for enum-type states and attr
 | `INTERMEDIATE` | I | `#00FF00` (green) | Intermediate - light rain conditions |
 | `WET` | W | `#0000FF` (blue) | Full wet - heavy rain conditions |
 
-</details>
 
-<details>
-<summary>Track Status</summary>
+## Track Status
 
 | Value | Description |
 | --- | --- |
@@ -30,10 +27,8 @@ Use this section to understand the possible values for enum-type states and attr
 | `SC` | Safety Car deployed |
 | `RED` | Red flag - session stopped |
 
-</details>
 
-<details>
-<summary>Session Status</summary>
+## Session Status
 
 | Value | Description |
 | --- | --- |
@@ -47,10 +42,8 @@ Use this section to understand the possible values for enum-type states and attr
 
 **Typical transition flow:** `pre` → `live` → `suspended` ↔ `live` → `finished` → `finalised` → `ended`
 
-</details>
 
-<details>
-<summary>Current Session Types</summary>
+## Current Session Types
 
 | Value | Description |
 | --- | --- |
@@ -63,10 +56,8 @@ Use this section to understand the possible values for enum-type states and attr
 | `Race` | Main race |
 | `unknown` | Session type not determined |
 
-</details>
 
-<details>
-<summary>Live Timing Mode</summary>
+## Live Timing Mode
 
 | Value | Description |
 | --- | --- |
@@ -74,10 +65,8 @@ Use this section to understand the possible values for enum-type states and attr
 | `live` | Connected to live F1 timing feed |
 | `replay` | Playing back recorded session data |
 
-</details>
 
-<details>
-<summary>Driver Status (in driver_positions)</summary>
+## Driver Status (in driver_positions)
 
 | Value | Description |
 | --- | --- |
@@ -86,10 +75,8 @@ Use this section to understand the possible values for enum-type states and attr
 | `pit_out` | Driver has just exited pits |
 | `out` | Driver has retired or stopped |
 
-</details>
 
-<details>
-<summary>Straight Mode (2026 regulation)</summary>
+## Straight Mode (2026 regulation)
 
 | Value | Description |
 | --- | --- |
@@ -97,7 +84,6 @@ Use this section to understand the possible values for enum-type states and attr
 | `low_grip` | Restricted aerodynamic configuration on straight sections |
 | `disabled` | Straight mode system is not active |
 
-</details>
 
 
 ## Related references

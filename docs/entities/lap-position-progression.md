@@ -4,19 +4,17 @@ title: "Lap Position Progression"
 description: "Post-race lap position progression \u2014 state, attributes, and examples for F1 Sensor."
 ---
 
-Post-race lap position progression. Use `sensor.f1_lap_position_progression` in dashboards, templates, and automations.
+import {EntityMeta, RelatedReferences} from '@site/src/components/Docs';
 
-This reference covers the state and attributes. For setup, see [Configuration](/getting-started/add-integration).
+Post-race lap position progression.
 
-:::info[Find your entity]
-These are standard entity IDs. If Home Assistant assigned a different ID, or you renamed an entity, use your existing ID in the examples.
-:::
+<EntityMeta id="lap-position-progression" />
 
-## State and attributes
+<span id="state-and-attributes"></span>
 
 `sensor.f1_lap_position_progression` - Lightweight post-race session metadata for the bundled lap position chart.
 
-**State**
+## State
 
   - Integer: number of sessions included in the attributes. This includes race sessions that can be loaded on demand and sprint sessions that are explicitly marked `unsupported`.
 
@@ -25,7 +23,7 @@ These are standard entity IDs. If Home Assistant assigned a different ID, or you
 18
 ```
 
-**Attributes**
+## Attributes
 
 | Attribute | Type | Description |
 | --- | --- | --- |
@@ -37,7 +35,7 @@ These are standard entity IDs. If Home Assistant assigned a different ID, or you
 | session_data_type | string | WebSocket command type used by the bundled card: `f1_sensor/lap_position/session` |
 | sessions | list | Race and sprint session metadata for the current season |
 
-Each entry in `sessions` contains:
+### `sessions` entries
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -65,9 +63,8 @@ The `sessions` attribute is intentionally metadata-only and is excluded from Hom
 Use the **Historical archive** module in the [F1 Sensor card](/cards/cards-overview) with its **Lap position** view to show a native post-race position chart without installing another chart card.
 :::
 
+## Related references
 
-## Next steps
+<span id="next-steps"></span>
 
-- [Browse the entity reference](/reference/overview)
-- [Build an automation](/automation)
-- [Choose a dashboard card](/cards/cards-overview)
+<RelatedReferences id="lap-position-progression" />

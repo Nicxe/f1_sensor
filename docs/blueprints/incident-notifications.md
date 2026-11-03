@@ -18,6 +18,23 @@ For notifications to arrive at the right moment, configure [Live Delay](/feature
 
 ---
 
+## Requirements
+
+- F1 Sensor integration installed with live data enabled
+- At least one notification service available in Home Assistant
+- The `f1_sensor_incident` event available during live or replay sessions
+
+---
+
+## First working notification
+
+1. Import the blueprint and create an automation.
+2. Configure one notification service or notify entity target.
+3. Keep the default medium/high confidence, Race/Sprint/Qualifying and candidate-off filters for your first setup.
+4. Save, then check the automation trace after a matching incident event. No notification is expected before an event passes the filters.
+
+Optional presence, TV and quiet-hour conditions are explained after the core setup.
+
 ## Import the blueprint
 
 [![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2FNicxe%2Ff1_sensor%2Fmain%2Fblueprints%2Ff1_incident_notifications.yaml)
@@ -30,13 +47,6 @@ https://raw.githubusercontent.com/Nicxe/f1_sensor/main/blueprints/f1_incident_no
 
 ---
 
-## Requirements
-
-- F1 Sensor integration installed with live data enabled
-- At least one notification service available in Home Assistant
-- The `f1_sensor_incident` event available during live or replay sessions
-
----
 
 ## Step-by-step setup
 

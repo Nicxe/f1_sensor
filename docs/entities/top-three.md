@@ -4,19 +4,18 @@ title: "Top Three"
 description: "Dedicated sensors for current P1, P2 and P3 \u2014 state, attributes, and examples for F1 Sensor."
 ---
 
-Dedicated sensors for current P1, P2 and P3. Use `sensor.f1_top_three_p1`, `sensor.f1_top_three_p2`, and `sensor.f1_top_three_p3` in dashboards, templates, and automations.
+import {EntityMeta, RelatedReferences} from '@site/src/components/Docs';
 
-See [live data availability](/entities/live-data#availability-model) for session and data-source requirements. The details below describe any additional conditions for this entity.
+Dedicated sensors for current P1, P2 and P3.
 
-:::info[Find your entity]
-These are standard entity IDs. If Home Assistant assigned a different ID, or you renamed an entity, use your existing ID in the examples.
-:::
+<EntityMeta id="top-three" />
 
-## State and attributes
+<span id="state-and-attributes"></span>
 
 Three dedicated sensors for the current P1, P2, and P3 positions: `sensor.f1_top_three_p1`, `sensor.f1_top_three_p2`, and `sensor.f1_top_three_p3`.
 
-**State**
+## State
+
 - Driver TLA code (e.g., "VER", "HAM", "NOR"), or `unknown` when data is withheld or unavailable.
 
 **Example**
@@ -24,7 +23,7 @@ Three dedicated sensors for the current P1, P2, and P3 positions: `sensor.f1_top
 VER
 ```
 
-**Attributes**
+## Attributes
 
 | Attribute | Type | Description |
 | --- | --- | --- |
@@ -47,9 +46,8 @@ VER
 Available during qualifying, sprint, and race sessions. When the broadcast withholds position data (common at session start), the `withheld` attribute will be `true` and the state will be `unknown`.
 :::
 
+## Related references
 
-## Next steps
+<span id="next-steps"></span>
 
-- [Browse the entity reference](/reference/overview)
-- [Build an automation](/automation)
-- [Choose a dashboard card](/cards/cards-overview)
+<RelatedReferences id="top-three" />

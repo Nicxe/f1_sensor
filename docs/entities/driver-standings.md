@@ -4,24 +4,21 @@ title: "Driver Standings"
 description: "Current driver championship standings \u2014 state, attributes, and examples for F1 Sensor."
 ---
 
+import {EntityMeta, RelatedReferences} from '@site/src/components/Docs';
+
 :::info[Collection and sensor choices]
 Keep every entity used by templates, older cards and automations selected. Automatic card data does not recreate a removed automation entity. Existing installations keep their sensor choices and continue entity updates and F1 event delivery after upgrading. See [Automatic card data and optional sensors](/features/card-data-and-sensors).
 :::
 
+Current driver championship standings.
 
-Current driver championship standings. Use `sensor.f1_driver_standings` in dashboards, templates, and automations.
+<EntityMeta id="driver-standings" />
 
-This reference covers the state and attributes. For setup, see [Configuration](/getting-started/add-integration).
+<span id="state-and-attributes"></span>
 
-:::info[Find your entity]
-These are standard entity IDs. If Home Assistant assigned a different ID, or you renamed an entity, use your existing ID in the examples.
-:::
+`sensor.f1_driver_standings` - Driver standings snapshot from Jolpica's Ergast-compatible API.
 
-## State and attributes
-
-`sensor.f1_driver_standings` - Driver standings snapshot from Ergast.
-
-**State**
+## State
 
 - Integer: number of drivers in the standings list.
 
@@ -30,7 +27,7 @@ These are standard entity IDs. If Home Assistant assigned a different ID, or you
 20
 ```
 
-**Attributes**
+## Attributes
 
 | Attribute | Type | Description |
 | --- | --- | --- |
@@ -38,7 +35,7 @@ These are standard entity IDs. If Home Assistant assigned a different ID, or you
 | round | string | Round of the standings snapshot |
 | driver_standings | list | Ergast "DriverStandings" array |
 
-Each entry in `driver_standings` contains:
+### `driver_standings` entries
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -49,7 +46,7 @@ Each entry in `driver_standings` contains:
 | Driver | object | Driver information |
 | Constructors | list | List of constructor(s) the driver has raced for |
 
-The `Driver` object contains:
+### `Driver` object
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -62,7 +59,7 @@ The `Driver` object contains:
 | dateOfBirth | string | Date of birth (YYYY-MM-DD) |
 | nationality | string | Nationality |
 
-Each entry in `Constructors` contains:
+### `Constructors` entries
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -70,6 +67,8 @@ Each entry in `Constructors` contains:
 | url | string | Wikipedia URL |
 | name | string | Team name |
 | nationality | string | Team nationality |
+
+## Examples
 
 <details>
 <summary>JSON Structure Example</summary>
@@ -138,7 +137,7 @@ Each entry in `Constructors` contains:
 
 **Get championship leader:**
 ```jinja2
-{% set standings = state_attr('sensor.f1_driver_standings', 'driver_standings') %}
+{% set standings = state_attr('sensor.f1_driver_standings', 'driver_standings') or [] %}
 {% if standings and standings | length > 0 %}
   {% set leader = standings[0] %}
   Leader: {{ leader.Driver.givenName }} {{ leader.Driver.familyName }} ({{ leader.points }} pts)
@@ -147,8 +146,8 @@ Each entry in `Constructors` contains:
 
 **Get a specific driver's position:**
 ```jinja2
-{% set standings = state_attr('sensor.f1_driver_standings', 'driver_standings') %}
-{% set ver = standings | selectattr('Driver.code', 'eq', 'VER') | first %}
+{% set standings = state_attr('sensor.f1_driver_standings', 'driver_standings') or [] %}
+{% set ver = standings | selectattr('Driver.code', 'eq', 'VER') | first | default(none) %}
 {% if ver %}
   VER is P{{ ver.position }} with {{ ver.points }} points and {{ ver.wins }} wins
 {% endif %}
@@ -156,7 +155,7 @@ Each entry in `Constructors` contains:
 
 **Calculate points gap to leader:**
 ```jinja2
-{% set standings = state_attr('sensor.f1_driver_standings', 'driver_standings') %}
+{% set standings = state_attr('sensor.f1_driver_standings', 'driver_standings') or [] %}
 {% if standings and standings | length > 1 %}
   {% set leader_pts = standings[0].points | int %}
   {% set second_pts = standings[1].points | int %}
@@ -166,7 +165,7 @@ Each entry in `Constructors` contains:
 
 **List top 5 drivers:**
 ```jinja2
-{% set standings = state_attr('sensor.f1_driver_standings', 'driver_standings') %}
+{% set standings = state_attr('sensor.f1_driver_standings', 'driver_standings') or [] %}
 {% for d in standings[:5] %}
   P{{ d.position }}: {{ d.Driver.code }} - {{ d.points }} pts
 {% endfor %}
@@ -174,8 +173,8 @@ Each entry in `Constructors` contains:
 
 **Get driver by car number:**
 ```jinja2
-{% set standings = state_attr('sensor.f1_driver_standings', 'driver_standings') %}
-{% set driver = standings | selectattr('Driver.permanentNumber', 'eq', '44') | first %}
+{% set standings = state_attr('sensor.f1_driver_standings', 'driver_standings') or [] %}
+{% set driver = standings | selectattr('Driver.permanentNumber', 'eq', '44') | first | default(none) %}
 {% if driver %}
   #44 {{ driver.Driver.familyName }} is P{{ driver.position }}
 {% endif %}
@@ -183,9 +182,8 @@ Each entry in `Constructors` contains:
 
 </details>
 
+## Related references
 
-## Next steps
+<span id="next-steps"></span>
 
-- [Browse the entity reference](/reference/overview)
-- [Build an automation](/automation)
-- [Choose a dashboard card](/cards/cards-overview)
+<RelatedReferences id="driver-standings" />

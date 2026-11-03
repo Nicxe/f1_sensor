@@ -4,15 +4,13 @@ title: "Session Time Elapsed"
 description: "Time elapsed in the current session (beta) \u2014 state, attributes, and examples for F1 Sensor."
 ---
 
-Time elapsed in the current session (beta). Use `sensor.f1_session_time_elapsed` in dashboards, templates, and automations.
+import {EntityMeta, RelatedReferences} from '@site/src/components/Docs';
 
-See [live data availability](/entities/live-data#availability-model) for session and data-source requirements. The details below describe any additional conditions for this entity.
+Time elapsed in the current session (beta).
 
-:::info[Find your entity]
-These are standard entity IDs. If Home Assistant assigned a different ID, or you renamed an entity, use your existing ID in the examples.
-:::
+<EntityMeta id="session-time-elapsed" />
 
-## State and attributes
+<span id="state-and-attributes"></span>
 
 :::warning[Beta]
 This sensor is currently in beta. The behavior has not been verified across all session types, edge cases (red flags, suspensions, qualifying segments), and timing scenarios. Treat the values as indicative rather than definitive until further testing is complete.
@@ -20,7 +18,8 @@ This sensor is currently in beta. The behavior has not been verified across all 
 
 `sensor.f1_session_time_elapsed` - How much of the scheduled session time has passed, based on the F1 ExtrapolatedClock feed. The value follows the available session clock and its running flag. A Safety Car alone does not imply that this clock pauses; check `clock_running` and `clock_phase`.
 
-**State**
+## State
+
 - String: elapsed time formatted as `H:MM:SS` (e.g., `0:23:45`), or `unavailable` when no data is available.
 
 **Example**
@@ -28,7 +27,7 @@ This sensor is currently in beta. The behavior has not been verified across all 
 0:23:45
 ```
 
-**Attributes**
+## Attributes
 
 | Attribute | Type | Description |
 | --- | --- | --- |
@@ -56,9 +55,8 @@ This sensor is currently in beta. The behavior has not been verified across all 
 | `sessiondata_fallback` | Elapsed time estimated from session schedule data, not from the live clock feed |
 | `unavailable` | No usable timing data available |
 
+## Related references
 
-## Next steps
+<span id="next-steps"></span>
 
-- [Browse the entity reference](/reference/overview)
-- [Build an automation](/automation)
-- [Choose a dashboard card](/cards/cards-overview)
+<RelatedReferences id="session-time-elapsed" />

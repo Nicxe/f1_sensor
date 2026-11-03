@@ -10,7 +10,7 @@ Bring Formula 1 schedules, results and live timing into Home Assistant. Start wi
 
 1. **Install** F1 Sensor and restart Home Assistant.
 2. **Configure** the data you want to use.
-3. **Build** your first dashboard with the included cards.
+3. **Build** your first dashboard with the included card.
 
 ## Step 1 - Install the integration
 
@@ -50,9 +50,11 @@ After restarting, open **Settings → Devices & services → Add integration** a
 
 [![Start F1 Sensor configuration](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start?domain=f1_sensor)
 
-## Step 3 - Select which sensors to create
+## Step 3 - Choose your data needs {/* #step-3---select-which-sensors-to-create */}
 
-For a first dashboard, include **Next race** and weather. Enable live data when you want timing, flags or live automations. You can change this selection later through **Settings → Devices & services → F1 Sensor → Reconfigure**.
+For the included modular dashboard card, add the modules you want; their data is automatic and does not require matching sensor entities. Start with the **Race weekend** preset in [Your first dashboard](/getting-started/first-dashboard).
+
+Keep sensors selected when you use them in automations, templates, standard cards or older F1 cards. Enable **Enable live F1 API** for live timing, flags and live automations. You can change settings later through **Settings → Devices & services → F1 Sensor → Reconfigure**; [configuration](/getting-started/add-integration) explains the choices.
 
 ![The Reconfigure action for F1 Sensor in Home Assistant](/img/reconfigure.png)
 
@@ -62,7 +64,7 @@ F1TV pairing is optional. See [what works with each data mode](/features/f1tv-au
 
 ## Done
 
-Open the integration and check that its devices and selected entities appear. Schedule data should be useful even when no session is running; live entities can wait until the next session.
+Open the integration and check its devices and any selected entities. The Race weekend dashboard can show schedule data even when no session is running; live data can wait until the next session.
 
 The F1 Sensor dashboard card is included and registered automatically. Continue with **[Your first dashboard](/getting-started/first-dashboard)**.
 

@@ -54,7 +54,7 @@ The rest of the integration can still use network-based schedule and static data
 | Is it available in normal releases? | Yes | Hidden unless the developer interface is enabled |
 
 :::info[Replay controls are separate]
-The F1 Replay Control card and `media_player.f1_replay_player` control normal Replay Mode. They do not pause, seek, or stop a local Developer mode dump.
+The **Replay** module and `media_player.f1_replay_player` control normal Replay Mode. They do not pause, seek, or stop a local Developer mode dump.
 :::
 
 ## Replay dump requirements

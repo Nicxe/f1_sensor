@@ -4,19 +4,17 @@ title: "Next Race Weather"
 description: "Native current conditions and forecasts for the next race circuit \u2014 state, attributes, and examples for F1 Sensor."
 ---
 
-Native current conditions and forecasts for the next race circuit. Use `weather.f1_weather` in dashboards, templates, and automations.
+import {EntityMeta, RelatedReferences} from '@site/src/components/Docs';
 
-This reference covers the state and attributes. For setup, see [Configuration](/getting-started/add-integration).
+Native current conditions and forecasts for the next race circuit.
 
-:::info[Find your entity]
-These are standard entity IDs. If Home Assistant assigned a different ID, or you renamed an entity, use your existing ID in the examples.
-:::
+<EntityMeta id="next-race-weather" />
 
-## State and attributes
+<span id="state-and-attributes"></span>
 
 `weather.f1_weather` provides current conditions and native forecasts for the circuit hosting the next race. Its display name includes the circuit and city when both are available, and it updates when the next race destination changes.
 
-**State**
+## State
 
 - Home Assistant weather condition, such as `sunny`, `cloudy`, `rainy`, or `lightning-rainy`.
 
@@ -30,7 +28,7 @@ partlycloudy
 
 The entity supports Home Assistant's hourly, daily, and twice-daily forecast types. Forecast values use your Home Assistant unit preferences when displayed in the UI.
 
-**Attributes**
+## Attributes
 
 | Attribute | Type | Description |
 | --- | --- | --- |
@@ -55,9 +53,8 @@ The entity supports Home Assistant's hourly, daily, and twice-daily forecast typ
 The existing `sensor.f1_weather` remains available for backward compatibility and for the F1 Sensor card's Weather modules.
 :::
 
+## Related references
 
-## Next steps
+<span id="next-steps"></span>
 
-- [Browse the entity reference](/reference/overview)
-- [Build an automation](/automation)
-- [Choose a dashboard card](/cards/cards-overview)
+<RelatedReferences id="next-race-weather" />

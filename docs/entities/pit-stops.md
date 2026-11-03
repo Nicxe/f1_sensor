@@ -4,15 +4,13 @@ title: "Pit Stops"
 description: "Reported pit counts, available stop times and their limits during live timing and Replay Mode."
 ---
 
+import {EntityMeta, RelatedReferences} from '@site/src/components/Docs';
+
 Follow reported pit counts and available stop times for each car. Use `sensor.f1_pitstops` in dashboards, templates, and automations, or add the **Pit stops** module to the [F1 Sensor card](/cards/modular#show-pit-stops).
 
-See [live data availability](/entities/live-data#availability-model) for session and data-source requirements. The details below describe any additional conditions for this entity.
+<EntityMeta id="pit-stops" />
 
-:::info[Find your entity]
-These are standard entity IDs. If Home Assistant assigned a different ID, or you renamed an entity, use your existing ID in the examples.
-:::
-
-## State and attributes
+<span id="state-and-attributes"></span>
 
 :::info[Replay Mode or F1TV Auth live timing]
 This entity stays registered in Home Assistant. It updates in [Replay Mode](/features/replay-mode) and can update during live sessions when [F1TV Auth](/features/f1tv-auth) is paired with a valid token and live pit stop data is available.
@@ -22,7 +20,7 @@ Counts and detailed stops are separate. Public timing can contain per-driver pit
 
 `sensor.f1_pitstops` - Reported pit counts and available stop records from F1 Live Timing, grouped by car.
 
-**State**
+## State
 
 - Integer: total reported pit count for the current session. A pit entry can increase this count before a timed stop record is available.
 - `0`: no count or detail records have been accumulated in the ready dataset. This alone does not prove that no real pit visits occurred.
@@ -33,14 +31,14 @@ Counts and detailed stops are separate. Public timing can contain per-driver pit
 7
 ```
 
-**Attributes**
+## Attributes
 
 | Attribute | Type | Description |
 | --- | --- | --- |
 | cars | object | Map of racing numbers to reported counts and available stop records |
 | last_update | string or null | ISO-8601 time when Home Assistant last delivered this dataset, including count-only updates; not the time of a pit event |
 
-Each entry in `cars` (keyed by racing number) contains:
+### `cars` entries (keyed by racing number)
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -50,7 +48,7 @@ Each entry in `cars` (keyed by racing number) contains:
 | count | number | Reported pit count, or the number of retained detail records if larger; not a count of verified stationary services |
 | stops | list | Available stop records; at most the ten most recent records per car are retained |
 
-Each entry in `stops` contains:
+### `stops` entries
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -91,9 +89,8 @@ During the sampled United States race windows on 25 October 2026, reported count
 
 The saved Singapore and United States race archives contain 25 and 32 detailed stop records respectively. Parser checks read all 57 records correctly without duplicates on repeated input. Archive data can therefore provide fields that were absent from the observed live delivery; it does not prove that those fields were available live or that every archive file will be accessible.
 
+## Related references
 
-## Next steps
+<span id="next-steps"></span>
 
-- [Browse the entity reference](/reference/overview)
-- [Build an automation](/automation)
-- [Choose a dashboard card](/cards/cards-overview)
+<RelatedReferences id="pit-stops" />

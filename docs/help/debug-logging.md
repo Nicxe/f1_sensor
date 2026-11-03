@@ -60,6 +60,30 @@ For false positive or missing on-track incident reports, include the same basic 
 
 Do not include F1TV tokens, authorization headers, browser session data, or large telemetry dumps.
 
+### Beta incident checks
+
+<details>
+<summary>Additional checks when testing incident detection</summary>
+
+When testing likely on-track incident detection, focus on whether the wording, confidence, and timing make sense from a user perspective.
+
+For each report, note:
+
+1. Session type: Race, Sprint, Qualifying, Practice, or Testing.
+2. Driver or car number.
+3. Whether the alert was `candidate`, `confirmed`, `updated`, or `cleared`.
+4. Confidence value: `low`, `medium`, or `high`.
+5. Track Status and Race Control context at the time.
+6. Whether the driver was in pit lane, leaving the pit lane, or stopped on track.
+7. Whether Live Delay, Replay Mode, No Spoiler Mode, or F1TV Auth was active.
+8. Whether Track Map had live or replay car positions.
+9. The Track Map status, source, and stale state if visible.
+10. The `f1_sensor_incident` event payload for the relevant `incident_id`, including `location` when present.
+
+Use neutral language in reports. The feature is intended to detect likely stopped cars and on-track incidents, not guaranteed crashes.
+
+</details>
+
 ## Enable debug logging with YAML
 
 Use YAML only if the UI option is not available, if you need debug logging to start during Home Assistant startup, or if you are asked to keep debug logging enabled across a restart.

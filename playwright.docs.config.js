@@ -1,4 +1,8 @@
 const {defineConfig} = require('@playwright/test');
+const port = Number(process.env.F1_DOCS_TEST_PORT || 4174);
+const docsPath = process.env.F1_DOCS_BASE_URL || '/f1_sensor/';
+const buildDir = process.env.F1_DOCS_TEST_BUILD_DIR || 'build';
+const baseURL = `http://127.0.0.1:${port}${docsPath}`;
 
 module.exports = defineConfig({
   testDir: './docs-tests',
@@ -10,7 +14,7 @@ module.exports = defineConfig({
   retries: 0,
   reporter: [['line'], ['html', {outputFolder: 'playwright-report/docs', open: 'never'}]],
   use: {
-    baseURL: 'http://127.0.0.1:4174/f1_sensor/',
+    baseURL,
     browserName: 'chromium',
     locale: 'en-GB',
     reducedMotion: 'reduce',
@@ -18,8 +22,8 @@ module.exports = defineConfig({
     screenshot: 'only-on-failure',
   },
   webServer: {
-    command: 'npm run serve -- --host 127.0.0.1 --port 4174',
-    url: 'http://127.0.0.1:4174/f1_sensor/',
+    command: `npm run serve -- --host 127.0.0.1 --port ${port} --dir ${buildDir}`,
+    url: baseURL,
     reuseExistingServer: !process.env.CI,
     timeout: 30000,
   },

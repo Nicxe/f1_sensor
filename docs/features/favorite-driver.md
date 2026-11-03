@@ -30,7 +30,7 @@ Use your existing entity IDs if Home Assistant assigned different ones.
 
 ## Favorite Driver or Focus driver?
 
-**Favorite Driver** is saved by the integration and drives this sensor and its automation triggers. Weekend Hub's **Focus driver** is a browser dashboard selection used by supported cards. Changing one does not automatically change the other.
+**Favorite Driver** is saved by the integration and drives this sensor and its automation triggers. The card's **Focus driver** is a browser dashboard selection used by supported modules. Changing one does not automatically change the other. Use [shared card focus](/cards/shared-options#choose-layout-and-shared-focus) to coordinate browser selections or [Timing driver details](/cards/timing#compare-driver-details) to inspect drivers without changing focus.
 
 ## React to that driver's session
 

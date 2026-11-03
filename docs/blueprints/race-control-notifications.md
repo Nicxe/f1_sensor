@@ -19,6 +19,13 @@ Race Control Notifications forward official messages. For neutral likely stopped
 ---
 
 
+## Requirements
+
+- F1 Sensor integration installed and configured with live data enabled
+- At least one notification service available in Home Assistant (mobile app, persistent notification, TTS, etc.)
+
+---
+
 ## First working notification
 
 1. Import the blueprint and create an automation.
@@ -26,7 +33,9 @@ Race Control Notifications forward official messages. For neutral likely stopped
 3. Configure one supported notification target or action.
 4. Save and review the filters below. Start with only the flags or session types you want to receive.
 
-See [Incident Notifications](/blueprints/incident-notifications) if you want inferred stopped-car alerts rather than official messages.
+Then choose only the additional settings you need: [source and phase](#step-2--configure-source), [session type](#step-3--session-scope-optional), [message filters](#step-4--configure-filters-optional), [delivery action](#step-6--add-a-notification-action) or [template variables](#template-variables).
+
+See [Incident Notifications](/blueprints/incident-notifications) for inferred stopped-car alerts rather than official messages.
 
 ## Import the Blueprint
 
@@ -39,16 +48,10 @@ https://raw.githubusercontent.com/Nicxe/f1_sensor/main/blueprints/f1_race_contro
 ```
 ---
 
-## Requirements
-
-- F1 Sensor integration installed and configured with live data enabled
-- At least one notification service available in Home Assistant (mobile app, persistent notification, TTS, etc.)
-
----
 
 ## Step-by-step Setup
 
-### Step 1 — Create an automation from the blueprint
+## Create the automation {/* #step-1--create-an-automation-from-the-blueprint */}
 
 1. Go to **Settings > Automations & Scenes > Blueprints**
 2. Find **F1 Sensor - Race Control Notifications**
@@ -56,7 +59,7 @@ https://raw.githubusercontent.com/Nicxe/f1_sensor/main/blueprints/f1_race_contro
 
 ---
 
-### Step 2 — Configure Source
+## Data source {/* #step-2--configure-source */}
 :::info[Finding the right entities]
 Use the standard `entity_id` from the docs when you search, for example `sensor.f1_race_control`, `sensor.f1_session_status`, and `sensor.f1_current_session`.
 
@@ -75,7 +78,7 @@ The Session Status Sensor is only needed when **Require Active Session Phase** i
 
 ---
 
-### Step 3 — Session Scope (Optional)
+## Optional session scope {/* #step-3--session-scope-optional */}
 
 Limit notifications to specific session types. This is useful if you only want to receive race control messages during the Race and Qualifying sessions, while ignoring Practice sessions.
 
@@ -90,7 +93,7 @@ When this filter is enabled, the automation checks the [Current Session](/entiti
 
 ---
 
-### Step 4 — Configure Filters (Optional)
+## Optional message filters {/* #step-4--configure-filters-optional */}
 
 All filters are optional and collapsed by default. Leave them empty to receive every race control message.
 
@@ -123,7 +126,7 @@ All filters are optional and collapsed by default. Leave them empty to receive e
 
 ---
 
-### Step 5 — Configure Notifications
+## Notification settings {/* #step-5--configure-notifications */}
 
 | Setting | Description |
 | --- | --- |
@@ -147,7 +150,7 @@ All filters are optional and collapsed by default. Leave them empty to receive e
 
 ---
 
-### Step 6 — Add a Notification Action
+## Choose a delivery action {/* #step-6--add-a-notification-action */}
 
 In the **Notification Actions** field, add your delivery action. Below are examples for the most common services.
 

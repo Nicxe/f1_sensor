@@ -4,6 +4,8 @@ title: Understand incident alerts
 description: Use conservative stopped-car alerts, understand confidence and phases, and choose notification filters.
 ---
 
+import {FlowSteps} from '@site/src/components/Docs';
+
 Incident Detection identifies likely stopped cars and on-track incidents from live or replayed timing context. It is designed for neutral alerts, dashboard indicators, and automations that should react when a session may have a caution-relevant event.
 
 :::warning[Not crash detection]
@@ -28,10 +30,13 @@ Practice sessions naturally include slow running, pit work, installation laps, a
 
 ## Confidence and phases
 
-<div className="alert alert--info">
-<strong>Possible → Confirmed → Cleared</strong><br />
-A candidate is an early signal, confirmation adds evidence, and clearing ends the active alert. An update adds information to an existing incident. These labels describe confidence and lifecycle, not crash severity.
-</div>
+<FlowSteps label="Incident lifecycle" steps={[
+  {title: 'Possible', description: 'An early candidate signal needs more evidence.'},
+  {title: 'Confirmed', description: 'Evidence supports a normal neutral alert; updates can add context.'},
+  {title: 'Cleared', description: 'The active incident appears to be over.'},
+]} />
+
+These labels describe confidence and lifecycle, not crash severity. An update adds information to an existing incident.
 
 
 | Phase | Meaning |

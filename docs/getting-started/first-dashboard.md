@@ -4,6 +4,8 @@ title: Your first dashboard
 description: Add the F1 Sensor card and verify your setup between Formula 1 sessions.
 ---
 
+import {Figure} from '@site/src/components/Docs';
+
 Start with the **Race weekend** preset. It shows the next Grand Prix, circuit, countdown, weekend schedule and available weather, so you can confirm the dashboard before a live session begins.
 
 ## Before you start
@@ -21,6 +23,15 @@ Start with the **Race weekend** preset. It shows the next Grand Prix, circuit, c
 
 You should see the next Grand Prix, circuit, countdown and available weekend times. Weather appears when its supporting data is available.
 
+<Figure src="/img/getting-started/card-template-picker.png" alt="F1 Sensor template chooser in Home Assistant, with Race weekend and five other starting templates" caption="The template chooser in HAdev. Select Race weekend for your first dashboard." />
+
+<details>
+<summary>See an example of the working preview</summary>
+
+<Figure src="/img/getting-started/race-weekend-preview.png" alt="Excerpt of the Race weekend preview set to Actual data, showing the Grand Prix, circuit and countdown" caption="Actual data in an unsaved HAdev card preview, captured on 3 November 2026. This excerpt shows the overview and the start of the schedule; dates and countdown are examples from that day." />
+
+</details>
+
 ### YAML alternative
 
 In a Manual card, paste:
@@ -29,11 +40,13 @@ In a Manual card, paste:
 type: custom:f1-sensor-card
 ```
 
-This uses the Race weekend modules by default. Continue in the visual editor to select another preset, add modules or adjust the appearance.
+When you paste this minimal YAML, it uses the Race weekend modules by default. Adding a new card through the visual picker instead opens the empty **Build your own** template; choose **Race weekend** there. Continue in the editor to select another preset, add modules or adjust appearance.
+
+The modular card gets its data automatically. You do not need to enable matching Next race, weather or timing sensors just for its modules; keep those entities when other cards, templates or automations use them.
 
 ## Add live timing
 
-Edit the same card and choose the **Follow the session** preset, or add the Overview, Timing and Race Control modules yourself. Enable the relevant live features in the integration first.
+Edit the same card and choose the **Follow the session** preset, or add the Overview, Timing and Race Control modules yourself. Enable **Enable live F1 API** in the integration first. Extra live feeds can also require connected account access.
 
 A card waiting for a session is different from a card with a missing source. Live timing is available around active practice, qualifying, sprint and race sessions. Check [data availability](/features/f1tv-auth#availability-matrix) before expecting live cars, pit stops, telemetry or radio clips.
 

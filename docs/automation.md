@@ -4,12 +4,12 @@ title: Automate your race weekend
 description: Start with a ready-made F1 blueprint, choose a device trigger, or copy a focused Home Assistant automation recipe.
 ---
 
+
+Make your lights follow track flags, receive Race Control messages, or get a reminder before a session. Start with a blueprint for a complete setup, or use a device trigger when you want to choose the actions yourself.
+
 :::info[Collection and sensor choices]
 Keep every entity used by templates, older cards and automations selected. Automatic card data does not recreate a removed automation entity. Existing installations keep their sensor choices and continue entity updates and F1 event delivery after upgrading. See [Automatic card data and optional sensors](/features/card-data-and-sensors).
 :::
-
-
-Make your lights follow track flags, receive Race Control messages, or get a reminder before a session. Start with a blueprint for a complete setup, or use a device trigger when you want to choose the actions yourself.
 
 ## Choose your starting point
 
@@ -79,6 +79,9 @@ Open an automation’s YAML editor to use the examples below. Replace `notify.mo
 
 Uses the [Race Week sensor](/entities/race-week) to send a notification the moment race week starts. Useful for kicking off any weekly routines — changing dashboard views, enabling presence modes, or just a heads-up.
 
+<details>
+<summary>YAML: Notify when race week begins</summary>
+
 ```yaml
 alias: F1 - Race week started
 description: Notify when race week begins
@@ -97,11 +100,16 @@ action:
 mode: single
 ```
 
+</details>
+
 ---
 
 ### Reminder before a session starts
 
 Uses the [Season Calendar](/entities/season-calendar) entity to trigger a notification 30 minutes before any session — practice, qualifying, sprint, or race.
+
+<details>
+<summary>YAML: Reminder before a session starts</summary>
 
 ```yaml
 alias: F1 - Session starting soon
@@ -119,6 +127,8 @@ action:
       message: "{{ trigger.calendar_event.summary }} starts in 30 minutes."
 mode: single
 ```
+
+</details>
 :::tip
 Change the `offset` value to adjust how far in advance the reminder fires. Use `-1:00:0` for one hour, or `"-0:05:0"` for five minutes.
 :::
@@ -128,6 +138,9 @@ Change the `offset` value to adjust how far in advance the reminder fires. Use `
 ### Session goes live
 
 Triggers the moment a session becomes active, when the [Session Status sensor](/entities/session-status) changes to `live`. Use this to turn on the TV, switch to an F1 dashboard, or send a notification.
+
+<details>
+<summary>YAML: Session goes live</summary>
 
 ```yaml
 alias: F1 - Session is live
@@ -147,11 +160,16 @@ action:
 mode: single
 ```
 
+</details>
+
 ---
 
 ### Formation start ready {/* #race-about-to-start--formation-lap */}
 
 The [Formation Start sensor](/entities/formation-start) turns on when its formation start procedure is ready. It needs suitable replay or authenticated live data. Treat this as a timing marker, not a guarantee that the broadcast has reached a particular frame or that lights out is a fixed number of seconds away.
+
+<details>
+<summary>YAML: Formation start ready</summary>
 
 ```yaml
 alias: F1 - Formation start ready
@@ -169,11 +187,16 @@ action:
 mode: single
 ```
 
+</details>
+
 ---
 
 ### Safety car deployed
 
 Triggers when the [Safety Car sensor](/entities/safety-car) turns on. Combine with the Race Control Notifications blueprint for detailed messages, or use this as a quick standalone trigger.
+
+<details>
+<summary>YAML: Safety car deployed</summary>
 
 ```yaml
 alias: F1 - Safety car deployed
@@ -191,6 +214,8 @@ action:
 mode: single
 ```
 
+</details>
+
 ---
 
 ### Race Control Event Notifications
@@ -198,6 +223,9 @@ mode: single
 Uses [Race Control events](/entities/events) for a low-latency trigger on every race control message — flag changes, incident reports, and steward notes.
 
 You can also use the [Race Control sensor](/entities/race-control) if you prefer a sensor-state trigger with attribute access and history.
+
+<details>
+<summary>YAML: Race Control Event Notifications</summary>
 
 ```yaml
 alias: F1 - Race Control Notification
@@ -215,6 +243,8 @@ mode: queued
 max: 10
 ```
 
+</details>
+
 ---
 
 ### Possible on-track incident notification
@@ -224,6 +254,9 @@ Uses the [`f1_sensor_incident` event](/entities/events#on-track-incident) to not
 :::tip[Sync with your TV]
 Incident events respect Live Delay, so set [Live Delay](/features/live-delay) to match your broadcast if you want notifications to line up with the pictures.
 :::
+
+<details>
+<summary>YAML: Possible on-track incident notification</summary>
 
 ```yaml
 alias: F1 - Possible on-track incident
@@ -254,6 +287,8 @@ mode: queued
 max: 5
 ```
 
+</details>
+
 The wording is intentionally neutral. F1 Sensor detects likely stopped cars and on-track incidents, not guaranteed crashes. The example includes location text only when the event marks that context as fresh.
 
 ---
@@ -265,6 +300,9 @@ Candidate incidents are earlier and less certain than confirmed incidents. They 
 :::warning[Advanced use]
 Use candidate notifications only if you are comfortable with more false positives. Keep the wording neutral and consider limiting this automation to races and sprints.
 :::
+
+<details>
+<summary>YAML: Optional candidate incident notification</summary>
 
 ```yaml
 alias: F1 - Candidate on-track incident
@@ -295,11 +333,16 @@ mode: queued
 max: 5
 ```
 
+</details>
+
 ---
 
 ### Dashboard trigger for active incidents
 
 Use the [On-track Incident binary sensor](/entities/on-track-incident) when you only need to know whether any confirmed incident is currently active.
+
+<details>
+<summary>YAML: Dashboard trigger for active incidents</summary>
 
 ```yaml
 alias: F1 - Incident indicator on
@@ -315,3 +358,5 @@ action:
       entity_id: scene.f1_caution
 mode: single
 ```
+
+</details>

@@ -4,15 +4,13 @@ title: "Formation Start"
 description: "Indicates when formation start procedure is ready (Replay Mode or F1TV Auth live timing) \u2014 state, attributes, and examples for F1 Sensor."
 ---
 
-Indicates when formation start procedure is ready (Replay Mode or F1TV Auth live timing). Use `binary_sensor.f1_formation_start` in dashboards, templates, and automations.
+import {EntityMeta, RelatedReferences} from '@site/src/components/Docs';
 
-See [live data availability](/entities/live-data#availability-model) for session and data-source requirements. The details below describe any additional conditions for this entity.
+Indicates when formation start procedure is ready (Replay Mode or F1TV Auth live timing).
 
-:::info[Find your entity]
-These are standard entity IDs. If Home Assistant assigned a different ID, or you renamed an entity, use your existing ID in the examples.
-:::
+<EntityMeta id="formation-start" />
 
-## State and attributes
+<span id="state-and-attributes"></span>
 
 :::info[Replay Mode or F1TV Auth live timing]
 This entity stays registered in Home Assistant. It updates in [Replay Mode](/features/replay-mode) and can update live when your [F1TV Auth account](/features/f1tv-auth) receives the required car telemetry. A valid token alone does not guarantee that feed. Live telemetry arrived only with the tested paid account during the 23 October 2026 FP1 comparison; the race or sprint formation-start behavior still needs its own session-specific verification.
@@ -20,7 +18,9 @@ This entity stays registered in Home Assistant. It updates in [Replay Mode](/fea
 
 Indicates when the formation start procedure is ready. Useful for triggering automations at race start during replay or authenticated live sessions.
 
-**State (on/off)**
+## State
+
+State type: on/off.
 - `on` when formation start procedure is ready; otherwise `off`.
 
 **Example**
@@ -28,7 +28,7 @@ Indicates when the formation start procedure is ready. Useful for triggering aut
 on
 ```
 
-**Attributes**
+## Attributes
 
 | Attribute | Type | Description |
 | --- | --- | --- |
@@ -44,9 +44,8 @@ on
 Available during race and sprint sessions in Replay Mode, and during live F1TV Auth timing when the required extra live data is available.
 :::
 
+## Related references
 
-## Next steps
+<span id="next-steps"></span>
 
-- [Browse the entity reference](/reference/overview)
-- [Build an automation](/automation)
-- [Choose a dashboard card](/cards/cards-overview)
+<RelatedReferences id="formation-start" />

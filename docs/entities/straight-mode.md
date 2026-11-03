@@ -4,15 +4,13 @@ title: "Straight Mode"
 description: "Active aerodynamic straight mode state (2026 regulation, experimental) \u2014 state, attributes, and examples for F1 Sensor."
 ---
 
-Active aerodynamic straight mode state (2026 regulation, experimental). Use `sensor.f1_straight_mode` in dashboards, templates, and automations.
+import {EntityMeta, RelatedReferences} from '@site/src/components/Docs';
 
-See [live data availability](/entities/live-data#availability-model) for session and data-source requirements. The details below describe any additional conditions for this entity.
+Active aerodynamic straight mode state (2026 regulation, experimental).
 
-:::info[Find your entity]
-These are standard entity IDs. If Home Assistant assigned a different ID, or you renamed an entity, use your existing ID in the examples.
-:::
+<EntityMeta id="straight-mode" />
 
-## State and attributes
+<span id="state-and-attributes"></span>
 
 :::warning[Experimental — 2026 regulation]
 This sensor is based on data observed during 2026 pre-season testing. It should be considered experimental until confirmed against live race conditions. The exact message format from Formula 1 may be adjusted in a future update once the first race weekend has been evaluated.
@@ -20,7 +18,9 @@ This sensor is based on data observed during 2026 pre-season testing. It should 
 
 `sensor.f1_straight_mode` - Shows the track-wide active aerodynamic permission for straight sections, broadcasted via Race Control messages. This is a 2026 Formula 1 regulation feature where the car's aerodynamic profile on designated straight sections of the circuit is regulated by the FIA.
 
-**State (enum)**
+## State
+
+State type: enum.
 - One of: `normal_grip`, `low_grip`, `disabled`.
 
 | Value | Description |
@@ -34,7 +34,7 @@ This sensor is based on data observed during 2026 pre-season testing. It should 
 normal_grip
 ```
 
-**Attributes**
+## Attributes
 
 | Attribute | Type | Description |
 | --- | --- | --- |
@@ -44,8 +44,8 @@ normal_grip
 Active only during sessions where the 2026 straight mode regulation applies. The state is restored from history when Home Assistant restarts during an active session.
 :::
 
-## Next steps
+## Related references
 
-- [Browse the entity reference](/reference/overview)
-- [Build an automation](/automation)
-- [Choose a dashboard card](/cards/cards-overview)
+<span id="next-steps"></span>
+
+<RelatedReferences id="straight-mode" />

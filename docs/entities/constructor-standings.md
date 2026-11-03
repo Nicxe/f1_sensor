@@ -4,19 +4,17 @@ title: "Constructor Standings"
 description: "Current constructor standings \u2014 state, attributes, and examples for F1 Sensor."
 ---
 
-Current constructor standings. Use `sensor.f1_constructor_standings` in dashboards, templates, and automations.
+import {EntityMeta, RelatedReferences} from '@site/src/components/Docs';
 
-This reference covers the state and attributes. For setup, see [Configuration](/getting-started/add-integration).
+Current constructor standings.
 
-:::info[Find your entity]
-These are standard entity IDs. If Home Assistant assigned a different ID, or you renamed an entity, use your existing ID in the examples.
-:::
+<EntityMeta id="constructor-standings" />
 
-## State and attributes
+<span id="state-and-attributes"></span>
 
-`sensor.f1_constructor_standings` - Constructor standings snapshot from Ergast.
+`sensor.f1_constructor_standings` - Constructor standings snapshot from Jolpica's Ergast-compatible API.
 
-**State**
+## State
 
 - Integer: number of constructors in the standings list.
 
@@ -25,7 +23,7 @@ These are standard entity IDs. If Home Assistant assigned a different ID, or you
 10
 ```
 
-**Attributes**
+## Attributes
 
 | Attribute | Type | Description |
 | --- | --- | --- |
@@ -33,8 +31,31 @@ These are standard entity IDs. If Home Assistant assigned a different ID, or you
 | round | string | Round of the standings snapshot |
 | constructor_standings | list | Ergast “ConstructorStandings” array (positions, points, wins, constructor info) |
 
-## Next steps
+### `constructor_standings` entries
 
-- [Browse the entity reference](/reference/overview)
-- [Build an automation](/automation)
-- [Choose a dashboard card](/cards/cards-overview)
+The integration passes through the upstream Ergast-compatible standings records. The usual fields are:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| position | string | Championship position |
+| positionText | string | Position as display text |
+| points | string | Championship points |
+| wins | string | Wins |
+| Constructor | object | Constructor identity |
+
+### `Constructor` object
+
+| Field | Type | Description |
+| --- | --- | --- |
+| constructorId | string | Constructor identifier |
+| url | string | External constructor information URL |
+| name | string | Constructor name |
+| nationality | string | Constructor nationality |
+
+Fields depend on what the upstream record supplies. Use the `constructor_standings` list when you need the full record; the sensor state is only its item count.
+
+## Related references
+
+<span id="next-steps"></span>
+
+<RelatedReferences id="constructor-standings" />

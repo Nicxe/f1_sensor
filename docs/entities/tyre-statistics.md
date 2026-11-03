@@ -4,19 +4,18 @@ title: "Tyre Statistics"
 description: "Aggregated tyre statistics per compound \u2014 state, attributes, and examples for F1 Sensor."
 ---
 
-Aggregated tyre statistics per compound. Use `sensor.f1_tyre_statistics` in dashboards, templates, and automations.
+import {EntityMeta, RelatedReferences} from '@site/src/components/Docs';
 
-See [live data availability](/entities/live-data#availability-model) for session and data-source requirements. The details below describe any additional conditions for this entity.
+Aggregated tyre statistics per compound.
 
-:::info[Find your entity]
-These are standard entity IDs. If Home Assistant assigned a different ID, or you renamed an entity, use your existing ID in the examples.
-:::
+<EntityMeta id="tyre-statistics" />
 
-## State and attributes
+<span id="state-and-attributes"></span>
 
 `sensor.f1_tyre_statistics` - Aggregated tyre performance statistics per compound, showing fastest times and usage across all drivers.
 
-**State**
+## State
+
 - String: name of the fastest compound (e.g., "SOFT"), or `unknown` when not available.
 
 **Example**
@@ -24,7 +23,7 @@ These are standard entity IDs. If Home Assistant assigned a different ID, or you
 SOFT
 ```
 
-**Attributes**
+## Attributes
 
 | Attribute | Type | Description |
 | --- | --- | --- |
@@ -34,7 +33,7 @@ SOFT
 | start_compounds | list | List of compounds used at race start, one entry per driver with racing number and compound |
 | compounds | object | Detailed statistics per compound |
 
-Each entry in `compounds` (keyed by compound name) contains:
+### `compounds` entries (keyed by compound name)
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -45,7 +44,7 @@ Each entry in `compounds` (keyed by compound name) contains:
 | compound_color | string | Hex color code for the compound |
 | compound_color_rgb | list | Compound color as RGB values (e.g., `[255, 0, 0]` for soft) |
 
-Each entry in `best_times` contains:
+### `best_times` entries
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -53,12 +52,14 @@ Each entry in `best_times` contains:
 | racing_number | string | Car number |
 | tla | string | Driver code |
 
-Each entry in `start_compounds` contains:
+### `start_compounds` entries
 
 | Field | Type | Description |
 | --- | --- | --- |
 | racing_number | string | Car number |
 | compound | string | Tyre compound used at race start |
+
+## Examples
 
 <details>
 <summary>JSON Structure Example</summary>
@@ -127,16 +128,16 @@ Fastest compound: {{ states('sensor.f1_tyre_statistics') }}
 
 **Get fastest time on a specific compound:**
 ```jinja2
-{% set compounds = state_attr('sensor.f1_tyre_statistics', 'compounds') %}
+{% set compounds = state_attr('sensor.f1_tyre_statistics', 'compounds') or {} %}
 {% if compounds and compounds.SOFT %}
-  {% set best = compounds.SOFT.best_times | first %}
+  {% set best = compounds.SOFT.best_times | first | default(none) %}
   Fastest on SOFT: {{ best.time }} by {{ best.tla }}
 {% endif %}
 ```
 
 **Show delta between compounds:**
 ```jinja2
-{% set deltas = state_attr('sensor.f1_tyre_statistics', 'deltas') %}
+{% set deltas = state_attr('sensor.f1_tyre_statistics', 'deltas') or {} %}
 {% if deltas %}
   MEDIUM vs SOFT: {{ deltas.MEDIUM | default('N/A') }}
   HARD vs SOFT: {{ deltas.HARD | default('N/A') }}
@@ -145,7 +146,7 @@ Fastest compound: {{ states('sensor.f1_tyre_statistics') }}
 
 **Count drivers who started on each compound:**
 ```jinja2
-{% set starts = state_attr('sensor.f1_tyre_statistics', 'start_compounds') %}
+{% set starts = state_attr('sensor.f1_tyre_statistics', 'start_compounds') or [] %}
 {% if starts %}
   {% set mediums = starts | selectattr('compound', 'eq', 'MEDIUM') | list | length %}
   {% set hards = starts | selectattr('compound', 'eq', 'HARD') | list | length %}
@@ -156,7 +157,7 @@ Fastest compound: {{ states('sensor.f1_tyre_statistics') }}
 
 **Get total laps on all compounds:**
 ```jinja2
-{% set compounds = state_attr('sensor.f1_tyre_statistics', 'compounds') %}
+{% set compounds = state_attr('sensor.f1_tyre_statistics', 'compounds') or {} %}
 {% if compounds %}
   {% set total = namespace(laps=0) %}
   {% for name, data in compounds.items() %}
@@ -171,9 +172,8 @@ Fastest compound: {{ states('sensor.f1_tyre_statistics') }}
 Use the `compound_color` field to style your dashboard elements. The colors match the official Pirelli tyre colors: SOFT (red), MEDIUM (yellow), HARD (white), INTERMEDIATE (green), WET (blue).
 :::
 
+## Related references
 
-## Next steps
+<span id="next-steps"></span>
 
-- [Browse the entity reference](/reference/overview)
-- [Build an automation](/automation)
-- [Choose a dashboard card](/cards/cards-overview)
+<RelatedReferences id="tyre-statistics" />
