@@ -107,13 +107,13 @@ jobs:
         timeout-minutes: 12
         env:
           F1_MAINTENANCE: 'true'
-        run: npx playwright test --grep '@performance'
+        run: npx playwright test --grep '@performance' --output=test-results/playwright/chromium
       - name: WebKit lifecycle, locale, keyboard and destructive-action smoke
         if: ${{ !cancelled() && steps.browser_install.outcome == 'success' }}
         timeout-minutes: 8
         env:
           F1_BROWSER: webkit
-        run: npx playwright test --grep 'mounts and unmounts|keyboard actions|timezone wins|clear always'
+        run: npx playwright test --grep 'mounts and unmounts|keyboard actions|timezone wins|clear always' --output=test-results/playwright/webkit
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: failure()
         with:
