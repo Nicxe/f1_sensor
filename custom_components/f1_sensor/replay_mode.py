@@ -37,6 +37,7 @@ from .const import (
 from .formation_start import FormationStartTracker
 from .helpers import CARDATA_MAX_LINE_BYTES, parse_cardata_lines
 from .replay_start import ReplayStartReferenceController
+from .signalr import timing_source_payload
 from .track_map import (
     TRACK_MAP_POSITION_STREAM,
     parse_position_z_line,
@@ -2589,7 +2590,12 @@ class ReplayTransport:
                         {
                             "H": "Streaming",
                             "M": "feed",
-                            "A": [stream, payload],
+                            "A": [
+                                stream,
+                                timing_source_payload(
+                                    stream, payload, source_time=frame_ms / 1000
+                                ),
+                            ],
                         }
                     ]
                 }
@@ -2936,7 +2942,14 @@ class ReplayController:
             if not self._control_is_current(index, generation):
                 return
             if isinstance(frame.payload, dict):
-                self._live_bus.inject_message(frame.stream, frame.payload)
+                self._live_bus.inject_message(
+                    frame.stream,
+                    timing_source_payload(
+                        frame.stream,
+                        frame.payload,
+                        source_time=frame.timestamp_ms / 1000,
+                    ),
+                )
             if (
                 frame_number % REPLAY_CATCHUP_BATCH_FRAMES == 0
                 or self._hass.loop.time() >= deadline
@@ -3020,7 +3033,9 @@ class ReplayController:
         )
         for stream, payload in initial_state.items():
             if isinstance(payload, dict):
-                self._live_bus.inject_message(stream, payload)
+                self._live_bus.inject_message(
+                    stream, timing_source_payload(stream, payload, snapshot=True)
+                )
 
     def _inject_formation_ready_if_applicable(self, index: ReplayIndex) -> None:
         """Inject formation start state from the index, bypassing any HTTP probe.

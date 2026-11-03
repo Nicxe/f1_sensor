@@ -4,15 +4,13 @@ title: "Favorite Driver"
 description: "Live position and timing details for a driver selected in select.f1_favorite_driver \u2014 state, attributes, and examples for F1 Sensor."
 ---
 
-Live position and timing details for a driver selected in select.f1_favorite_driver. Use `sensor.f1_favorite_driver` and `select.f1_favorite_driver` in dashboards, templates, and automations.
+import {EntityMeta, RelatedReferences} from '@site/src/components/Docs';
 
-See [live data availability](/entities/live-data#availability-model) for session and data-source requirements. The details below describe any additional conditions for this entity.
+Live position and timing details for a driver selected in select.f1_favorite_driver.
 
-:::info[Find your entity]
-These are standard entity IDs. If Home Assistant assigned a different ID, or you renamed an entity, use your existing ID in the examples.
-:::
+<EntityMeta id="favorite-driver" />
 
-## State and attributes
+<span id="state-and-attributes"></span>
 
 `select.f1_favorite_driver` lets you choose a driver by their three-letter abbreviation. The selection is saved for this F1 Sensor configuration entry and is restored after Home Assistant restarts.
 
@@ -21,7 +19,6 @@ Enable **Favorite driver** in the integration options first. It is disabled by d
 `sensor.f1_favorite_driver` exposes that driver's current position as its state. Its attributes include the driver name, team color in hex and RGB formats, racing number, grid position, gap, interval, lap times, pit state, retirement state, and tyre information. The sensor is unavailable until the selected driver appears in live timing. The RGB value can be passed directly to compatible Home Assistant lights.
 
 The Drivers device also provides triggers for the selected driver gaining or losing a position, entering or exiting the pits, and retiring. These triggers respect the integration's configured [Live Delay](/features/live-delay).
-
 
 ## State
 
@@ -76,8 +73,8 @@ data:
 
 The [Drivers device](/reference/device-triggers#drivers-device) offers five triggers for position gains/losses, pit entry/exit, and retirement. Advanced automations can use the [Favorite Driver event payload](/entities/events#favorite-driver). A change in position does not prove that an overtake occurred on track.
 
-## Next steps
+## Related references
 
-- [Browse the entity reference](/reference/overview)
-- [Build an automation](/automation)
-- [Choose a dashboard card](/cards/cards-overview)
+<span id="next-steps"></span>
+
+<RelatedReferences id="favorite-driver" />

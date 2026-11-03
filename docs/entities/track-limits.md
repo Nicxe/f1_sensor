@@ -4,19 +4,18 @@ title: "Track Limits"
 description: "Track limits violations per driver (deletions, warnings, penalties) \u2014 state, attributes, and examples for F1 Sensor."
 ---
 
-Track limits violations per driver (deletions, warnings, penalties). Use `sensor.f1_track_limits` in dashboards, templates, and automations.
+import {EntityMeta, RelatedReferences} from '@site/src/components/Docs';
 
-See [live data availability](/entities/live-data#availability-model) for session and data-source requirements. The details below describe any additional conditions for this entity.
+Track limits violations per driver (deletions, warnings, penalties).
 
-:::info[Find your entity]
-These are standard entity IDs. If Home Assistant assigned a different ID, or you renamed an entity, use your existing ID in the examples.
-:::
+<EntityMeta id="track-limits" />
 
-## State and attributes
+<span id="state-and-attributes"></span>
 
 `sensor.f1_track_limits` - Aggregated track limits violations per driver, including deleted lap times, black and white flag warnings, and penalties.
 
-**State**
+## State
+
 - Integer: total number of track limit violations (deletions + warnings) in this session.
 
 **Example**
@@ -24,7 +23,7 @@ These are standard entity IDs. If Home Assistant assigned a different ID, or you
 12
 ```
 
-**Attributes**
+## Attributes
 
 | Attribute | Type | Description |
 | --- | --- | --- |
@@ -34,7 +33,7 @@ These are standard entity IDs. If Home Assistant assigned a different ID, or you
 | total_penalties | number | Count of track limits penalties issued |
 | last_update | string | ISO-8601 timestamp of last update |
 
-Each entry in `by_driver` (keyed by driver TLA) contains:
+### `by_driver` entries (keyed by driver TLA)
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -44,7 +43,7 @@ Each entry in `by_driver` (keyed by driver TLA) contains:
 | penalty | string | Penalty text if issued (e.g., "5 SECOND TIME PENALTY"), or null |
 | violations | list | Detailed list of all violations |
 
-Each entry in `violations` contains:
+### `violations` entries
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -53,6 +52,8 @@ Each entry in `violations` contains:
 | turn | number | Turn number where violation occurred (for deletions) |
 | type | string | Violation type: `time_deleted`, `warning`, or `penalty` |
 | penalty | string | Penalty text (only present when type is `penalty`) |
+
+## Examples
 
 <details>
 <summary>JSON Structure Example</summary>
@@ -112,7 +113,7 @@ Each entry in `violations` contains:
 
 **Get a driver's track limits count:**
 ```jinja2
-{% set by_driver = state_attr('sensor.f1_track_limits', 'by_driver') %}
+{% set by_driver = state_attr('sensor.f1_track_limits', 'by_driver') or {} %}
 {% set ham = by_driver.get('HAM') %}
 {% if ham %}
   HAM: {{ ham.deletions }} deletions{% if ham.warning %}, WARNING{% endif %}
@@ -121,7 +122,7 @@ Each entry in `violations` contains:
 
 **List drivers with warnings:**
 ```jinja2
-{% set by_driver = state_attr('sensor.f1_track_limits', 'by_driver') %}
+{% set by_driver = state_attr('sensor.f1_track_limits', 'by_driver') or {} %}
 {% for tla, data in by_driver.items() if data.warning %}
   {{ tla }} (#{{ data.racing_number }}) - {{ data.deletions }} deletions
 {% endfor %}
@@ -129,7 +130,7 @@ Each entry in `violations` contains:
 
 **Find drivers at risk (3+ deletions, no warning yet):**
 ```jinja2
-{% set by_driver = state_attr('sensor.f1_track_limits', 'by_driver') %}
+{% set by_driver = state_attr('sensor.f1_track_limits', 'by_driver') or {} %}
 {% for tla, data in by_driver.items() if data.deletions >= 3 and not data.warning %}
   {{ tla }}: {{ data.deletions }} deletions - at risk!
 {% endfor %}
@@ -137,15 +138,15 @@ Each entry in `violations` contains:
 
 **Get total session track limits:**
 ```jinja2
-{% set deletions = state_attr('sensor.f1_track_limits', 'total_deletions') %}
-{% set warnings = state_attr('sensor.f1_track_limits', 'total_warnings') %}
-{% set penalties = state_attr('sensor.f1_track_limits', 'total_penalties') %}
+{% set deletions = state_attr('sensor.f1_track_limits', 'total_deletions') or [] %}
+{% set warnings = state_attr('sensor.f1_track_limits', 'total_warnings') or [] %}
+{% set penalties = state_attr('sensor.f1_track_limits', 'total_penalties') or [] %}
 Deletions: {{ deletions }}, Warnings: {{ warnings }}, Penalties: {{ penalties }}
 ```
 
 **List drivers with penalties:**
 ```jinja2
-{% set by_driver = state_attr('sensor.f1_track_limits', 'by_driver') %}
+{% set by_driver = state_attr('sensor.f1_track_limits', 'by_driver') or {} %}
 {% for tla, data in by_driver.items() if data.penalty %}
   {{ tla }}: {{ data.penalty }}
 {% endfor %}
@@ -156,9 +157,8 @@ Deletions: {{ deletions }}, Warnings: {{ warnings }}, Penalties: {{ penalties }}
 The typical track limits progression is: 3 deleted lap times → BLACK AND WHITE flag warning → penalty on the next violation. Use the `deletions` count and `warning` flag to identify drivers at risk.
 :::
 
+## Related references
 
-## Next steps
+<span id="next-steps"></span>
 
-- [Browse the entity reference](/reference/overview)
-- [Build an automation](/automation)
-- [Choose a dashboard card](/cards/cards-overview)
+<RelatedReferences id="track-limits" />

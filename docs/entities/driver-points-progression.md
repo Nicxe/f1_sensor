@@ -4,19 +4,17 @@ title: "Driver Points Progression"
 description: "Drivers Point Progression \u2014 state, attributes, and examples for F1 Sensor."
 ---
 
-Follow driver championship points across race rounds. Use `sensor.f1_driver_points_progression` in dashboards, templates, and automations.
+import {EntityMeta, RelatedReferences} from '@site/src/components/Docs';
 
-This reference covers the state and attributes. For setup, see [Configuration](/getting-started/add-integration).
+Follow driver championship points across race rounds.
 
-:::info[Find your entity]
-These are standard entity IDs. If Home Assistant assigned a different ID, or you renamed an entity, use your existing ID in the examples.
-:::
+<EntityMeta id="driver-points-progression" />
 
-## State and attributes
+<span id="state-and-attributes"></span>
 
 `sensor.f1_driver_points_progression` - Per‑round driver points (including sprint) with cumulative series, suitable for charts.
 
-**State**
+## State
 
   - Integer: number of rounds covered.
 
@@ -25,7 +23,7 @@ These are standard entity IDs. If Home Assistant assigned a different ID, or you
 12
 ```
 
-**Attributes**
+## Attributes
 
 | Attribute | Type | Description |
 | --- | --- | --- |
@@ -34,7 +32,7 @@ These are standard entity IDs. If Home Assistant assigned a different ID, or you
 | drivers | object | Map of driver codes to their progression data |
 | series | object | Progression series data for charts |
 
-Each entry in `rounds` contains:
+### `rounds` entries
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -42,7 +40,7 @@ Each entry in `rounds` contains:
 | race_name | string | Grand Prix name |
 | date | string | Race date (YYYY-MM-DD) |
 
-Each entry in `drivers` (keyed by driver code) contains:
+### `drivers` entries (keyed by driver code)
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -54,14 +52,14 @@ Each entry in `drivers` (keyed by driver code) contains:
 | wins_by_round | list | Wins per round (1 or 0) |
 | totals | object | `{ points, wins }` - season totals |
 
-The `series` object contains:
+### `series` object
 
 | Field | Type | Description |
 | --- | --- | --- |
 | labels | list | Round labels for chart X-axis (e.g., ["R1", "R2", ...]) |
 | series | list | Array of series objects for charting |
 
-Each entry in `series.series` contains:
+### `series.series` entries
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -69,6 +67,8 @@ Each entry in `series.series` contains:
 | name | string | Driver's full name |
 | data | list | Points per round |
 | cumulative | list | Cumulative points per round |
+
+## Examples
 
 <details>
 <summary>JSON Structure Example</summary>
@@ -134,16 +134,16 @@ Each entry in `series.series` contains:
 
 **Get a driver's total points:**
 ```jinja2
-{% set drivers = state_attr('sensor.f1_driver_points_progression', 'drivers') %}
-{% if drivers and drivers.VER %}
+{% set drivers = state_attr('sensor.f1_driver_points_progression', 'drivers') or {} %}
+{% if drivers.get('VER') %}
   VER total: {{ drivers.VER.totals.points }} points, {{ drivers.VER.totals.wins }} wins
 {% endif %}
 ```
 
 **Get points scored in the last round:**
 ```jinja2
-{% set drivers = state_attr('sensor.f1_driver_points_progression', 'drivers') %}
-{% if drivers and drivers.VER %}
+{% set drivers = state_attr('sensor.f1_driver_points_progression', 'drivers') or {} %}
+{% if drivers.get('VER') %}
   {% set pts = drivers.VER.points_by_round %}
   Last round: {{ pts[-1] if pts else 0 }} points
 {% endif %}
@@ -151,7 +151,7 @@ Each entry in `series.series` contains:
 
 **List rounds with names:**
 ```jinja2
-{% set rounds = state_attr('sensor.f1_driver_points_progression', 'rounds') %}
+{% set rounds = state_attr('sensor.f1_driver_points_progression', 'rounds') or [] %}
 {% for r in rounds %}
   R{{ r.round }}: {{ r.race_name }} ({{ r.date }})
 {% endfor %}
@@ -159,8 +159,8 @@ Each entry in `series.series` contains:
 
 **Calculate points gained in last 3 rounds:**
 ```jinja2
-{% set drivers = state_attr('sensor.f1_driver_points_progression', 'drivers') %}
-{% set ver = drivers.VER %}
+{% set drivers = state_attr('sensor.f1_driver_points_progression', 'drivers') or {} %}
+{% set ver = drivers.get('VER') %}
 {% if ver %}
   {% set last_3 = ver.points_by_round[-3:] | sum %}
   VER last 3 rounds: {{ last_3 }} points
@@ -169,8 +169,8 @@ Each entry in `series.series` contains:
 
 **Get driver with most wins:**
 ```jinja2
-{% set drivers = state_attr('sensor.f1_driver_points_progression', 'drivers') %}
-{% set winner = drivers.values() | sort(attribute='totals.wins', reverse=true) | first %}
+{% set drivers = state_attr('sensor.f1_driver_points_progression', 'drivers') or {} %}
+{% set winner = drivers.values() | sort(attribute='totals.wins', reverse=true) | first | default(none) %}
 {% if winner %}
   Most wins: {{ winner.code }} with {{ winner.totals.wins }}
 {% endif %}
@@ -181,9 +181,8 @@ Each entry in `series.series` contains:
 Use the **Season progression** module in the [F1 Sensor card](/cards/cards-overview) to show driver championship point progression without installing another chart card.
 :::
 
+## Related references
 
-## Next steps
+<span id="next-steps"></span>
 
-- [Browse the entity reference](/reference/overview)
-- [Build an automation](/automation)
-- [Choose a dashboard card](/cards/cards-overview)
+<RelatedReferences id="driver-points-progression" />

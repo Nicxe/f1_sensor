@@ -84,7 +84,8 @@ function inactiveDriverIds(driverPositions) {
   const inactive = new Set();
   for (const item of drivers(driverPositions)) {
     const status = String(item.status ?? '').trim().toLowerCase();
-    if (!item.retired && !item.stopped && !['out', 'retired'].includes(status)) continue;
+    const eliminatedInPit = item.in_pit === true && (item.q1_knocked_out === true || item.q2_knocked_out === true);
+    if (!item.retired && !item.stopped && !['out', 'retired'].includes(status) && !eliminatedInPit) continue;
     if (item.racing_number != null) inactive.add(String(item.racing_number));
     if (item.tla) inactive.add(String(item.tla).toUpperCase());
   }
@@ -179,7 +180,8 @@ export function mapModel(snapshot, module, focus = {}, now = Date.now(), driverP
   const projection = projectionFor(snapshot.track, module.options);
   const freshness = mapFreshness(snapshot, now), driver = module.driver || focus.driver, team = module.team || focus.team;
   // Position.z can retain an OnTrack coordinate after TimingData has declared
-  // the driver out. Match the legacy card by removing stopped or retired cars.
+  // the driver out. Remove stopped or retired cars, and qualifying eliminations
+  // once they reach the pits; cars completing their in-lap remain visible.
   const inactive = inactiveDriverIds(driverPositions);
   const rows = drivers(snapshot.drivers).map(item => {
     const id = String(item.racing_number), name = item.full_name ?? item.name ?? item.tla ?? id;

@@ -955,6 +955,7 @@ variables:
 triggers:
   - trigger: state
     entity_id: !input track_status_entity
+    to: null
     id: track_update
   - trigger: state
     entity_id: !input session_status_entity
@@ -978,6 +979,15 @@ actions:
       - condition: template
         value_template: "{{ session_entered_active | bool }}"
     then:
+      # A retained snapshot belongs to the previous active session, even when
+      # session-end cleanup is disabled. Never reuse it for a new delayed restore.
+      - if:
+          - condition: template
+            value_template: "{{ clear_behavior_mode_input == 'restore_after_delay' and ('scene.' ~ pre_alert_scene_id) in (states.scene | map(attribute='entity_id') | list) }}"
+        then:
+          - action: scene.delete
+            data:
+              entity_id: "{{ 'scene.' ~ pre_alert_scene_id }}"
       - if:
           - condition: template
             value_template: "{{ snapshot_pre_race_enabled }}"
@@ -986,6 +996,16 @@ actions:
             action: scene.create
             data:
               scene_id: "{{ pre_race_scene_id }}"
+              snapshot_entities: "{{ wled_snapshot_entities_json | trim | from_json }}"
+      # Protect the initial CLEAR delay too: an alert may interrupt it before
+      # the session-start scene has been restored.
+      - if:
+          - condition: template
+            value_template: "{{ clear_behavior_mode_input == 'restore_after_delay' and snapshot_before_alert_enabled and snapshot_pre_race_enabled and track_state == 'CLEAR' }}"
+        then:
+          - action: scene.create
+            data:
+              scene_id: "{{ pre_alert_scene_id }}"
               snapshot_entities: "{{ wled_snapshot_entities_json | trim | from_json }}"
 
   - choose:
@@ -1121,6 +1141,10 @@ actions:
                     and trigger.id == 'track_update'
                     and track_state in ['YELLOW', 'RED', 'SC', 'VSC']
                     and trigger_from_track_state not in ['YELLOW', 'RED', 'SC', 'VSC']
+                    and (
+                      clear_behavior_mode_input != 'restore_after_delay'
+                      or ('scene.' ~ pre_alert_scene_id) not in (states.scene | map(attribute='entity_id') | list)
+                    )
                   }}
             then:
               - continue_on_error: true
@@ -1264,10 +1288,19 @@ actions:
                                   - condition: template
                                     value_template: "{{ (clear_restore_scene_entity | string | trim) in (states.scene | map(attribute='entity_id') | list) }}"
                                 then:
-                                  - continue_on_error: true
-                                    action: scene.turn_on
+                                  - action: scene.turn_on
                                     data:
                                       entity_id: "{{ clear_restore_scene_entity | string | trim }}"
+                                  # Release only after a successful restore. A
+                                  # restarted run keeps the original snapshot,
+                                  # while the next separate alert takes a new one.
+                                  - if:
+                                      - condition: template
+                                        value_template: "{{ ('scene.' ~ pre_alert_scene_id) in (states.scene | map(attribute='entity_id') | list) }}"
+                                    then:
+                                      - action: scene.delete
+                                        data:
+                                          entity_id: "{{ 'scene.' ~ pre_alert_scene_id }}"
 
                   - conditions:
                       - condition: template

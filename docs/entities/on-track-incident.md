@@ -4,15 +4,13 @@ title: "On-track Incident"
 description: "Confirmed likely stopped car or on-track incident is active \u2014 state, attributes, and examples for F1 Sensor."
 ---
 
-Confirmed likely stopped car or on-track incident is active. Use `binary_sensor.f1_on_track_incident` in dashboards, templates, and automations.
+import {EntityMeta, RelatedReferences} from '@site/src/components/Docs';
 
-See [live data availability](/entities/live-data#availability-model) for session and data-source requirements. The details below describe any additional conditions for this entity.
+Confirmed likely stopped car or on-track incident is active.
 
-:::info[Find your entity]
-These are standard entity IDs. If Home Assistant assigned a different ID, or you renamed an entity, use your existing ID in the examples.
-:::
+<EntityMeta id="on-track-incident" />
 
-## State and attributes
+<span id="state-and-attributes"></span>
 
 `binary_sensor.f1_on_track_incident` - On while F1 Sensor has a confirmed likely stopped car or on-track incident for the active session.
 
@@ -20,7 +18,9 @@ These are standard entity IDs. If Home Assistant assigned a different ID, or you
 This entity detects likely stopped cars and on-track incidents from live timing, track status, and Race Control context. It does not prove that a crash happened, and it may also represent a technical failure, spin, red flag stop, or another neutral on-track situation.
 :::
 
-**State (on/off)**
+## State
+
+State type: on/off.
 - `on` when at least one confirmed incident is active.
 - `off` when no confirmed incident is active.
 - `unavailable` when live or replay data is not available enough to report a reliable state.
@@ -30,7 +30,7 @@ This entity detects likely stopped cars and on-track incidents from live timing,
 on
 ```
 
-**Attributes**
+## Attributes
 
 | Attribute | Type | Description |
 | --- | --- | --- |
@@ -53,9 +53,8 @@ For the full behavior, confidence, and notification model, see [Incident Detecti
 Incident detection is designed for race, sprint, qualifying, and practice sessions. Practice alerts are more conservative because practice sessions naturally contain more slow running, pit activity, and testing-style behavior.
 :::
 
+## Related references
 
-## Next steps
+<span id="next-steps"></span>
 
-- [Browse the entity reference](/reference/overview)
-- [Build an automation](/automation)
-- [Choose a dashboard card](/cards/cards-overview)
+<RelatedReferences id="on-track-incident" />

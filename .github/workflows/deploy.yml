@@ -35,7 +35,7 @@ jobs:
         with:
           ref: ${{ github.workflow_sha }}
           persist-credentials: false
-      - uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         id: refs
         env:
           TESTED_SHA: ${{ inputs.tested_sha }}
@@ -84,7 +84,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Select the source runtime, with a pin for older verified sources
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         id: runtime
         with:
           script: |
@@ -152,7 +152,7 @@ jobs:
           ref: ${{ github.workflow_sha }}
           persist-credentials: false
       - name: Check that this publication has not been superseded
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         id: current
         env:
           STABLE_SHA: ${{ needs.refs.outputs.stable_sha }}

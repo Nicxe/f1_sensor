@@ -2361,6 +2361,7 @@
       "label": "Track map",
       "sources": [
         "current_session",
+        "driver_positions",
         "race_lap_count",
         "track_map",
         "track_status"

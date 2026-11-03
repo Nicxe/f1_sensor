@@ -48,7 +48,7 @@ This repair means that Home Assistant found an outdated resource URL. It does no
 | **Custom element doesn't exist** | Confirm that the managed resource exists and uses the **JavaScript Module** type. Remove duplicate standalone URLs. |
 | The editor still looks older after an update | Hard refresh the browser, then check for a cached or duplicate resource. |
 | The card asks you to choose an installation | Open the visual editor and select the intended F1 Sensor installation. |
-| A module explains that data is unavailable | Check whether its source entity and integration feature are enabled. Some live data is unavailable between sessions. |
+| A module explains that data is unavailable | Check the selected installation, live setting, session and required account access. Modular card data is automatic; it does not require the matching sensor. |
 | Every F1 module fails after an update | Record the integration version and browser error, then enable [debug logging](/help/debug-logging). |
 
 Do not remove a working integration to fix a browser resource problem. The integration, its entities and the dashboard JavaScript are separate parts of the setup.

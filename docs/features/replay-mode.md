@@ -6,20 +6,17 @@ description: Load a completed Formula 1 session, match it to your recording, and
 
 import {FlowSteps} from '@site/src/components/Docs';
 
-Replay Mode lets you watch historical F1 sessions with full Home Assistant integration. When you play back a recorded race or qualifying from F1 TV or another service, your automations and dashboards can follow the session in a way that is much closer to a live broadcast.
+Replay Mode plays a completed session's archived timing through Home Assistant while you watch a recording. Dashboards, track-flag lights, Race Control notifications and incident alerts can follow the recorded session; optional incident locations need usable archived Track Map data.
 
-Your lights can react to a red flag. Your dashboard can show live timing. Race Control messages can still drive notifications while you watch the session later.
-Likely on-track incident detection can also follow replayed sessions, so incident notifications and the On-track Incident binary sensors can behave like they do during live timing. If the replay includes Track Map data, incident events can include the same optional location summary used during live sessions.
+## Before you start
 
-:::info[Replay Mode is the normal historical playback feature]
-Use Replay Mode when you want to watch a completed session later. Do not switch the integration to Developer mode or provide a replay dump for this workflow.
-:::
+- Connect a Formula 1 account through [F1TV access setup](/help/f1tv-auth-setup). A free account worked for the tested archive resources; each session still needs published files.
+- Have your own video recording or replay service. F1 Sensor supplies timing data, not F1 TV video replay access.
+- For watching later, turn on [No Spoiler Mode](/features/no-spoiler-mode) **before the live session starts**. Keep it on until you want to reveal current results.
+- Use normal Replay Mode. A local dump, developer build and paid F1 TV subscription are not required for the tested timing archive.
 
-:::warning[Replay seek behavior]
-Replay Mode includes seek controls for catching up with your broadcast. Rewinding can replay historical events again, so replay-driven automations and notifications may run again by design.
-:::
-:::tip[Watching it later? Keep your dashboard spoiler-free]
-If you cannot watch a session live, turn on [No Spoiler Mode](/features/no-spoiler-mode) before the session starts. Your dashboard stays frozen until you are ready. Then load the session in Replay Mode, press play when your broadcast begins, and follow the archived timing. Keep the switch on until you are ready to reveal current results.
+:::warning[Rewinding can repeat actions]
+Rewinding can replay historical state changes and events. Replay-driven automations, lights, incident alerts and notifications may run again by design.
 :::
 
 ---
@@ -33,11 +30,9 @@ If you cannot watch a session live, turn on [No Spoiler Mode](/features/no-spoil
 
 ## What to expect
 
-Replay Mode downloads completed session data from Formula 1's authenticated archive and plays it back through your Home Assistant entities. By starting playback at the same moment the session begins on your TV, your dashboard and automations can follow the broadcast closely.
+Load the session, align the same start reference on your TV, then play. The selectors, buttons and media player let you pause or seek later. Archive access and live-feed permissions are separate.
 
-You do not need a local replay dump, a developer build, or a paid F1 TV subscription. Connect a Formula 1 account, including a free account, through [F1TV Auth](/features/f1tv-auth) so the integration has a valid token for the timing archive. Replay Mode provides its own selectors, load controls, media player, pause, and seek support.
-
-Replay Mode follows archived timing data in Home Assistant; it does not provide video replay access. Live feed permissions are separate from archive access and depend on the account and session.
+[Watch Replay Mode in the introduction on YouTube (01:38)](https://www.youtube.com/watch?v=R72LXKdiNxA&t=98s).
 
 :::info[Standard entity IDs]
 This page uses the standard Replay Mode entity IDs for new installations, such as `select.f1_replay_year` and `media_player.f1_replay_player`.
@@ -96,7 +91,7 @@ If you pause your TV, pause the replay to stay in sync. When you resume, resume 
 
 - **Pause** - Press `button.f1_replay_pause` or pause `media_player.f1_replay_player`
 - **Resume** - Press `button.f1_replay_play` or play `media_player.f1_replay_player`
-- **Seek with the playbar** - Drag the playbar in the F1 Replay Control card and release it at the target position
+- **Seek with the playbar** - Drag the playbar in the Replay module in the F1 Sensor card and release it at the target position
 - **Back 30 seconds** - Press `button.f1_replay_back_30` to move replay back 30 seconds
 - **Forward 30 seconds** - Press `button.f1_replay_forward_30` to move replay forward 30 seconds
 - **Stop** - Press `button.f1_replay_stop` to end playback and return to idle
@@ -104,55 +99,20 @@ If you pause your TV, pause the replay to stay in sync. When you resume, resume 
 ---
 
 ## Replay Seek Controls
-:::warning[Replay events can run again]
-Seeking backward can replay historical state changes again. Automations, notifications, and incident alerts that react to replayed events may run again when those events are replayed.
-:::
 
-The replay seek controls help you line up Home Assistant with the F1 broadcast you are watching. You can use the draggable playbar for larger adjustments, or the 30-second buttons for small catch-up steps.
+Use the [playbar, 30-second buttons or verified lap and qualifying markers](/features/replay-seeking) to match your recording. Rewinding can replay historical events and notifications again.
 
-### Dragging the playbar
+<span id="dragging-the-playbar" />
 
-The F1 Replay Control card shows a draggable playbar when `media_player.f1_replay_player` supports seek. Drag the handle to preview the target position, then release it to seek.
+<span id="how-the-30-second-buttons-work" />
 
-The card sends the seek command only when you release the handle. It does not send a service call for every drag movement, so the dashboard stays responsive while you choose the target point.
+<span id="syncing-to-a-lap-or-qualifying-part" />
 
-During a seek, the replay status may briefly show `seeking`. Longer jumps, especially with Track Map data available, can take a little longer while Replay Mode restores the correct session state.
+<span id="what-to-expect-1" />
 
-### How the 30-second buttons work
+<span id="best-way-to-use-it" />
 
-The **Back 30 seconds** and **Forward 30 seconds** buttons are still useful for small adjustments when your TV or streaming replay is slightly ahead or behind Home Assistant.
-
-When you press **Forward 30 seconds**, Replay Mode does not simply skip to a new position and ignore what happened in between. It applies the events inside that 30-second window first, then continues from the new position.
-
-That means important state changes still land correctly. If a red flag, Race Control update, session clock change, or other tracked event happens inside those 30 seconds, the related entities still end up in the right state after the jump.
-
-When you press **Back 30 seconds**, Replay Mode restores replay state for the new position and then continues from there.
-
-### Syncing to a lap or qualifying part
-
-The **Replay** module can jump directly to a recorded timing marker. Choose the lap that is starting on your broadcast, or choose Q1, Q2, Q3, SQ1, SQ2, or SQ3, then press **Sync replay to point**.
-
-Race and sprint markers use the start of each lap. Qualifying and sprint qualifying markers use the first session start for each part, so a restart after a red flag does not replace the original marker. The control stays hidden when the archive does not contain a verified marker for the loaded session.
-
-The jump uses the same replay seek behavior as the playbar. If replay is paused, it stays paused after the jump. If it is playing, playback resumes after the replay state has been restored.
-
-### What to expect
-
-- The playbar is available in the F1 Replay Control card when the replay media player supports seek
-- The playbar sends `media_player.media_seek` only after you release the slider
-- The 30-second buttons remain available for quick manual adjustments
-- Race, sprint, qualifying, and sprint qualifying sessions can expose verified sync points in the Replay module
-- The feature is intended to make manual catch-up simpler, not to guarantee perfect sync with every broadcaster
-- Rewinding can replay the same historical event again, which means automations and notifications may trigger again by design
-
-### Best way to use it
-
-If your TV or streaming replay is slightly out of sync, pause Replay Mode and use the playbar or 30-second buttons until the on-screen action matches your Home Assistant entities again. A practical reference point is the session clock, track status, or the latest Race Control message.
-:::info
-Seek controls are designed to preserve the visible replay state after the jump. If a session has a large amount of Track Map data, you may still see a short `seeking` period before playback resumes.
-:::
-
----
+[Read the full seek behavior and practical sync steps](/features/replay-seeking#replay-seek-controls).
 
 
 ## Replay improvements
@@ -161,34 +121,11 @@ Loading and seeking restore the session's accumulated timing state. Large jumps 
 
 The selectors, playback buttons and media player remain the controls for Replay Mode. You do not need to recreate them after updating. Rewinding can still emit the same historical events again, so keep the notification behavior described above in mind.
 
-A loaded replay also supplies selected-lap comparisons in [Weekend Hub Telemetry](/features/weekend-analysis#compare-replay-laps). Browsing [Results Archive](/features/historical-results) is a separate operation: it displays classifications and does not load or start a replay.
+A loaded replay also supplies selected-lap comparisons in [Replay telemetry](/features/weekend-analysis#compare-replay-laps). Browsing [Historical archive](/features/historical-results) is a separate operation: it displays classifications and does not load or start a replay.
 
 ## Replay Mode vs Developer mode
 
-Replay Mode and Developer mode both send recorded timing data through live entities, but they solve different problems.
-
-| Choose | When you should use it |
-| --- | --- |
-| **Replay Mode** | You want to watch a completed F1 session and keep Home Assistant synchronized with the broadcast |
-| **Developer mode** | You are developing or testing F1 Sensor and need to reproduce a known sequence from a local replay dump |
-
-| Behavior | Replay Mode | Developer mode |
-| --- | --- | --- |
-| Data source | Formula 1's completed session archive | Local replay dump file |
-| Normal audience | Home Assistant users | Maintainers and contributors |
-| Session selection | Year and session selectors | File path configured before integration reload |
-| Playback start | Manual **Load** and **Play** controls | Starts automatically when the integration loads |
-| Pause and seek | Supported | Not supported for the local dump |
-| Typical goal | Follow a TV or streaming replay | Reproduce bugs and run repeatable tests |
-| Availability | Normal releases | Only builds with the developer interface enabled |
-
-:::tip[Simple decision]
-Watching a race, sprint, qualifying, or practice session later? Use Replay Mode.
-
-Testing the integration with a dump supplied or captured for development? Use [Developer Mode with Replay Dumps](/help/developer-mode).
-:::
-
----
+Use Replay Mode to watch a completed session. [Developer mode](/help/developer-mode#developer-mode-vs-replay-mode) is for repeatable tests using a local dump; it starts when the integration loads, has no pause or seek controls, and is hidden in normal builds.
 
 ## Replay Mode vs live F1TV Auth
 
@@ -220,26 +157,11 @@ Replay Mode adds several control entities to Home Assistant.
 
 ### Configuration entities
 
-| Entity | Purpose |
-| --- | --- |
-| `select.f1_replay_year` | Select the season year |
-| `select.f1_replay_session` | Select which session to replay |
-| `select.f1_replay_start_reference` | Choose where playback starts |
-| `button.f1_replay_load` | Download and prepare the selected session |
-| `button.f1_replay_play` | Start or resume playback |
-| `button.f1_replay_pause` | Pause playback |
-| `button.f1_replay_stop` | Stop playback and return to idle |
-| `button.f1_replay_back_30` | Move replay back 30 seconds |
-| `button.f1_replay_forward_30` | Move replay forward 30 seconds |
-| `button.f1_replay_refresh` | Refresh the session list |
+The [complete control list](/reference/replay-controls#configuration-entities) contains the year, session and start-reference selectors plus load, play, pause, stop, seek and refresh buttons.
 
 ### Media player
 
-| Entity | Purpose |
-| --- | --- |
-| `media_player.f1_replay_player` | Standard media player with play, pause, stop, seek, and position tracking |
-
-The media player entity lets you control replay using any media player integration or remote control. It supports normal media seek actions, reports current position, duration, and playback state, and makes it easy to integrate replay with other media players in your setup.
+Use `media_player.f1_replay_player` for standard play, pause, stop, seek and position tracking. It can be controlled by compatible media players, dashboards and remote controls. See [states and attributes](/reference/replay-controls#media-player-entity).
 
 ### Status sensor
 
@@ -263,42 +185,7 @@ Use `media_player.f1_replay_player` for standard play, pause, stop and seek. The
 
 ## Example: Sync with Apple TV
 
-This example follows play/pause changes; it does not match the playback position automatically. First load the F1 session and align it manually. The [Replay Sync blueprint](/blueprints/replay-sync) provides the same basic workflow without writing YAML.
-
-```yaml
-automation:
-  - alias: "Pause F1 replay when Apple TV pauses"
-    trigger:
-      - platform: state
-        entity_id: media_player.apple_tv
-        to: "paused"
-    condition:
-      - condition: state
-        entity_id: media_player.f1_replay_player
-        state: "playing"
-    action:
-      - service: media_player.media_pause
-        target:
-          entity_id: media_player.f1_replay_player
-
-  - alias: "Resume F1 replay when Apple TV plays"
-    trigger:
-      - platform: state
-        entity_id: media_player.apple_tv
-        to: "playing"
-    condition:
-      - condition: state
-        entity_id: media_player.f1_replay_player
-        state: "paused"
-    action:
-      - service: media_player.media_play
-        target:
-          entity_id: media_player.f1_replay_player
-```
-
-Replace `media_player.apple_tv` with your actual media player entity. This works with any media player that reports play and pause states.
-
----
+Use the [Replay Sync blueprint](/blueprints/replay-sync) after manual alignment, or copy the [complete Apple TV YAML alternative](/blueprints/replay-sync#yaml-alternative). It follows play and pause, not playback position or TV seek.
 
 ## Additional entities in Replay Mode
 
@@ -313,7 +200,7 @@ Replay Mode sends supported archived timing through the integration’s live ent
 
 Enabled entities can remain registered before playback starts. Outside Replay Mode, availability depends on the live session, optional F1TV Auth and the published data. See the [availability matrix](/features/f1tv-auth#availability-matrix).
 
-The [F1 Track Map card](/features/track-map) is not a normal entity. It can show replay car positions when the replay archive contains the needed position data.
+The [Track map module](/features/track-map) is not a normal entity. It can show replay car positions when the replay archive contains the needed position data.
 
 For full details on each entity, see the [Live Data reference](/entities/live-data).
 
@@ -326,6 +213,5 @@ For full details on each entity, see the [Live Data reference](/entities/live-da
 - The live delay calibration feature is disabled during replay.
 - Long seeks can briefly show the replay state as `seeking` while the integration restores the correct session state.
 - Rewinding can replay historical events again, so replay-driven automations and notifications may run again.
-- Rewinding can also replay historical incident events again, including possible on-track incident notifications.
 - Replayed Track Map location context is best-effort and may be missing for sessions without usable car position data.
 - Replay Mode does not protect you from spoilers on its own. Use [No Spoiler Mode](/features/no-spoiler-mode) to keep your dashboard frozen until you are ready to watch.

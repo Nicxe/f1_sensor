@@ -145,7 +145,7 @@ def test_session_status_mapping_metadata_and_track_grip(hass) -> None:
     )
     assert (
         _map_session_status_payload({"Status": "Aborted", "Started": "Started"}, hass)
-        == "live"
+        == "suspended"
     )
     assert _map_session_status_payload({"Status": "unknown"}, hass) == "pre"
 

@@ -106,6 +106,7 @@ export class F1SensorCard extends LitElement {
     super(); this.entries = []; this.revision = 0; this.frozen = false; this.tab = ''; this.focus = {}; this.groupContext = {};
     this.sampleKey = '';
     this.savedSources = new data.RetainedSources();
+    this.pushLapOrders = new Map();
     this.history = new HistoryResources(() => { this.revision++; });
     this.telemetry = new HistoryResources(() => { this.revision++; }); this.telemetryRequests = new Map();
     this.viewingRequest = null; this.raceControlRequest = null; this.replayRequests = new Map(); this.teamRadioRequests = new Map(); this.sectors = new SectorStore(); this.choices = new Map(); this.moduleNodes = new Map(); this.cardDataResources = new Map(); this.minisectorResources = new Map(); this.eventState = { data: [], status: 'loading' }; this.analysisState = { data: null, status: 'loading' }; this.mapState = { data: null, status: 'loading' };
@@ -663,7 +664,10 @@ export class F1SensorCard extends LitElement {
       if (module.type === 'documents') Object.assign(model, season.documentsModel(viewHass, viewEntry, effective));
       if (module.type === 'map') {
         const driverPositions = data.source(viewHass, viewEntry, 'driver_positions');
-        Object.assign(model, mapModel(this.modelPreview?.map ?? this.mapState.data?.snapshot, effective, focus, this.modelPreview?.now ?? Date.now(), driverPositions.status === 'available' ? data.array(driverPositions.attributes.drivers) : []));
+        // Qualifying has no leader lap count, so an unknown sensor state can
+        // still carry complete timing attributes, as it does for timing rows.
+        const timingDrivers = ['available', 'unknown'].includes(driverPositions.status) ? data.array(driverPositions.attributes.drivers) : [];
+        Object.assign(model, mapModel(this.modelPreview?.map ?? this.mapState.data?.snapshot, effective, focus, this.modelPreview?.now ?? Date.now(), timingDrivers));
         const laps = data.source(viewHass, viewEntry, 'race_lap_count'), trackStatus = data.source(viewHass, viewEntry, 'track_status');
         const currentLap = Number(laps.state), totalLaps = Number(laps.attributes.total_laps);
         model.lap = laps.status === 'available' && Number.isInteger(currentLap) && currentLap >= 0 ? currentLap : null;
@@ -741,7 +745,7 @@ export class F1SensorCard extends LitElement {
       }
       if (module.type === 'timing') {
         const minisectors = minisectorData.usesMinisectors(module, this.moduleNodes.get(module.id)?.timingExpanded?.length > 0) ? this.minisectorState(effective) : null;
-        Object.assign(model, data.timingRows(viewHass, viewEntry, moduleSession, this.sectors, module, focus, minisectors));
+        Object.assign(model, data.timingRows(viewHass, viewEntry, { ...moduleSession, retained: saved.retained }, this.sectors, module, focus, minisectors, this.pushLapOrders));
         model.context = { meeting: moduleSession.meeting, session: moduleSession.name, key: moduleSession.key, source: 'TimingData', updated: model.source.updated_at, updatedKind: 'ha_state' };
         model.selectionGeneration = this.savedSources.viewGeneration;
         if (model.currentPart && ['qualifying', 'sprint_qualifying'].includes(model.sessionKind)) model.badge = `${model.sessionKind === 'sprint_qualifying' ? 'SQ' : 'Q'}${model.currentPart}`;
@@ -789,6 +793,7 @@ export class F1SensorCard extends LitElement {
       if (module.type === 'overview') {
         const event = data.overviewEvent(viewHass, viewEntry, selection), track = data.source(viewHass, viewEntry, 'track_status'), laps = data.source(viewHass, viewEntry, 'race_lap_count');
         const attrs = event.attributes, start = Date.parse(attrs.race_start_utc ?? attrs.race_start), remaining = start - (this.modelPreview?.now ?? Date.now());
+        const estimated = !event.replay && attrs.race_start_estimated === true;
         const countdown = event.replay ? this.w('modular.not_available_for_replay')
           : !Number.isFinite(remaining) ? '—' : remaining <= 0 ? this.w('modular.scheduled_start_passed') : [
             translatePlural(this.language, 'modular.day_count', Math.floor(remaining / 86400000)),
@@ -802,9 +807,10 @@ export class F1SensorCard extends LitElement {
           circuit_history: { defending_winner: attrs.defending_winner, defending_pole_sitter: attrs.defending_pole_sitter, races_held_here: attrs.races_held_here, first_f1_race_here: attrs.first_f1_race_here, last_year_podium: attrs.last_year_podium, last_5_winners: attrs.last_5_winners, top_5_driver_wins_here: attrs.top_5_driver_wins_here, top_5_constructor_wins_here: attrs.top_5_constructor_wins_here, dnf_rate_last_5: attrs.dnf_rate_last_5, pole_to_win_conversion_last_5: attrs.pole_to_win_conversion_last_5 },
           session: session.name ?? this.w('modular.between_sessions'), session_status: ['unavailable', 'unknown'].includes(session.status) ? null : session.status, lap_progress: protection === 'clear' ? lapProgress : hiddenMessage, track_status: protection === 'clear' ? track.status === 'available' ? track.state : null : hiddenMessage };
         model.items = module.fields.filter(id => Object.hasOwn(values, id)).map(id => ({ id, value: values[id], flag: id === 'meeting' ? safeImageUrl(attrs.country_flag_url) : null, country: attrs.circuit_country,
-          detail: clocks[id] ? protection === 'clear' ? this.clockDescription(clocks[id]) : null : id === 'track_status' && protection === 'clear' && track.status !== 'available' ? this.missingMessage(track.status) : null }));
+          detail: id === 'countdown' && estimated ? this.w('modular.provisional_start_time') : clocks[id] ? protection === 'clear' ? this.clockDescription(clocks[id]) : null : id === 'track_status' && protection === 'clear' && track.status !== 'available' ? this.missingMessage(track.status) : null }));
         if (event.replay && !event.context_available) model.notice = this.w('modular.waiting_for_event_information_from_the_loaded_replay');
         else if (event.replay && !event.calendar_match) model.notice = this.w('modular.the_replay_event_is_not_available_in_the_loaded_season_calendar_replay_provided_details');
+        else if (estimated) model.notice = this.w('modular.provisional_race_start_countdown');
       }
       if (module.type === 'race_control') {
         const current = data.source(viewHass, viewEntry, 'race_control'); model.source = current;

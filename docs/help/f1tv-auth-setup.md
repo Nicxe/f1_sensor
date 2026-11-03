@@ -5,40 +5,7 @@ description: Pair the Token Helper with Home Assistant, verify access, and renew
 ---
 
 F1TV Auth connects optional Formula 1 live timing access to F1 Sensor through the F1TV Token Helper.
-Use this page when you want live Track Map, Pit Stops, Team Radio, Championship Prediction, formation start refinements, or earlier incident candidates during an active Formula 1 session.
-
-## How it works
-
-F1 Sensor works without F1TV Auth by using public live timing.
-F1TV Auth adds a short-lived live timing authorization value. Additional features need both suitable account permissions and data published for the current session; connecting a token does not unlock every feed.
-
-The normal pairing flow uses Home Assistant and the F1TV Token Helper:
-
-1. Install or update F1 Sensor in Home Assistant.
-2. Install **F1TV Token Helper** from the [Chrome Web Store](https://chromewebstore.google.com/detail/f1tv-token-helper-beta/bbpgdcjohdjcechlffloekhpgdbjoafh).
-3. Start **Connect F1TV access with Token Helper** in Home Assistant.
-4. Open the pairing page from Home Assistant.
-5. Open the helper extension, sign in to Formula 1 if needed, select **Fetch**, then select **Send to Home Assistant**.
-6. Verify public live timing, check token health, then check your chosen additional feature during a suitable live session.
-
-:::info
-This flow does not ask Home Assistant for your F1TV username or password.
-The token is extracted from your own browser session by the separate helper and sent only to your own Home Assistant pairing callback.
-:::
-
-## Availability
-
-Use the [data availability matrix](/features/f1tv-auth#availability-matrix) to choose what you need:
-
-- **Without an account token:** public live timing continues to work.
-- **With a free account:** published archive resources and live radio metadata have been verified. The tested free account did not receive live car telemetry or Track Map positions.
-- **With paid access:** the tested account received live car telemetry and positions, plus driver race information and prediction data during the race. This does not guarantee every feed or every paid plan.
-
-Replay Mode uses archived data separately. A valid token, accepted account access and a currently published feed are different checks; see the matrix for the dated live observations and their limits.
-
-## Incident detection and F1TV Auth
-
-Confirmed alerts work with public live timing. Authenticated car data can improve earlier candidate signals, and Track Map can add location context. See [Incident Detection](/features/incident-detection) before enabling early alerts.
+Use it for Replay Mode and Formula 1 timing archives, or for extra live features such as Track Map, Pit Stops, Team Radio, Championship Prediction, formation start refinements and earlier incident candidates.
 
 ## Prerequisites
 
@@ -53,6 +20,23 @@ Before you start, make sure you have:
 
 Enable debug logging before reporting issues.
 See [Debug Logging and Logs](/help/debug-logging) for the recommended logging setup and log collection steps.
+
+## How it works
+
+Public live timing works without pairing. The Token Helper reads a short-lived authorization value from your own Formula 1 browser session and sends it only to your own Home Assistant pairing callback. Home Assistant does not ask for your Formula 1 username or password.
+
+Extra live features need suitable account permissions and published data; pairing does not unlock every feed. After setup, verify public timing, token health and the particular feature you want.
+
+## Availability
+
+Use [data availability](/features/f1tv-auth#availability-matrix) to choose a feature. A free account has accessed the tested replay resources and live radio metadata. Live car telemetry and positions were received with the tested paid account, not the tested free account. These are observations, not guarantees for every paid plan. The [complete dated evidence](/features/f1tv-access-evidence) preserves the test windows and limitations.
+
+Local token health, upstream acceptance, account permission and current publication are separate checks. Replay uses archive files separately from live feeds.
+
+## Incident detection and F1TV Auth
+
+Confirmed alerts work with public live timing. Authenticated car data can improve earlier candidate signals, and Track Map can add location context. See [Incident Detection](/features/incident-detection) before enabling early alerts.
+
 
 ## Step 1 - Start pairing from Home Assistant
 
@@ -155,7 +139,7 @@ The old session may have expired, already been used, or been created before Home
 
 A valid token status checks local token health. Formula 1 must also accept the token, your account must have access to the required feed, and that feed must publish data for the session.
 
-Compare the feature with the [availability matrix](/features/f1tv-auth#availability-matrix). Live car telemetry and positions were absent with the tested free account even while public timing and live radio metadata worked. During sampled United States race windows on 25 October 2026, the paid account received driver race information and prediction data, but neither account received `PitStopSeries` details.
+Compare the feature with the [availability matrix](/features/f1tv-auth#availability-matrix). Live car telemetry and positions were absent with the tested free account even while public timing and live radio metadata worked. The [dated live comparison](/features/f1tv-access-evidence#what-the-live-checks-establish) records the received prediction data and missing `PitStopSeries` details.
 
 For Pit Stops, check counts and detail records separately. A reported count can update while stop times remain unknown; tyre stints do not fill those missing times. A later archive can contain detail records even when live delivery did not. See [Pit Stops](/entities/pit-stops) before treating missing detail as a token failure. An archive request failing also does not establish whether a live feed is available.
 

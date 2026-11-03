@@ -140,6 +140,39 @@ test('RC release metadata hydrates the existing beta distribution channel', () =
   } finally {mocked.mock.restore();}
 });
 
+test('an older closed RC series cannot block a newer beta cycle', () => {
+  const inspected = [];
+  const mocked = mock.method(child, 'execFileSync', (...args) => {inspected.push(args); return '';});
+  delete require.cache[require.resolve('../.github/scripts/run-release.cjs')];
+  try {
+    const {assertOpenReleaseCycle} = require('../.github/scripts/run-release.cjs');
+    for (const tags of [
+      ['v6.2.0-beta.1', 'v6.1.0-rc.3', 'v6.1.0-rc.2'],
+      ['v6.1.0-rc.3', 'v6.2.0-beta.1'],
+      ['v7.0.0-beta.1', 'v6.2.0-rc.1', 'v6.1.0-rc.3'],
+    ]) {
+      assert.doesNotThrow(() => assertOpenReleaseCycle({branch: 'beta', tags,
+        releases: [{tag_name: 'v6.1.2', draft: false, prerelease: false}]}));
+    }
+    assert.deepEqual(inspected, []);
+  } finally {mocked.mock.restore();}
+});
+
+test('an active RC cycle remains protected even when an older beta or RC exists', () => {
+  const mocked = mock.method(child, 'execFileSync', () => '');
+  delete require.cache[require.resolve('../.github/scripts/run-release.cjs')];
+  try {
+    const {assertOpenReleaseCycle} = require('../.github/scripts/run-release.cjs');
+    const request = {branch: 'beta', tags: ['v6.1.0-rc.3', 'v6.2.0-beta.1', 'v6.2.0-rc.1']};
+    assert.doesNotThrow(() => assertOpenReleaseCycle({...request,
+      releases: [{tag_name: 'v6.1.2', draft: false, prerelease: false}]}));
+    for (const tag_name of ['v6.2.0', 'v6.3.0']) {
+      assert.throws(() => assertOpenReleaseCycle({...request,
+        releases: [{tag_name, draft: false, prerelease: false}]}), /Merge main into dev/);
+    }
+  } finally {mocked.mock.restore();}
+});
+
 test('a completed RC series requires stable history before continuing, while drafts and unrelated hotfixes do not', () => {
   let missing = false;
   const mocked = mock.method(child, 'execFileSync', (command, args) => {

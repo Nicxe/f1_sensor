@@ -1,5 +1,5 @@
 const version = new URL(import.meta.url).searchParams.get('v');
-const { seconds, number, positiveInteger, lapChange, safeImageUrl } = await import(`./semantics.js${version ? `?v=${encodeURIComponent(version)}` : ''}`);
+const { seconds, number, positiveInteger, lapChange, safeImageUrl, readSectors } = await import(`./semantics.js${version ? `?v=${encodeURIComponent(version)}` : ''}`);
 
 const { sessionKind, timingFields, moduleFields, fieldDefinition } = await import(`./catalog.js${version ? `?v=${encodeURIComponent(version)}` : ''}`);
 const { segmentStrip } = await import(`./minisector-data.js${version ? `?v=${encodeURIComponent(version)}` : ''}`);
@@ -204,7 +204,75 @@ export function lapHistory(driver) {
     .sort((a, b) => a.lap - b.lap);
 }
 
-export function timingRows(hass, entry, context, sectors, module, focus = {}, minisectors = null) {
+function pushLapState(value, available) {
+  const raw = value && typeof value === 'object' ? value : {};
+  const active = available && raw.active === true && ['probable_push', 'push'].includes(raw.state);
+  const completed = available && raw.state === 'completed' && raw.active === false && seconds(raw.last_lap_time) > 0;
+  const progress = typeof raw.progress === 'number' && Number.isFinite(raw.progress) && raw.progress >= 0 && raw.progress <= 1 ? raw.progress : null;
+  return { ...raw, state: active || completed ? raw.state : 'unknown', active, completed, progress,
+    last_lap_time: completed ? seconds(raw.last_lap_time) : null };
+}
+
+function pushLapDelta(value, push, part, enabled, identity, rawDrivers) {
+  if (!enabled || !push.active && !push.completed) return null;
+  const empty = { status: ['unavailable', 'unsupported'].includes(value?.status) ? 'unavailable' : 'waiting', reference: null, sector_1: null, sector_2: null, sector_3: null, latest_sector: null };
+  if (!value || value.status !== 'available' || !part || positiveInteger(value.session_part) !== part
+    || positiveInteger(value.lap) === null || positiveInteger(value.lap) !== positiveInteger(push.lap)) return empty;
+  const reference = value.reference, time = seconds(reference?.time);
+  const referenceId = reference?.racing_number == null ? '' : String(reference.racing_number);
+  if (!referenceId || time === null) return empty;
+  const supplied = positiveInteger(value.latest_sector);
+  const limit = push.completed ? 3 : push.progress === null ? 0 : Math.floor(push.progress * 3);
+  const latest = supplied && supplied <= 3 ? Math.min(supplied, limit) : 0;
+  const person = identity.get(referenceId) ?? rawDrivers.find(driver => String(driver?.racing_number) === referenceId);
+  return { ...empty, status: 'available', reference: { racing_number: referenceId, driver: person?.tla ?? referenceId, time,
+    lap: positiveInteger(reference.lap), part }, latest_sector: latest || null,
+    ...Object.fromEntries([1, 2, 3].map(sector => [`sector_${sector}`, sector <= latest ? number(value[`sector_${sector}`]) : null])) };
+}
+
+function pushLapRows(rows, mode, status, key, orders) {
+  if (mode === 'off') return rows;
+  if (status !== 'available') { orders?.delete(key); return mode === 'only' ? [] : rows; }
+  const previous = orders?.get(key) ?? [];
+  const previousRank = new Map(previous.map((id, index) => [id, index]));
+  const highlighted = rows.filter(row => row.push_lap.active).sort((a, b) => {
+    const x = a.push_lap.progress, y = b.push_lap.progress;
+    if (x !== null && y === null) return -1;
+    if (x === null && y !== null) return 1;
+    return (y ?? 0) - (x ?? 0) || (previousRank.get(a.id) ?? Infinity) - (previousRank.get(b.id) ?? Infinity)
+      || a.id.localeCompare(b.id, undefined, { numeric: true });
+  });
+  const completed = rows.filter(row => row.push_lap.completed)
+    .sort((a, b) => String(b.push_lap.completed_at ?? '').localeCompare(String(a.push_lap.completed_at ?? '')));
+  if (orders) {
+    if (orders.size >= 64 && !orders.has(key)) orders.clear();
+    orders.set(key, highlighted.map(row => row.id));
+  }
+  if (!highlighted.length && !completed.length) return mode === 'only' ? [] : rows;
+  for (const row of highlighted) row.push_group = 'active';
+  for (const row of completed) row.push_group = 'completed';
+  const others = rows.filter(row => !row.push_lap.active && !row.push_lap.completed);
+  for (const row of others) row.push_group = 'other';
+  return [...highlighted, ...completed, ...(mode === 'first' ? others : [])];
+}
+
+function currentPushSectors(driver, progress) {
+  const lap = positiveInteger(driver.sector_current_lap ?? driver.sectors?.current_lap);
+  const completed = progress === null ? 0 : Math.floor(progress * 3);
+  // An active attempt must never borrow a coherent previous lap, including
+  // a later replay lap retained before a backwards seek in the same session.
+  return readSectors(driver).map((sector, index) => index < completed && lap !== null && sector.lap === lap && sector.source === 'current'
+    ? { ...sector, previous_lap: false }
+    : { ...sector, time: null, lap, source: null, overall_fastest: false, personal_fastest: false, previous_lap: false, deleted: false, invalid: false });
+}
+
+function currentPushStrip(strip, sector, progress) {
+  const fraction = progress === null ? 0 : Math.max(0, Math.min(1, progress * 3 - sector));
+  const observed = Math.floor(fraction * strip.length + 1e-9);
+  return strip.map((segment, index) => index < observed ? segment : { ...segment, raw: 0 });
+}
+
+export function timingRows(hass, entry, context, sectors, module, focus = {}, minisectors = null, pushOrders = null) {
   const positions = source(hass, entry, 'driver_positions');
   const tyres = source(hass, entry, 'current_tyres');
   const drivers = source(hass, entry, 'driver_list');
@@ -222,6 +290,13 @@ export function timingRows(hass, entry, context, sectors, module, focus = {}, mi
   const timingSource = positions.status === 'unknown' && rawDrivers.length
     ? { ...positions, status: 'available' }
     : positions;
+  const pushMode = module.type === 'timing' ? module.options.push_laps ?? 'off' : 'off';
+  const pushDeltas = pushMode !== 'off' && qualifying && module.options.push_lap_deltas === true;
+  const pushSupported = ['practice', 'qualifying', 'sprint_qualifying'].includes(kind);
+  const pushStatus = !pushSupported ? 'unsupported'
+    : timingSource.status !== 'available' || positions.data_status === 'stale' || context.retained || hass?.connection?.connected === false ? 'unavailable'
+      : ['available', 'waiting', 'unavailable', 'unsupported'].includes(positions.attributes.push_laps_status)
+        ? positions.attributes.push_laps_status : 'waiting';
   // The reference is the whole session, even when a module shows one driver or
   // team. Observed lap history cannot replace an official corrected best.
   const practiceTimes = kind === 'practice' ? rawDrivers
@@ -245,9 +320,14 @@ export function timingRows(hass, entry, context, sectors, module, focus = {}, mi
       : laps.reduce((result, item) => !result || item.time < result.time ? item : result, null);
     const officialBest = official && driver.best_lap_time_source === 'official' ? best.time : null;
     const nativeBestLapGap = typeof driver.best_lap_gap === 'number' && Number.isFinite(driver.best_lap_gap) && driver.best_lap_gap >= 0 ? driver.best_lap_gap : null;
-    const selectedSectors = sectors.select(context.key, driver, module.options.sectors);
+    const pushLap = pushLapState(driver.push_lap, pushStatus === 'available');
+    const highlightedPush = pushMode !== 'off' && pushLap.active;
+    const selectedSectors = highlightedPush ? currentPushSectors(driver, pushLap.progress) : sectors.select(context.key, driver, module.options.sectors);
     const minisectorDriver = minisectors?.status === 'ready' ? minisectors.drivers?.[id] : null;
-    const strips = [0, 1, 2].map(sector => segmentStrip(minisectorDriver, sector));
+    const strips = [0, 1, 2].map(sector => {
+      const strip = segmentStrip(minisectorDriver, sector);
+      return highlightedPush ? currentPushStrip(strip, sector, pushLap.progress) : strip;
+    });
     const bestSectors = [1, 2, 3].map(n => {
       const detail = driver.sectors?.personal_best?.[`sector_${n}`];
       const time = seconds(detail ? detail.time : driver[`best_sector_${n}`]);
@@ -282,6 +362,8 @@ export function timingRows(hass, entry, context, sectors, module, focus = {}, mi
       tyre: nonempty(tyre.compound_short ?? tyre.compound), tyre_age: number(tyre.stint_laps),
       status: driver.retired === true ? 'retired' : driver.in_pit === true ? 'in_pit' : driver.pit_out === true ? 'pit_out' : driver.stopped === true ? 'stopped' : nonempty(driver.status),
       updated_at: positions.updated_at,
+      push_lap: pushLap,
+      push_lap_delta: pushLapDelta(driver.push_lap_delta, pushLap, part, pushDeltas, identity, rawDrivers),
     };
   }).filter(row => row.id && (!chosenDriver || row.id === chosenDriver || row.driver === chosenDriver)
     && (!chosenTeam || row.team === chosenTeam));
@@ -300,7 +382,10 @@ export function timingRows(hass, entry, context, sectors, module, focus = {}, mi
     const order = typeof x === 'string' ? x.localeCompare(String(y)) : (x ?? 0) - (y ?? 0);
     return order * (module.options.direction === 'desc' ? -1 : 1) || a.id.localeCompare(b.id, undefined, { numeric: true });
   });
-  return { rows: rows.slice(0, module.options.rows), total: rows.length, source: timingSource, filtered: Boolean(chosenDriver || chosenTeam), fields: timingFields(module, context.name), sessionKind: kind, currentPart: part };
+  const ordered = pushLapRows(rows, pushMode, pushStatus, `${entry?.entry_id}:${context.key}:${part}:${module.id}`, pushOrders);
+  return { rows: ordered.slice(0, module.options.rows), total: ordered.length, source: timingSource, filtered: Boolean(chosenDriver || chosenTeam), fields: timingFields(module, context.name), sessionKind: kind, currentPart: part,
+    pushMode, pushStatus, pushDeltas, pushCount: rows.filter(row => row.push_lap.active).length,
+    pushOrderUnknown: rows.some(row => row.push_lap.active && row.push_lap.progress === null) };
 }
 
 export const SESSION_FIELDS = [
@@ -341,7 +426,8 @@ export function scheduleRows(hass, entry, module, now = Date.now()) {
     const date = publishedDate(block?.date) ?? publishedDate(race[`${prefix}_date`]) ?? publishedDate(typeof candidate === 'string' ? candidate.slice(0, 10) : null);
     if (!start && !date) continue;
     rows.push({ id: `${race.season ?? ''}:${race.round ?? ''}:${id}`, session: id, label: sourceText, meeting: race.race_name ?? race.raceName ?? null,
-      start, date, timezone: race.circuit_timezone ?? null, country: race.circuit_country ?? race.Circuit?.Location?.country ?? null,
+      start, date, estimated: id === 'race' && race.race_start_estimated === true,
+      timezone: race.circuit_timezone ?? null, country: race.circuit_country ?? race.Circuit?.Location?.country ?? null,
       flag: safeImageUrl(race.country_flag_url), round: race.round ?? null, circuit: race.circuit_name ?? race.Circuit?.circuitName ?? null,
       location: [race.circuit_locality ?? race.Circuit?.Location?.locality, race.circuit_country ?? race.Circuit?.Location?.country].filter(Boolean).join(', ') });
   }

@@ -86,6 +86,10 @@ state and keeps ordinary sector timing separate. See [the modular card guide](/c
 
 ## Troubleshooting
 
+### Do I need a sensor for every card module?
+
+No. On current backends, the modular card gets [data automatically](/features/card-data-and-sensors) for its modules. Keep sensor entities for automations, templates, standard cards and older F1 cards. Live timing, account permissions and session availability still apply. Manual Team Radio transcription also [requires its sensor entity](/features/team-radio-transcription).
+
 ### Do I install the cards separately?
 
 No. They are bundled with the integration. Restart Home Assistant after installation and refresh your browser. Follow [Your first dashboard](/getting-started/first-dashboard).

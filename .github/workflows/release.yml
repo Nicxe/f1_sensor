@@ -31,7 +31,7 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version-file: .python-version
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -59,13 +59,13 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           CREATE_RC: ${{ inputs.create_rc }}
       - name: Add promotion editorial to the release draft
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
             const editorial = require('./.github/scripts/release-editorial.cjs');
             await editorial.applyReleaseEditorial({github, context, core});
       - name: Verify the completed draft for manual publication
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
             const editorial = require('./.github/scripts/release-editorial.cjs');

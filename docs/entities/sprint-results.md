@@ -4,19 +4,18 @@ title: "Sprint Results"
 description: "Sprint classification results \u2014 state, attributes, and examples for F1 Sensor."
 ---
 
-Sprint classification results. Use `sensor.f1_sprint_results` in dashboards, templates, and automations.
+import {EntityMeta, RelatedReferences} from '@site/src/components/Docs';
 
-This reference covers the state and attributes. For setup, see [Configuration](/getting-started/add-integration).
+Sprint classification results.
 
-:::info[Find your entity]
-These are standard entity IDs. If Home Assistant assigned a different ID, or you renamed an entity, use your existing ID in the examples.
-:::
+<EntityMeta id="sprint-results" />
 
-## State and attributes
+<span id="state-and-attributes"></span>
 
 Classification results for all sprint sessions in the current season.
 
-**State**
+## State
+
 - Integer: number of sprint races with results, or `0` when none are available.
 
 **Example**
@@ -24,13 +23,13 @@ Classification results for all sprint sessions in the current season.
 6
 ```
 
-**Attributes**
+## Attributes
 
 | Attribute | Type | Description |
 | --- | --- | --- |
 | races | list | List of sprint races with results |
 
-Each entry in `races` contains:
+### `races` entries
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -38,7 +37,7 @@ Each entry in `races` contains:
 | race_name | string | Grand Prix name |
 | results | list | List of classification results |
 
-Each entry in `results` contains:
+### `results` entries
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -52,9 +51,8 @@ Each entry in `results` contains:
 | driver | object | `{ permanentNumber, code, givenName, familyName }` |
 | constructor | object | `{ name }` |
 
+## Related references
 
-## Next steps
+<span id="next-steps"></span>
 
-- [Browse the entity reference](/reference/overview)
-- [Build an automation](/automation)
-- [Choose a dashboard card](/cards/cards-overview)
+<RelatedReferences id="sprint-results" />

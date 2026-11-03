@@ -4,15 +4,13 @@ title: "Championship Prediction (Teams)"
 description: "Constructors championship prediction (P1 and list) (Replay Mode or F1TV Auth live timing) \u2014 state, attributes, and examples for F1 Sensor."
 ---
 
-Constructors championship prediction (P1 and list) (Replay Mode or F1TV Auth live timing). Use `sensor.f1_championship_prediction_teams` in dashboards, templates, and automations.
+import {EntityMeta, RelatedReferences} from '@site/src/components/Docs';
 
-See [live data availability](/entities/live-data#availability-model) for session and data-source requirements. The details below describe any additional conditions for this entity.
+Constructors championship prediction (P1 and list) (Replay Mode or F1TV Auth live timing).
 
-:::info[Find your entity]
-These are standard entity IDs. If Home Assistant assigned a different ID, or you renamed an entity, use your existing ID in the examples.
-:::
+<EntityMeta id="championship-prediction-teams" />
 
-## State and attributes
+<span id="state-and-attributes"></span>
 
 :::info[Replay Mode or F1TV Auth live timing]
 This entity stays registered in Home Assistant. It updates in [Replay Mode](/features/replay-mode) and can update during live sessions when [F1TV Auth](/features/f1tv-auth) is paired with a valid token and live prediction data is available.
@@ -20,7 +18,8 @@ This entity stays registered in Home Assistant. It updates in [Replay Mode](/fea
 
 Predicted Constructors Championship winner and points table.
 
-**State**
+## State
+
 - Predicted P1 team name, or `unknown` when not available.
 
 **Example**
@@ -28,7 +27,7 @@ Predicted Constructors Championship winner and points table.
 Red Bull Racing
 ```
 
-**Attributes**
+## Attributes
 
 | Attribute | Type | Description |
 | --- | --- | --- |
@@ -36,7 +35,7 @@ Red Bull Racing
 | teams | object | Map of all teams keyed by team key |
 | last_update | string | ISO-8601 timestamp of the last prediction update |
 
-The `predicted_team_p1` object contains:
+### `predicted_team_p1` object
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -45,7 +44,7 @@ The `predicted_team_p1` object contains:
 | points | number | Predicted final points |
 | entry | object | Full entry data from the feed |
 
-Each entry in `teams` (keyed by team key) contains:
+### `teams` entries (keyed by team key)
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -55,6 +54,8 @@ Each entry in `teams` (keyed by team key) contains:
 | PredictedPosition | number | Predicted final position |
 | CurrentPoints | number | Current points total |
 | PredictedPoints | number | Predicted final points |
+
+## Examples
 
 <details>
 <summary>JSON Structure Example</summary>
@@ -111,7 +112,7 @@ Each entry in `teams` (keyed by team key) contains:
 
 **Get predicted constructors champion:**
 ```jinja2
-{% set p1 = state_attr('sensor.f1_championship_prediction_teams', 'predicted_team_p1') %}
+{% set p1 = state_attr('sensor.f1_championship_prediction_teams', 'predicted_team_p1') or {} %}
 {% if p1 %}
   Predicted constructors champion: {{ p1.team_name }}
 {% endif %}
@@ -119,7 +120,7 @@ Each entry in `teams` (keyed by team key) contains:
 
 **Compare two teams:**
 ```jinja2
-{% set teams = state_attr('sensor.f1_championship_prediction_teams', 'teams') %}
+{% set teams = state_attr('sensor.f1_championship_prediction_teams', 'teams') or {} %}
 {% set rb = teams.get('red_bull') %}
 {% set ferrari = teams.get('ferrari') %}
 {% if rb and ferrari %}
@@ -129,7 +130,7 @@ Each entry in `teams` (keyed by team key) contains:
 
 **List teams by predicted finish:**
 ```jinja2
-{% set teams = state_attr('sensor.f1_championship_prediction_teams', 'teams') %}
+{% set teams = state_attr('sensor.f1_championship_prediction_teams', 'teams') or {} %}
 {% for key, t in teams.items() | sort(attribute='1.PredictedPosition') %}
   P{{ t.PredictedPosition }}: {{ t.TeamName }} ({{ t.PredictedPoints }} pts)
 {% endfor %}
@@ -137,7 +138,7 @@ Each entry in `teams` (keyed by team key) contains:
 
 **Show teams predicted to change position:**
 ```jinja2
-{% set teams = state_attr('sensor.f1_championship_prediction_teams', 'teams') %}
+{% set teams = state_attr('sensor.f1_championship_prediction_teams', 'teams') or {} %}
 {% for key, t in teams.items() if t.PredictedPosition != t.CurrentPosition %}
   {{ t.TeamName }}: P{{ t.CurrentPosition }} -> P{{ t.PredictedPosition }}
 {% endfor %}
@@ -145,9 +146,8 @@ Each entry in `teams` (keyed by team key) contains:
 
 </details>
 
+## Related references
 
-## Next steps
+<span id="next-steps"></span>
 
-- [Browse the entity reference](/reference/overview)
-- [Build an automation](/automation)
-- [Choose a dashboard card](/cards/cards-overview)
+<RelatedReferences id="championship-prediction-teams" />
