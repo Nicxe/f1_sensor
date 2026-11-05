@@ -4,7 +4,7 @@ title: Install and update the F1 Sensor card
 description: Load the bundled F1 Sensor dashboard card and troubleshoot its browser resource.
 ---
 
-The **F1 Sensor** dashboard card is bundled with the integration. You do not need a separate HACS dashboard repository.
+The **F1 Sensor** dashboard card is bundled with the integration. You do not need a separate Marketplace or HACS dashboard repository.
 
 ## Install the card
 
@@ -30,7 +30,7 @@ Confirm that the bundled **F1 Sensor** card opens before removing an old standal
 
 1. Update F1 Sensor, restart Home Assistant and add a new **F1 Sensor** card.
 2. Confirm that the card renders and its visual editor opens.
-3. In HACS, remove the old **F1 Sensor Live Data Card** dashboard repository if it is still installed.
+3. In Marketplace (or HACS on older Home Assistant versions), remove the old **F1 Sensor Live Data Card** dashboard repository if it is still installed.
 4. Open **Settings > Dashboards**, open the three-dot menu and select **Resources**.
 5. Remove stale entries such as `/local/f1-sensor-live-data-card.js` or `/hacsfiles/f1-sensor-live-data-card/...`.
 6. Keep the integration-managed `/local/f1-sensor-live-data-card/f1-sensor-live-data-card.js?v=...` JavaScript module.
