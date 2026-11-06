@@ -14,6 +14,8 @@ Constructors championship prediction (P1 and list) (Replay Mode or F1TV Auth liv
 
 :::info[Replay Mode or F1TV Auth live timing]
 This entity stays registered in Home Assistant. It updates in [Replay Mode](/features/replay-mode) and can update during live sessions when [F1TV Auth](/features/f1tv-auth) is paired with a valid token and live prediction data is available.
+
+Predictions are shown only for an identified Race or Sprint. Practice, qualifying, Sprint Qualifying, Sprint Shootout and testing do not publish predictions. If session metadata is missing, the value remains unknown until both the session and a fresh prediction are received. Earlier predictions are not reused after a session change or reconnection.
 :::
 
 Predicted Constructors Championship winner and points table.
@@ -34,6 +36,9 @@ Red Bull Racing
 | predicted_team_p1 | object | The team currently predicted to lead the constructors' championship |
 | teams | object | Map of all teams keyed by team key |
 | last_update | string | ISO-8601 timestamp of the last prediction update |
+| session_key | string or null | Session identity supplied by timing metadata |
+| session_type | string or null | `race`, `sprint`, `other`, or null when unknown |
+| prediction_status | string | `waiting_for_session`, `waiting_for_prediction`, `not_applicable`, or `ready`; separate from authentication and source availability |
 
 ### `predicted_team_p1` object
 

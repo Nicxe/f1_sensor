@@ -16,6 +16,9 @@ const analysisData = await load('./analysis-data.js');
 const minisectorData = await load('./minisector-data.js');
 const telemetryData = await load('./telemetry-data.js');
 const { mapModel, mapExpiry } = await load('./map-data.js');
+const { raceTraceModel, clipRaceTrace } = await load('./race-trace-data.js');
+const { raceTraceSource, raceTraceSelectionKey, raceTraceMarkerSource } = await load('./race-trace-source.js');
+const { raceTraceMarkers } = await load('./race-trace-markers.js');
 const { hasF1Action, dispatchF1CardAction } = await load('../platform/actions.js');
 
 // Spread first layouts over frames; established cards keep their normal update path.
@@ -107,6 +110,7 @@ export class F1SensorCard extends LitElement {
     this.sampleKey = '';
     this.savedSources = new data.RetainedSources();
     this.pushLapOrders = new Map();
+    this.raceTraceAnchors = new Map(); this.raceTraceMarkerWatermark = null;
     this.history = new HistoryResources(() => { this.revision++; });
     this.telemetry = new HistoryResources(() => { this.revision++; }); this.telemetryRequests = new Map();
     this.viewingRequest = null; this.raceControlRequest = null; this.replayRequests = new Map(); this.teamRadioRequests = new Map(); this.sectors = new SectorStore(); this.choices = new Map(); this.moduleNodes = new Map(); this.cardDataResources = new Map(); this.minisectorResources = new Map(); this.eventState = { data: [], status: 'loading' }; this.analysisState = { data: null, status: 'loading' }; this.mapState = { data: null, status: 'loading' };
@@ -268,7 +272,7 @@ export class F1SensorCard extends LitElement {
   }
   moduleVisible(module) { return visibilityMet(module.visibility, this.sourceHass); }
   stopSources() {
-    this.savedSources.clear();
+    this.savedSources.clear(); this.raceTraceAnchors.clear(); this.raceTraceMarkerWatermark = null;
     for (const resource of this.cardDataResources.values()) resource.stop?.();
     this.cardDataResources.clear();
     this.frozen = false; this.frozenModels = null; this.frozenFocus = null; this.frozenRoster = null; this.frozenGeneration = null;
@@ -298,6 +302,7 @@ export class F1SensorCard extends LitElement {
   willUpdate(changed) {
     this.syncPreview();
     if (!this.sourceHass || !this.config || !this.isConnected) return;
+    for (const id of this.raceTraceAnchors.keys()) if (!this.config.modules.some(module => module.id === id && module.enabled && module.type === 'lap_chart' && module.options.metric === 'cumulative_lap_delta')) this.raceTraceAnchors.delete(id);
     this.savedSources.update(this.sourceHass, this.entry, this.config, Boolean(this.modelPreview));
     if (this.settings.appearance.font === 'f1') ensureTypography();
     const activeModule = this.shadowRoot?.activeElement;
@@ -356,7 +361,9 @@ export class F1SensorCard extends LitElement {
       this.stopMap?.(); this.stopMap = null; this.mapKey = mapKey; this.mapState = { data: null, status: 'loading' };
       if (mapKey) this.stopMap = watchTrackMap(this.sourceHass, mapKey, state => { this.mapState = state; this.revision++; });
     }
-    const analysisKey = entry && this.config.modules.some(module => usable(module) && MODULES[module.type]?.stream === 'analysis') && data.spoilerState(this.sourceHass, entry, this.config.context.spoilers) === 'clear' ? entry.entry_id : '';
+    const analysisKey = entry && this.config.modules.some(module => usable(module) && (MODULES[module.type]?.stream === 'analysis'
+      || module.type === 'lap_chart' && module.options.metric === 'cumulative_lap_delta' && module.options.event_markers?.length))
+      && data.spoilerState(this.sourceHass, entry, this.config.context.spoilers) === 'clear' ? entry.entry_id : '';
     if (analysisKey !== this.analysisKey) {
       this.stopAnalysis?.(); this.stopAnalysis = null; this.analysisKey = analysisKey; this.analysisState = { data: null, status: 'loading' };
       if (analysisKey) this.stopAnalysis = watchAnalysis(this.sourceHass, analysisKey, state => { this.analysisState = state; this.revision++; });
@@ -584,12 +591,71 @@ export class F1SensorCard extends LitElement {
     const qualities = { official: ['Official clock', 'Officiell klocka'], official_no_heartbeat: ['Clock without heartbeat confirmation'], sessiondata_fallback: ['Estimated from session events'] };
     return [phases[clock.phase] ? this.w(...phases[clock.phase]) : this.w('modular.clock_status_unknown'), qualities[clock.quality] ? this.w(...qualities[clock.quality]) : this.w('modular.clock_source_uncertain'), clock.part ? `${this.w('modular.part')} ${clock.part}` : null].filter(Boolean).join(' · ');
   }
+  readRaceTraceMarkers(traceEntry, connected) {
+    const source = raceTraceMarkerSource(traceEntry,
+      this.modelPreview ? { status: 'ready', data: this.modelPreview.analysis } : this.analysisState, connected);
+    // Validate ownership and timing before updating this card's ordering boundary.
+    // Keep no event history: an older snapshot waits instead of reviving a correction.
+    if (source.status !== 'ready') return source;
+    const previous = this.raceTraceMarkerWatermark;
+    if (previous?.contextKey === source.contextKey && source.asOf.sequence < previous.sequence) {
+      return { status: 'pending', reason: 'waiting_for_current_markers', events: [] };
+    }
+    this.raceTraceMarkerWatermark = { contextKey: source.contextKey, sequence: source.asOf.sequence };
+    return source;
+  }
+  buildRaceTrace(module) {
+    const traceEntry = this.modelPreview?.raceTrace?.() ?? this.entry;
+    const connected = this.sourceHass?.connection?.connected !== false;
+    const selected = raceTraceSource(traceEntry, connected);
+    const key = raceTraceSelectionKey(selected.contextKey, module.options);
+    let anchor = this.raceTraceAnchors.get(module.id);
+    if (key && key !== anchor?.key) {
+      anchor = { key, lap: null }; this.raceTraceAnchors.set(module.id, anchor);
+    }
+    const calculated = selected.status === 'ready'
+      ? raceTraceModel(selected.drivers, { ...module.options, lockedAnchor: anchor?.lap ?? null })
+      : { metric: 'cumulative_lap_delta', axisKind: 'lap', status: selected.status, reason: selected.reason, rounds: [], series: [], anchorLap: anchor?.lap ?? null, referenceDriver: module.options.reference_driver };
+    if (calculated.status === 'ready' && anchor) anchor.lap = calculated.anchorLap;
+    const model = clipRaceTrace(calculated, module.options.start_lap, module.options.end_lap);
+    const markerSource = module.options.event_markers?.length ? this.readRaceTraceMarkers(traceEntry, connected) : null;
+    model.markers = raceTraceMarkers(model, markerSource, module.options.event_markers);
+    model.traceMarkerContext = markerSource?.contextKey ?? null;
+    model.title = this.w('modular.race_trace_title');
+    model.traceContext = key; model.traceSourceContext = selected.contextKey;
+    model.notice = model.status === 'ready' ? null : this.w('modular.race_trace_notice');
+    model.context = { reference: model.series.find(series => series.isReference)?.name ?? module.options.reference_driver,
+      anchor: model.anchorLap, updated: selected.updatedAt ?? null, updatedKind: 'received' };
+    if (model.status !== 'ready') model.blocked = this.w(`modular.race_trace_${model.reason}`);
+    if (model.invalidRange) model.blocked = this.w('modular.the_first_lap_is_after_the_last_lap_adjust_the_lap_range_in_the');
+    return model;
+  }
+  guardFrozenRaceTrace(models) {
+    // A local reading snapshot must never retain future laps across a rewind,
+    // another session/delay generation or an unknown protection state.
+    for (const module of this.config.modules) {
+      if (module.type !== 'lap_chart' || module.options.metric !== 'cumulative_lap_delta') continue;
+      const selected = raceTraceSource(this.modelPreview?.raceTrace?.() ?? this.entry, this.sourceHass?.connection?.connected !== false);
+      const previous = models.get(module.id);
+      if (!previous || selected.status !== 'ready' || previous.traceSourceContext !== selected.contextKey) {
+        models.set(module.id, { title: this.w('modular.race_trace_title'), blocked: this.w(`modular.race_trace_${selected.reason ?? 'waiting_for_context'}`),
+          series: [], rounds: [], traceContext: null, traceSourceContext: null });
+      } else if (module.options.event_markers?.length) {
+        const current = this.readRaceTraceMarkers(this.modelPreview?.raceTrace?.() ?? this.entry,
+          this.sourceHass?.connection?.connected !== false);
+        if (current.status !== 'ready' || previous.traceMarkerContext !== current.contextKey) {
+          models.set(module.id, { ...previous, markers: { status: 'pending', reason: 'waiting_for_marker_context', events: [] } });
+        }
+      }
+    }
+  }
   buildModels() {
     const entry = this.entry, settings = this.settings, session = data.sessionContext(this.sourceHass, entry);
     const protection = data.spoilerState(this.sourceHass, entry, this.config.context.spoilers);
     const hiddenMessage = protection === 'protected' ? this.w('modular.spoiler_protection_is_active') : this.w('modular.spoiler_status_cannot_be_verified_refresh_f1_sensor_before_showing_sensitive_data');
     const models = new Map(); this.retainedRoster = null;
     for (const module of this.config.modules) {
+      if (!module.enabled && module.type === 'lap_chart' && module.options.metric === 'cumulative_lap_delta') continue;
       const definition = MODULES[module.type];
       const focus = module.focus_mode === 'independent' ? {} : this.focus;
       const model = { title: moduleTitle(module, this.language) };
@@ -626,7 +692,10 @@ export class F1SensorCard extends LitElement {
           else {
             const auth = data.source(viewHass, viewEntry, 'f1tv_token_status');
             const authNeedsAttention = auth.status === 'available' && ['expired', 'invalid', 'rejected', 'refresh_failed'].includes(String(auth.state).toLowerCase());
-            if (authNeedsAttention) model.notice = this.w('modular.f1tv_access_needs_attention_so_live_championship_projections_are_hidden_published_standings_remain_available');
+            if (model.projection.status === 'not_applicable' && effective.options.show_availability_notice !== false) model.notice = this.w('modular.projection_not_applicable');
+            else if (authNeedsAttention) model.notice = this.w('modular.f1tv_access_needs_attention_so_live_championship_projections_are_hidden_published_standings_remain_available');
+            else if (model.projection.status === 'waiting_for_session' && effective.options.show_availability_notice !== false) model.notice = this.w('modular.projection_waiting_for_session');
+            else if (model.projection.status === 'waiting_for_prediction' && effective.options.show_availability_notice !== false) model.notice = this.w('modular.projection_waiting_for_prediction');
             else if (effective.options.show_availability_notice !== false) model.notice = this.w('modular.projection_unavailable_live_projections_need_f1tv_access_and_a_supported_race_feed_archived_replay');
           }
         }
@@ -653,7 +722,8 @@ export class F1SensorCard extends LitElement {
         model.badge = this.w('modular.recorded_replay');
         model.readonly = Boolean(this.preview || demo || this.frozen);
       }
-      if (module.type === 'lap_chart') {
+      if (module.type === 'lap_chart' && module.options.metric === 'cumulative_lap_delta') Object.assign(model, this.buildRaceTrace(effective));
+      if (module.type === 'lap_chart' && module.options.metric !== 'cumulative_lap_delta') {
         Object.assign(model, data.lapChartModel(viewHass, viewEntry, effective, focus));
         model.title = module.options.metric === 'lap_change' ? this.w('modular.lap_changes') : this.w('modular.recorded_lap_times');
         if (model.invalidRange) model.blocked = this.w('modular.the_first_lap_is_after_the_last_lap_adjust_the_lap_range_in_the');
@@ -679,6 +749,14 @@ export class F1SensorCard extends LitElement {
           else model.blocked = this.w('modular.map_connection_interrupted_your_settings_are_kept');
         }
         if (model.blocked && module.unavailable === 'hide' && !this.modelPreview) model.hidden = true;
+        const mapSnapshot = this.modelPreview?.map ?? this.mapState.data?.snapshot;
+        if (!model.blocked && mapSnapshot?.source === 'live' && data.array(mapSnapshot.drivers).length === 0) {
+          const auth = data.source(viewHass, viewEntry, 'f1tv_token_status');
+          const token = auth.status === 'available' ? String(auth.state).toLowerCase() : null;
+          model.notice = this.w(mapSnapshot.status === 'no_session' ? 'modular.source_waiting_for_session'
+            : ['expired', 'invalid', 'rejected', 'refresh_failed'].includes(token) ? 'modular.map_auth_needed'
+              : token === 'valid' ? 'modular.map_token_no_positions' : 'modular.map_positions_pending');
+        }
       }
       if (definition?.stream === 'analysis') {
         const adapter = module.type === 'strategy' ? analysisData.strategyModel : module.type === 'battles' ? analysisData.battlesModel : analysisData.timelineModel;
@@ -721,7 +799,7 @@ export class F1SensorCard extends LitElement {
         if (model.source.status !== 'available') {
           const auth = data.source(viewHass, viewEntry, 'f1tv_token_status');
           const authNeedsAttention = auth.status === 'available' && ['expired', 'invalid', 'rejected', 'refresh_failed'].includes(String(auth.state).toLowerCase());
-          if (authNeedsAttention) model.capabilityMessage = this.w('modular.f1tv_access_needs_attention_so_live_pit_stop_data_is_hidden_replay_data_remains');
+          if (authNeedsAttention) { model.capabilityMessage = this.w('modular.f1tv_access_needs_attention_so_live_pit_stop_data_is_hidden_replay_data_remains'); model.capabilityAuthBlocked = true; }
           else if (module.options.show_availability_notice !== false) model.capabilityMessage = this.w('modular.pit_stop_timing_needs_f1tv_access_and_a_supported_feed_or_an_archived_replay');
         } else {
           if (model.countRows.length) notices.push(this.w('modular.pit_counts_without_details'));
@@ -821,10 +899,13 @@ export class F1SensorCard extends LitElement {
         if (!this.modelPreview && ['disconnected', 'error', 'refreshing'].includes(this.eventState.status)) model.notice = this.w('modular.connection_interrupted_saved_messages_may_be_incomplete');
       }
       if (model.source && ['missing', 'disabled', 'unavailable', 'unknown'].includes(model.source.status)) {
-        if (['missing', 'disabled'].includes(model.source.status) || module.unavailable !== 'retain' || (!model.rows?.length && !model.items?.length && !model.series?.length)) model.blocked = model.source.status === 'disabled' ? this.missingMessage('disabled') : model.capabilityMessage ?? this.missingMessage(model.source.status);
+        const sourceKey = data.sourceStatusKey(model.source, data.sessionPhase(viewHass, viewEntry));
+        const sourceMessage = model.capabilityAuthBlocked ? model.capabilityMessage : sourceKey ? this.w(sourceKey) : model.capabilityMessage ?? this.missingMessage(model.source.status);
+        if (['missing', 'disabled'].includes(model.source.status) || module.unavailable !== 'retain' || (!model.rows?.length && !model.items?.length && !model.series?.length)) model.blocked = model.source.status === 'disabled' ? this.missingMessage('disabled') : sourceMessage;
         else model.notice = this.w('modular.saved_data_source_currently_unavailable');
         if (module.unavailable === 'hide' && !this.modelPreview) model.hidden = true;
       }
+      if (model.source?.data_status === 'stale') model.notice = [model.notice, this.w('modular.source_update_failed')].filter(Boolean).join(' ');
       if (saved.retained) {
         model.retained = true;
         this.retainedRoster ??= data.source(viewHass, viewEntry, 'driver_list');
@@ -857,6 +938,7 @@ export class F1SensorCard extends LitElement {
     if (!this.entry) return html`<ha-card part="card" data-style=${settings.appearance.style} data-font=${settings.appearance.font} data-surface=${settings.appearance.surface} data-accent=${String(accent.visible)} role="group" aria-label=${this.config.title} style=${style}>${this.previewControls()}${settings.appearance.show_header ? html`<header class="heading" part="header">${this.actionHeading()}</header>` : ''}<div class="empty" part="empty-state">${this.discovery?.status === 'error' ? this.discovery.error : (this.modelPreview?.entries ?? this.entries).length > 1 ? this.w('modular.choose_an_f1_sensor_installation_in_the_editor') : this.w('modular.waiting_for_f1_sensor')}</div>${this.actionAlternatives()}</ha-card>`;
     if (this.entry?.data_api?.configuration_required) return html`<ha-card part="card" style=${style}><div class="empty" role="status"><p>${this.w('modular.data_configuration_required')}</p><a href="/config/integrations/integration/f1_sensor">${this.w('modular.open_integration_settings')}</a></div></ha-card>`;
     const models = this.frozen ? this.frozenModels : this.buildModels();
+    if (this.frozen) this.guardFrozenRaceTrace(models);
     const protection = data.spoilerState(this.sourceHass, this.entry, this.config.context.spoilers);
     const modules = this.config.modules.filter(module => module.enabled && this.moduleVisible(module) && !models.get(module.id)?.hidden);
     const active = modules.some(module => module.id === this.tab) ? this.tab : modules[0]?.id;

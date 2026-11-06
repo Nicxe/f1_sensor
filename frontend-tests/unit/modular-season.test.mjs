@@ -9,6 +9,22 @@ function fixture(values) {
   for (const [key, attributes] of Object.entries(values)) { entry.entities[key] = `sensor.renamed_${key}`; hass.states[entry.entities[key]] = { state: 'available', attributes, last_updated: '2026-09-13T13:30:00Z' }; }
   return { hass, entry };
 }
+
+test('scoped prediction status explains waiting and uses its own verified session context', () => {
+  const { hass, entry } = fixture({
+    driver_standings: { driver_standings: [{ position: '1', points: '40', Driver: { permanentNumber: '16', code: 'LEC' } }] },
+    championship_prediction_drivers: { session_key: '123', session_type: 'race', prediction_status: 'ready', drivers: { 16: { RacingNumber: '16', PredictedPoints: 65 } } },
+  });
+  const module = configModule('standings', {}, { fields: ['points', 'predicted_points'] });
+  assert.equal(standingsModel(hass, entry, module).rows[0].predicted_points, 65);
+  for (const status of ['waiting_for_session', 'waiting_for_prediction', 'not_applicable']) {
+    hass.states[entry.entities.championship_prediction_drivers].attributes.prediction_status = status;
+    const result = standingsModel(hass, entry, module);
+    assert.equal(result.projection.status, status);
+    assert.equal(result.rows[0].predicted_points, null);
+    assert.equal(result.rows[0].points, 40);
+  }
+});
 const result = (number, position, extra = {}) => ({ number, position, grid: '0', time: '+1 LAP', laps: '52', points: '0', status: '+1 Lap', driver: { permanentNumber: number, code: 'OLD', givenName: 'Historic', familyName: 'Driver' }, constructor: { name: 'Historic Team' }, ...extra });
 
 test('classification preserves source time, points zero, pit lane start and historical identity', () => {

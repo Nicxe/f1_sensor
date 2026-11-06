@@ -1,6 +1,6 @@
 const version = new URL(import.meta.url).searchParams.get('v');
 const load = path => import(`${path}${version ? `?v=${encodeURIComponent(version)}` : ''}`);
-const [{ LitElement, html, css, repeat }, configAPI, { MODULES, PRESETS, FIELDS, defaultFields, fieldDefinition, moduleFields, timingFields, INCIDENT_SIGNALS, label, moduleTitle, moduleFocusKinds }, { sharedStyles, words }, { watchEntries, HistoryResources }, { visibilityMet }] = await Promise.all([
+const [{ LitElement, html, css, repeat }, configAPI, { MODULES, PRESETS, FIELDS, defaultFields, fieldDefinition, moduleFields, timingFields, INCIDENT_SIGNALS, label, moduleTitle, moduleFocusKinds }, { sharedStyles, words }, { watchEntries, watchCardData, HistoryResources }, { visibilityMet }] = await Promise.all([
   load('../f1-lit-3.3.2.js'), load('./config.js'), load('./catalog.js'), load('./view.js'), load('./connection.js'), load('./visibility.js'),
 ]);
 await load('./arranger.js');
@@ -79,7 +79,7 @@ export class F1SensorCardEditor extends LitElement {
   get language() { return this.hass?.locale?.language ?? this.hass?.language ?? 'en'; }
   w(source, replacements = {}) { return words(this.language, source, replacements); }
   connectedCallback() { super.connectedCallback(); this.requestUpdate(); }
-  disconnectedCallback() { super.disconnectedCallback(); this.archive.close(); this.telemetry.close(); this.stopEntries?.(); this.stopEntries = null; this.connection = null; }
+  disconnectedCallback() { super.disconnectedCallback(); this.archive.close(); this.telemetry.close(); this.stopEntries?.(); this.stopEntries = null; this.connection = null; this.stopTraceRoster?.(); this.stopTraceRoster = null; this.traceRoster = null; this.traceRosterEntry = null; }
   willUpdate() {
     if (this.isConnected && this.hass?.connection && this.connection !== this.hass.connection) {
       this.stopEntries?.(); this.connection = this.hass.connection;
@@ -87,8 +87,33 @@ export class F1SensorCardEditor extends LitElement {
     }
     const entry = this.config?.f1_entry_id ? this.entries.find(item => item.entry_id === this.config.f1_entry_id) : this.entries.length === 1 ? this.entries[0] : null;
     const module = this.config?.modules.find(item => item.id === this.selected);
+    this.syncTraceRoster(entry, module);
     this.telemetry.sync(this.hass, this.isConnected && entry && module?.type === 'telemetry' && spoilerState(this.hass, entry, this.config.context.spoilers) === 'clear' ? telemetryPlan(module, entry, replayModel(this.hass, entry), query => this.telemetry.read(query)).requests : []);
     this.archive.sync(this.hass, this.isConnected && entry && module?.type === 'archive' && spoilerState(this.hass, entry, this.config.context.spoilers) === 'clear' ? archivePlan(module, entry.entry_id, query => this.archive.read(query)).requests : []);
+  }
+  syncTraceRoster(entry, module) {
+    const wanted = this.isConnected && this.hass?.connection && module?.type === 'lap_chart'
+      && module.options.metric === 'cumulative_lap_delta' && entry?.data_api?.enabled?.includes('driver_list');
+    if (!wanted || this.traceRosterEntry !== entry?.entry_id || this.traceRosterConnection !== this.hass?.connection) {
+      this.stopTraceRoster?.(); this.stopTraceRoster = null; this.traceRoster = null;
+      this.traceRosterEntry = null; this.traceRosterConnection = null;
+    }
+    if (wanted && !this.stopTraceRoster) {
+      this.traceRosterEntry = entry.entry_id; this.traceRosterConnection = this.hass.connection;
+      this.stopTraceRoster = watchCardData(this.hass, entry.entry_id, 'driver_list', state => { this.traceRoster = state; this.requestUpdate(); });
+    }
+  }
+  traceDriverChoices(entry) {
+    const selected = entry ? { ...entry, card_data: { ...entry.card_data, driver_list: this.traceRoster } } : null;
+    const drivers = array(source(this.hass, selected, 'driver_list').attributes?.drivers);
+    const choices = new Map();
+    for (const driver of drivers) {
+      const raw = driver?.racing_number;
+      if (!/^[0-9]+$/.test(String(raw)) || Number(raw) < 1 || Number(raw) > 99) continue;
+      const id = String(Number(raw));
+      if (!choices.has(id)) choices.set(id, driver.full_name || driver.name || driver.tla || id);
+    }
+    return [...choices];
   }
   updateConfig(change) {
     try {
@@ -198,7 +223,7 @@ export class F1SensorCardEditor extends LitElement {
   select(title, value, options, change) {
     return html`<label><span>${title}</span><select aria-label=${title} .value=${value} @change=${event => change(event.target.value)}>${options.map(([key, text]) => html`<option value=${key} .selected=${key === value}>${text}</option>`)}</select></label>`;
   }
-  check(title, value, change) { return html`<label class="check"><input type="checkbox" .checked=${value === true} @change=${event => change(event.target.checked)}><span>${title}</span></label>`; }
+  check(title, value, change, disabled = false) { return html`<label class="check"><input type="checkbox" ?disabled=${disabled} .checked=${value === true} @change=${event => change(event.target.checked)}><span>${title}</span></label>`; }
   focusPicker(kind, title, value, change, inherit = false) {
     const entry = this.config.f1_entry_id ? this.entries.find(item => item.entry_id === this.config.f1_entry_id) : this.entries.length === 1 ? this.entries[0] : null;
     const module = this.config.modules.find(item => item.id === this.selected);
@@ -373,6 +398,12 @@ export class F1SensorCardEditor extends LitElement {
       </details>` : ''}
       <details><summary>${this.w('modular.module_options')}</summary>${Object.entries(definition?.options ?? {}).map(([key, option]) => {
         const title = module.type === 'incidents' && module.options.content === 'track_limits_summary' && key === 'rows' ? this.w('modular.maximum_drivers') : label(option, this.language), value = module.options[key];
+        const trace = module.type === 'lap_chart' && module.options.metric === 'cumulative_lap_delta';
+        if (module.type === 'lap_chart') {
+          if (!trace && ['reference_driver', 'anchor_lap', 'event_markers'].includes(key) || trace && key === 'series_limit') return '';
+          if (trace && key === 'event_markers') return html`<p>${this.w('modular.race_trace_event_markers')}</p><p class="muted">${this.w('modular.race_trace_markers_help')}</p>${option.values.map(id => this.check(this.w(`modular.race_trace_marker_${id}`), value.includes(id), enabled => this.setOption(key, enabled ? [...value, id] : value.filter(item => item !== id))))}`;
+          if (trace && key === 'anchor_lap') return html`${this.input(title, value, value => this.setOption(key, value), 'number')}<p class="muted">${this.w('modular.race_trace_anchor_help')}</p>`;
+        }
         if (module.type === 'archive') {
           const chart = module.options.content !== 'classification';
           if (chart && ['profile', 'sort', 'direction', 'rows'].includes(key) || !chart && ['presentation', 'start_lap', 'end_lap', 'series_limit'].includes(key)) return '';
@@ -398,7 +429,18 @@ export class F1SensorCardEditor extends LitElement {
         if (module.type === 'strategy' && key === 'compounds' && ['teammates', 'pit_outcomes'].includes(module.options.content)) return '';
         if (['progression', 'lap_chart'].includes(module.type) && ['source_choice', 'source_list'].includes(option.type)) {
           const entry = this.config.f1_entry_id ? this.entries.find(item => item.entry_id === this.config.f1_entry_id) : this.entries.length === 1 ? this.entries[0] : null;
-          const model = module.type === 'lap_chart' ? lapChartModel(this.hass, entry, module) : progressionModel(this.hass, entry, module);
+          // Reference choices need only the roster, never a valid comparison or lap history.
+          const model = trace ? null : module.type === 'lap_chart' ? lapChartModel(this.hass, entry, module) : progressionModel(this.hass, entry, module);
+          if (trace && key === 'reference_driver') {
+            const choices = this.traceDriverChoices(entry);
+            if (value && !choices.some(([id]) => id === value)) choices.push([value, `${value} · ${this.w('modular.saved_selection')}`]);
+            return this.select(title, value, [['', this.w('modular.race_trace_choose_reference')], ...choices], value => this.setOption(key, value));
+          }
+          if (trace && key === 'selected') {
+            const choices = this.traceDriverChoices(entry).filter(([id]) => id !== module.options.reference_driver);
+            for (const id of value) if (!choices.some(([key]) => key === id)) choices.push([id, `${id} · ${this.w('modular.saved_selection')}`]);
+            return html`<p>${this.w('modular.race_trace_comparison_drivers')}</p><p class="muted">${this.w('modular.race_trace_driver_limit')}</p>${choices.map(([id, name]) => this.check(name, value.includes(id), enabled => this.setOption(key, enabled ? [...value, id] : value.filter(item => item !== id)), !value.includes(id) && value.length >= 3))}`;
+          }
           if (option.type === 'source_list') {
             const choices = model.allSeries.map(item => [item.id, item.name]);
             for (const id of value) if (!choices.some(([key]) => key === id)) choices.push([id, `${id} · ${this.w('modular.saved_selection')}`]);
@@ -438,6 +480,7 @@ export class F1SensorCardEditor extends LitElement {
   optionName(value) {
     const calendarLabels = { none: ['None'], round: ['Round'], circuit: ['Circuit'], location: ['Location'], show: ['Show'], dim: ['Mark past starts'], label: ['Show label'] };
     if (calendarLabels[value]) return this.w(...calendarLabels[value]);
+    if (value === 'cumulative_lap_delta') return this.w('modular.race_trace_title');
     if (value === 'time_s') return this.w('modular.time_from_lap_start_s');
     if (value === 'distance') return this.w('modular.estimated_distance_m');
     const names = { automatic_conditions: ['Automatic current weather'], classification: ['Published classification'], lap_position: ['Positions at lap completion'], lap_time: ['Lap time'], lap_change: ['Change from previous lap'], track_limits_summary: ['Track limits by driver'], track_limit_deletions: ['Most deleted times first'], weather_overview: ['Current weather and race rain risk'], current_conditions: ['Current circuit weather'], race_forecast: ['Forecast near race start'], track_conditions: ['Track weather observations'], metrics: ['Large metrics'], compact_list: ['Compact list'], latest_message: ['Latest matching message'], recent_messages: ['Recent messages'], include: ['Include'], hide: ['Hide'], teammates: ['Compare teammates'], crossover: ['Compound pace crossover'], pit_outcomes: ['Observed pit-cycle outcomes'], active_battles: ['Current battles'], battle_history: ['Battle history'], position_exchanges: ['Position exchanges'], battle_started: ['Battle started'], battle_ended: ['Battle ended'], position_exchange: ['Position exchange'], likely_on_track_overtake: ['Likely on-track overtake'], code: ['Driver code'], number: ['Racing number'], highlight: ['Highlight selection'], filter: ['Show selection only'], source: ['Source orientation'], raw: ['Original coordinates'], normal: ['Original'], flipped: ['Flipped'], stints: ['Stint pace and quality'], compound_comparison: ['Compare compounds'], custom: ['Custom columns'], auto: ['Follow the session'], practice: ['Practice'], current: ['Current tyres'], statistics: ['Compound statistics'], latest_stop: ['Latest stop per driver'], all_stops: ['All recorded stops'], investigations: ['Investigations and decisions'], track_limits: ['Track limits'], list: ['Event list'], SOFT: ['Soft'], MEDIUM: ['Medium'], HARD: ['Hard'], INTERMEDIATE: ['Intermediate'], WET: ['Wet'], UNKNOWN: ['Unknown compound'], cumulative_points: ['Total points'], points_per_round: ['Points per round'], wins_per_round: ['Wins per round'], chart: ['Chart with optional data table'], table: ['Data table'], both: ['Chart and table'], latest_race: ['Latest race'], race_results: ['Season race results'], sprint_results: ['Season sprint results'], starting_grid: ['Starting grid'], drivers: ['Drivers'], teams: ['Teams'], weekend: ['Next weekend'], season: ['Whole season'], home: ['Home time'], circuit: ['Circuit time'], utc: ['UTC'], asc: ['Ascending'], desc: ['Descending'], coherent: ['Same lap'], latest: ['Latest sectors, with lap labels'], newest: ['Newest first'], oldest: ['Oldest first'], practice_1: ['Practice 1'], practice_2: ['Practice 2'], practice_3: ['Practice 3'], qualifying: ['Qualifying'], sprint_qualifying: ['Sprint qualifying'], sprint: ['Sprint'], race: ['Race'] };

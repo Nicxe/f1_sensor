@@ -213,6 +213,8 @@ class IncidentLocationContext:
     confidence: str | None = None
     description: str | None = None
     sector: int | None = None
+    approximate_track_third: int | None = None
+    sector_basis: str | None = None
     corner: str | None = None
     pit_lane: bool | None = None
     track_segment: int | None = None
@@ -229,6 +231,8 @@ class IncidentLocationContext:
             "confidence": self.confidence,
             "description": self.description,
             "sector": self.sector,
+            "approximate_track_third": self.approximate_track_third,
+            "sector_basis": self.sector_basis,
             "corner": self.corner,
             "pit_lane": self.pit_lane,
             "track_segment": self.track_segment,
@@ -1273,6 +1277,8 @@ class IncidentDetector:
             confidence=location.confidence,
             description=location.description,
             sector=location.sector,
+            approximate_track_third=location.approximate_track_third,
+            sector_basis=location.sector_basis,
             corner=location.corner,
             pit_lane=location.pit_lane,
             track_segment=location.track_segment,

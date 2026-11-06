@@ -109,15 +109,28 @@ class CardDataStore:
     def _context(self):
         info = getattr(self.data.get("session_info_coordinator"), "data", None)
         info = info if isinstance(info, dict) else {}
-        replay = (
-            self._replay_snapshot.get("state", "idle") not in {"idle", "selected"}
-            or self.data.get("operation_mode") == "development"
-        )
-        session = (
-            self._replay_snapshot.get("selected_session_id")
-            if replay
-            else info.get("Key") or info.get("SessionKey") or info.get("Path")
-        )
+        controller = self.data.get("replay_controller")
+        active = getattr(controller, "replay_active", None)
+        development = self.data.get("operation_mode") == "development"
+        if isinstance(active, bool):
+            # UI selection can change while the previous transport still emits.
+            replay = active or development
+            session = (
+                controller.active_session_id
+                if active
+                else info.get("Key") or info.get("SessionKey") or info.get("Path")
+            )
+        else:
+            # Legacy managers do not expose actual transport ownership.
+            replay = (
+                self._replay_snapshot.get("state", "idle") not in {"idle", "selected"}
+                or development
+            )
+            session = (
+                self._replay_snapshot.get("selected_session_id")
+                if replay
+                else info.get("Key") or info.get("SessionKey") or info.get("Path")
+            )
         tracker = self.data.get("live_state")
         delay = self.data.get("live_delay_controller")
         return (
@@ -290,6 +303,14 @@ class CardDataStore:
             status, reason = "unsupported", "unsupported_dataset"
         elif key not in NON_SPOILER_PRODUCTS and (manager is None or manager.is_active):
             status, reason = "blocked", "no_spoiler"
+        elif (
+            key in LIVE_PRODUCTS
+            and context_token[1] is None
+            and getattr(self.data.get("replay_controller"), "replay_active", None)
+            is True
+        ):
+            # A coordinator update cannot assign an unidentified active replay.
+            status, reason = "loading", "waiting_for_current_context"
         elif key in self._waiting_for_source:
             status, reason = "loading", "waiting_for_current_context"
         elif key == "session_context":

@@ -10,7 +10,7 @@ Start with the **Race weekend** preset. It shows the next Grand Prix, circuit, c
 
 ## Before you start
 
-[Install and configure F1 Sensor](/getting-started/installation). The card is bundled with the integration and does not need a separate HACS dashboard download.
+[Install and configure F1 Sensor](/getting-started/installation). The card is bundled with the integration and does not need a separate Marketplace or HACS dashboard download.
 
 ## Add your first card
 

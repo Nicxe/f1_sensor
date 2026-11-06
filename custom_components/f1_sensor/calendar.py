@@ -10,6 +10,7 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from .data_helpers import _published_session_start
 from .entity import (
     F1BaseEntity,
     default_object_id,
@@ -57,15 +58,8 @@ def _parse_session_datetime(
     date_str: str | None, time_str: str | None
 ) -> datetime.datetime | None:
     """Parse Ergast date + time strings into a UTC-aware datetime."""
-    if not date_str:
-        return None
-    if not time_str:
-        time_str = "00:00:00Z"
-    iso = f"{date_str}T{time_str}".replace("Z", "+00:00")
-    try:
-        return datetime.datetime.fromisoformat(iso)
-    except (ValueError, TypeError):
-        return None
+    start = _published_session_start(date_str, time_str)
+    return start.astimezone(datetime.UTC) if start is not None else None
 
 
 async def async_setup_entry(

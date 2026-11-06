@@ -199,7 +199,7 @@ async def test_replay_reset_track_map_prepare_and_initial_injection(
     controller._live_bus.inject_message.reset_mock()
     controller._inject_initial_state({"TrackStatus": {"Status": "2"}, "bad": "skip"})
     controller._live_bus.inject_message.assert_called_once_with(
-        "TrackStatus", {"Status": "2"}
+        "TrackStatus", {"Status": "2", "_f1_snapshot": True}
     )
     controller._inject_initial_state(None)
     controller._inject_formation_ready_if_applicable(index)

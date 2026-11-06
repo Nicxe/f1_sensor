@@ -104,7 +104,17 @@ export function makeDemo(scene = 'race', language = 'en', entryId = 'demo') {
     assumptions: ['Demonstration estimates from sample clean laps'],
   };
   analysis.drivers.push({ driver_number: 44, tla: 'HAM', name: 'Lewis Hamilton', team: 'Ferrari' });
-  analysis.strategy.teammate_comparisons = active ? [{ team: 'Ferrari', drivers: [16, 44], median_clean_pace: { 16: 81.12, 44: 81.32 }, delta_seconds: .2, faster_driver: 16, confidence: .8 }] : [];
+  analysis.strategy.teammate_comparisons = active ? [{ team: 'Ferrari', drivers: [16, 44], median_clean_pace: { 16: 81.12, 44: 81.32 }, delta_seconds: .2, faster_driver: 16, confidence: .8,
+    matched_comparison: { status: 'ready', method: 'matched_lap_differences', drivers: [16, 44], used_pairs: 5, possible_pairs: 8, excluded_pairs: 3,
+      excluded_reason_counts: { pace_not_eligible: 3 }, lap_range: [2, 6], delta_seconds: -.2, q1_seconds: -.2, q3_seconds: -.2, faster_driver: 16,
+      pairs: [2, 3, 4, 5, 6].map(lap => ({ lap_number: lap, first_seconds: 81.12, second_seconds: 81.32, delta_seconds: -.2, tyre_age_laps: [lap - 1, lap - 1], compound: 'HARD', green_phase_id: 'green:1' })) },
+  }] : [];
+  analysis.strategy.stints.forEach((stint, index) => {
+    stint.lap_time_trend = { status: 'ready', method: 'ols_lap_time_by_tyre_age', scope: 'latest_observed_green_phase', seconds_per_lap: .053 + index * .01,
+      sample_count: 6, age_range: [0, 7], lap_range: [1, 8], laps: [1, 2, 4, 5, 7, 8], green_phase_id: 'green:1', reason: null };
+    stint.stint_change_estimate = { status: 'insufficient_data', method: 'observed_transition_lap_minus_previous_eligible_median', seconds: null,
+      baseline_seconds: null, baseline_laps: [], transition_lap: null, sample_count: 0, reason: 'unobserved_stint_transition' };
+  });
   analysis.strategy.compound_crossover_indications = active ? [{ compounds: ['SOFT', 'MEDIUM'], estimated_tyre_age_laps: 8.5, observed_age_range: [5, 12], pace_at_crossover: 82.13, confidence: .75, status: 'observed_range_estimate' }] : [];
   analysis.strategy.undercut_overcut_outcomes = active ? [{ team: 'Ferrari', drivers: [44, 16], earlier_stop_driver: 44, later_stop_driver: 16, stop_laps: { 44: 10, 16: 12 }, positions_before: { 44: 3, 16: 2 }, positions_after: { 44: 2, 16: 3 }, result: 'undercut_succeeded', successful_driver: 44, confidence: .8, supporting_signals: ['stint_transition', 'lap_position_before', 'lap_position_after'] }] : [];
   const map = { entry_id: entry.entry_id, source: scene === 'replay' ? 'replay' : 'live', status: active ? 'active' : 'no_session', generated_at: new Date(now).toISOString(), stream_timestamp: new Date(now).toISOString(), stale: false, stale_after_seconds: 10,
@@ -132,5 +142,36 @@ export function makeDemo(scene = 'race', language = 'en', entryId = 'demo') {
   const minisectorCounts = [6, 7, 9];
   const minisectors = active ? { status: 'ready', reason: null, generation: 'demo-generation', sequence: 1, generated_at: new Date(now).toISOString(), drivers: Object.fromEntries(people.map((person, driverIndex) => [person.racing_number, { sectors: Object.fromEntries(minisectorCounts.map((count, sector) => [String(sector), { segments: Object.fromEntries(Array.from({ length: count }, (_, segment) => [String(segment), segment === (driverIndex + sector) % count ? 2051 : segment % 4 === 0 ? 2049 : segment === count - 1 && driverIndex === 3 ? 2064 : 2048])) }])) }])) }
     : { status: 'unavailable', reason: 'source_inactive', generation: 'demo-generation', sequence: 0, generated_at: new Date(now).toISOString(), drivers: {} };
-  return { hass: { states, locale: { language, time_format: '24', time_zone: 'Europe/Stockholm' }, language, config: { time_zone: 'Europe/Stockholm' }, themes: { darkMode: true } }, preview: { entries: [entry], events, now, analysis, map, minisectors, history, telemetry } };
+  // Only the labelled sample preview constructs this synthetic direct contract.
+  // Actual cards still require the integration's advertised metadata/envelopes.
+  const traceMarkerContext = { token: `demo-${scene}-markers`, entry_id: entry.entry_id, source: replaying ? 'replay' : 'live',
+    session_id: `demo-${scene}`, source_epoch: `demo-${scene}`, delay_epoch: 0, delay_seconds: 45 };
+  const traceCursor = sequence => ({ sequence, source_time_ms: (replaying ? 1800000 : now) + sequence * 1000,
+    time_domain: replaying ? 'replay_offset' : 'utc' });
+  analysis.status = 'ready';
+  analysis.race_trace_markers = { version: 1, status: 'ready', reason: null, context: traceMarkerContext, as_of: traceCursor(95), events: [
+    { event_id: 'demo-pit', revision: 1, kind: 'pit', phase: 'point', driver_number: 16, lap_number: 11, anchor_type: 'driver_lap',
+      source: 'PitStopSeries', context_token: traceMarkerContext.token, observation_cursor: traceCursor(90) },
+    { event_id: 'demo-vsc', revision: 1, kind: 'vsc', phase: 'start', source: 'TrackStatus', context_token: traceMarkerContext.token,
+      observation_cursor: traceCursor(80), reference_anchors: Object.fromEntries(people.map(person => [person.racing_number,
+        { lap_number: 10, basis: 'confirmed_completed', observation_cursor: traceCursor(79) }])) },
+  ] };
+  const raceTrace = () => {
+    const source = replaying ? 'replay' : 'live';
+    const protection = states[entry.global_entities.no_spoiler_mode]?.state;
+    const context = { session_id: `demo-${scene}`, replay_generation: 0, delay_seconds: 45 };
+    const drivers = (states[entry.entities.driver_positions]?.attributes?.drivers ?? []).map(driver => ({ ...driver,
+      lap_metadata: Object.fromEntries(Object.keys(driver.laps ?? {}).map(lap => [lap, { association: 'confirmed', reason: null }])) }));
+    const snapshots = {
+      session_context: { state: source, attributes: { no_spoiler: protection === 'off' ? false : protection === 'on' ? true : null } },
+      driver_positions: { state: drivers.length, attributes: { lap_history_version: 1, lap_history_session_type: name, drivers,
+        race_trace_observation: { version: 1, status: 'ready', reason: null, context: traceMarkerContext, timing_as_of: traceCursor(100) } } },
+    };
+    return { entry_id: entry.entry_id, data_api: { lap_history_version: 1, enabled: ['session_context', 'driver_positions'] },
+      card_data: Object.fromEntries(Object.entries(snapshots).map(([dataset, payload]) => [dataset, { status: 'ready', data: {
+        protocol_version: 1, entry_id: entry.entry_id, dataset, generation: `demo-${scene}`, revision: 1, source, context,
+        status: dataset === 'session_context' || drivers.length ? 'ready' : 'loading', payload, timestamps: { received_at: new Date(now).toISOString() },
+      } }])) };
+  };
+  return { hass: { states, locale: { language, time_format: '24', time_zone: 'Europe/Stockholm' }, language, config: { time_zone: 'Europe/Stockholm' }, themes: { darkMode: true } }, preview: { entries: [entry], events, now, analysis, map, minisectors, history, telemetry, raceTrace } };
 }

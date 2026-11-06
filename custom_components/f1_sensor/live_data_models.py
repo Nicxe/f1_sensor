@@ -36,8 +36,10 @@ from .entity import (
 from .helpers import (
     normalize_track_status,
 )
+from .lap_history import LAP_HISTORY_VERSION
 from .push_laps import empty_push_lap
 from .qualifying_deltas import empty_push_lap_delta
+from .race_trace_observation import pending_observation
 from .static_data_models import ProjectionModel
 from .stream_state import StreamStateMixin
 from .team_radio_common import team_radio_clip_id
@@ -2103,6 +2105,9 @@ class DriverPredictionModel(PredictionProjection):
             "predicted_driver_p1": pred if isinstance(pred, dict) else None,
             "drivers": drivers if isinstance(drivers, dict) else {},
             "last_update": last_update,
+            "session_key": payload.get("session_key"),
+            "session_type": payload.get("session_type"),
+            "prediction_status": payload.get("prediction_status"),
         }
 
 
@@ -2127,6 +2132,9 @@ class TeamPredictionModel(PredictionProjection):
             "predicted_team_p1": pred if isinstance(pred, dict) else None,
             "teams": teams if isinstance(teams, dict) else {},
             "last_update": last_update,
+            "session_key": payload.get("session_key"),
+            "session_type": payload.get("session_type"),
+            "prediction_status": payload.get("prediction_status"),
         }
 
 
@@ -2707,6 +2715,9 @@ class DriverPositionsModel(LiveProjectionModel):
         self._attr_native_value = None
         self._attr_extra_state_attributes = {
             "drivers": [],
+            "lap_history_version": LAP_HISTORY_VERSION,
+            "lap_history_session_type": None,
+            "race_trace_observation": pending_observation(),
             "total_laps": None,
             "fastest_lap": None,
             "push_laps_status": "waiting",
@@ -2859,6 +2870,9 @@ class DriverPositionsModel(LiveProjectionModel):
 
     def _normalize_restored_attributes(self, attrs: dict) -> dict:
         attrs.setdefault("drivers", [])
+        attrs["lap_history_version"] = LAP_HISTORY_VERSION
+        attrs["lap_history_session_type"] = None
+        attrs["race_trace_observation"] = pending_observation("restored_data")
         attrs.setdefault("total_laps", None)
         attrs.setdefault("fastest_lap", None)
         attrs.setdefault("current_qualifying_part", None)
@@ -2869,6 +2883,7 @@ class DriverPositionsModel(LiveProjectionModel):
             for drv in drivers:
                 if not isinstance(drv, dict):
                     continue
+                drv["lap_metadata"] = {}
                 drv["push_lap"] = empty_push_lap()
                 drv["push_lap_delta"] = empty_push_lap_delta()
                 drv.setdefault("best_lap_time", None)
@@ -2909,6 +2924,21 @@ class DriverPositionsModel(LiveProjectionModel):
             return False
         drivers_raw = data.get("drivers", {})
         if not drivers_raw:
+            # Legacy history may remain visible after a stream stops, but it is
+            # not evidence for the newly delivered session or replay position.
+            self._attr_extra_state_attributes = {
+                **self._attr_extra_state_attributes,
+                "lap_history_version": LAP_HISTORY_VERSION,
+                "lap_history_session_type": data.get("lap_history_session_type"),
+                "race_trace_observation": deepcopy(
+                    data.get("race_trace_observation") or pending_observation()
+                ),
+                "drivers": [
+                    {**driver, "lap_metadata": {}}
+                    for driver in self._attr_extra_state_attributes.get("drivers", [])
+                    if isinstance(driver, dict)
+                ],
+            }
             return False
         lap_current = data.get("lap_current")
         lap_total = data.get("lap_total")
@@ -3069,6 +3099,7 @@ class DriverPositionsModel(LiveProjectionModel):
                 "grid_position": lap_history.get("grid_position"),
                 "current_position": _extract_driver_position(info),
                 "laps": lap_history.get("laps", {}),
+                "lap_metadata": deepcopy(lap_history.get("lap_metadata", {})),
                 "completed_laps": lap_history.get(
                     "completed_laps", lap_history.get("last_recorded_lap", 0)
                 ),
@@ -3167,6 +3198,11 @@ class DriverPositionsModel(LiveProjectionModel):
         self._attr_native_value = lap_current
         self._attr_extra_state_attributes = {
             "drivers": drivers_list,
+            "lap_history_version": LAP_HISTORY_VERSION,
+            "lap_history_session_type": data.get("lap_history_session_type"),
+            "race_trace_observation": deepcopy(
+                data.get("race_trace_observation") or pending_observation()
+            ),
             "total_laps": lap_total,
             "fastest_lap": fastest_out,
             "current_qualifying_part": current_q_part,
@@ -3253,6 +3289,7 @@ class DriverPositionsModel(LiveProjectionModel):
         self._attr_native_value = None
         self._attr_extra_state_attributes = {
             "drivers": [],
+            "race_trace_observation": pending_observation("source_unavailable"),
             "total_laps": None,
             "fastest_lap": None,
             "push_laps_status": "unavailable",

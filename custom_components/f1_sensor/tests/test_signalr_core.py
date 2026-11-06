@@ -1005,7 +1005,7 @@ async def test_live_bus_run_owns_transport_reference_during_external_close():
 
     await bus._run()
 
-    assert bus.get_last_payload("TrackStatus") == {"Status": "1"}
+    assert bus.get_last_payload("TrackStatus") == {"Status": "1", "_f1_snapshot": True}
     assert transport is not None
     assert transport.close_calls == 1
     assert bus.connection_state is LiveConnectionState.STOPPED
@@ -1109,7 +1109,7 @@ async def test_live_bus_cleanup_failure_does_not_stop_reconnects():
         await bus._run()
 
     assert len(transports) == 2
-    assert bus.get_last_payload("TrackStatus") == {"Status": "1"}
+    assert bus.get_last_payload("TrackStatus") == {"Status": "1", "_f1_snapshot": True}
     assert bus.connection_state is LiveConnectionState.STOPPED
 
 
@@ -1194,7 +1194,9 @@ async def test_live_bus_replays_initial_state_and_recovers_after_reconnect():
     assert second_transport.ensure_calls == 1
     assert first_transport.close_calls == 1
     assert second_transport.close_calls == 1
-    assert timing_app_payloads == [{"Lines": {"1": {"Stints": []}}}]
+    assert timing_app_payloads == [
+        {"Lines": {"1": {"Stints": []}}, "_f1_snapshot": True}
+    ]
     assert timing_data_payloads == [{"Lines": {"1": {"Position": "1"}}}]
 
     late_subscriber_payloads: list[dict] = []

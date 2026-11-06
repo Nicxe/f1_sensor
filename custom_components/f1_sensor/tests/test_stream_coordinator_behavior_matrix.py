@@ -662,6 +662,7 @@ async def test_team_radio_and_prediction_full_payload_lifecycle(
     await radio.async_close()
 
     prediction = ChampionshipPredictionCoordinator(hass, session, bus=bus)
+    prediction._on_session_info({"Key": 1, "Type": "Race", "Name": "Race"})
     prediction._on_driverlist(
         {
             "4": {"Tla": "NOR", "FullName": "Lando", "TeamName": "McLaren"},
@@ -691,7 +692,7 @@ async def test_team_radio_and_prediction_full_payload_lifecycle(
     assert prediction._to_int("bad") is None
     assert prediction._to_float("bad") is None
     await prediction.async_config_entry_first_refresh()
-    assert {"ChampionshipPrediction", "DriverList"} <= set(bus.callbacks)
+    assert {"ChampionshipPrediction", "DriverList", "SessionInfo"} <= set(bus.callbacks)
     prediction._handle_live_state(True, "replay")
     prediction._handle_live_state(False, "window-ended")
     assert prediction.data["drivers"] == {}

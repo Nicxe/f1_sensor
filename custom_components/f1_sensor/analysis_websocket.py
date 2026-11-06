@@ -28,6 +28,21 @@ _ENTRY_ID_SCHEMA = vol.Optional("entry_id")
 _ANALYSIS_HUBS: dict[Phase4AnalysisStore, _AnalysisBroadcastHub] = {}
 
 
+def _telemetry_spoiler_blocked(
+    hass: HomeAssistant, connection: Any, message_id: int
+) -> bool:
+    """Apply the global manager's protection, including unknown startup status."""
+    manager = hass.data.get(DOMAIN, {}).get("no_spoiler_manager")
+    if manager is not None and getattr(manager, "is_active", None) is False:
+        return False
+    connection.send_error(
+        message_id,
+        "spoiler_blocked",
+        "Replay telemetry is hidden by No Spoiler protection",
+    )
+    return True
+
+
 def async_register_analysis_websocket(hass: HomeAssistant) -> None:
     """Register Phase 4 WebSocket commands once per Home Assistant runtime."""
     root = hass.data.setdefault(DOMAIN, {})
@@ -179,20 +194,25 @@ async def _ws_compare_replay_telemetry(
     if telemetry is None:
         connection.send_error(msg["id"], "not_loaded", "Replay telemetry is not loaded")
         return
+    if _telemetry_spoiler_blocked(hass, connection, msg["id"]):
+        return
     try:
         result = await telemetry.async_compare(
             msg["selections"], expected_session_id=msg.get("expected_session_id")
         )
     except ValueError as err:
-        connection.send_error(msg["id"], "invalid_request", str(err))
+        if not _telemetry_spoiler_blocked(hass, connection, msg["id"]):
+            connection.send_error(msg["id"], "invalid_request", str(err))
     except Exception:  # noqa: BLE001
-        connection.send_error(
-            msg["id"],
-            "provider_unavailable",
-            "Replay telemetry is unavailable",
-        )
+        if not _telemetry_spoiler_blocked(hass, connection, msg["id"]):
+            connection.send_error(
+                msg["id"],
+                "provider_unavailable",
+                "Replay telemetry is unavailable",
+            )
     else:
-        connection.send_result(msg["id"], result)
+        if not _telemetry_spoiler_blocked(hass, connection, msg["id"]):
+            connection.send_result(msg["id"], result)
 
 
 @websocket_api.websocket_command(
@@ -214,18 +234,23 @@ async def _ws_replay_telemetry_catalog(
     if telemetry is None:
         connection.send_error(msg["id"], "not_loaded", "Replay telemetry is not loaded")
         return
+    if _telemetry_spoiler_blocked(hass, connection, msg["id"]):
+        return
     try:
         payload = await telemetry.async_catalog(
             expected_session_id=msg["expected_session_id"]
         )
     except ValueError as err:
-        connection.send_error(msg["id"], "invalid_request", str(err))
+        if not _telemetry_spoiler_blocked(hass, connection, msg["id"]):
+            connection.send_error(msg["id"], "invalid_request", str(err))
     except Exception:  # noqa: BLE001
-        connection.send_error(
-            msg["id"], "provider_unavailable", "Replay lap catalogue is unavailable"
-        )
+        if not _telemetry_spoiler_blocked(hass, connection, msg["id"]):
+            connection.send_error(
+                msg["id"], "provider_unavailable", "Replay lap catalogue is unavailable"
+            )
     else:
-        connection.send_result(msg["id"], payload)
+        if not _telemetry_spoiler_blocked(hass, connection, msg["id"]):
+            connection.send_result(msg["id"], payload)
 
 
 def _resolve_runtime(
@@ -402,10 +427,16 @@ class _AnalysisBroadcastHub:
             ):
                 return
             should_run = bool(getattr(live.availability, "is_live", False))
-            if requested and should_run:
-                await bus.start()
-            elif not requested:
-                await bus.async_close()
+            replay = getattr(self._runtime, "replay", None)
+            replay_owns_transport = (
+                replay is not None
+                and getattr(replay.controller, "replay_active", False) is True
+            )
+            if not replay_owns_transport:
+                if requested and should_run:
+                    await bus.start()
+                elif not requested:
+                    await bus.async_close()
             self._runtime.capabilities.active_streams = bus.active_streams
             legacy = self._runtime.get("signalr_stream_capabilities")
             if isinstance(legacy, dict):

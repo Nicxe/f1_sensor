@@ -18,6 +18,48 @@ export function number(value) {
   const result = Number(value);
   return Number.isFinite(result) ? result : null;
 }
+
+export function publishedDate(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value ? value : null;
+}
+export function publishedStart(value) {
+  return typeof value === 'string'
+    && /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})$/.test(value)
+    && publishedDate(value.slice(0, 10)) && Number.isFinite(Date.parse(value)) ? value : null;
+}
+export function circuitDay(timezone, now) {
+  if (timezone) try {
+    const parts = Object.fromEntries(new Intl.DateTimeFormat('en', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(now).map(part => [part.type, part.value]));
+    return `${parts.year}-${parts.month}-${parts.day}`;
+  } catch { /* Unknown zone: use conservative worldwide bounds. */ }
+  return null;
+}
+export function dateHasPassed(date, timezone, now) {
+  if (!publishedDate(date)) return false;
+  const today = circuitDay(timezone, now);
+  return today ? date < today : now >= Date.parse(`${date}T00:00:00Z`) + 36 * 3600_000;
+}
+function archiveStart(session) {
+  const start = !['date', 'unknown'].includes(session?.start_precision) && publishedStart(session?.start);
+  return start ? Date.parse(start) : null;
+}
+export function archiveSessionStarted(session, timezone, now = Date.now()) {
+  if (session?.cancelled === true) return false;
+  const start = archiveStart(session);
+  return start !== null ? start <= now : dateHasPassed(session?.date, timezone, now);
+}
+export function latestArchiveSession(sessions, timezone, now = Date.now()) {
+  const eligible = sessions.filter(session => archiveSessionStarted(session, timezone, now));
+  const day = session => publishedDate(session.date) ?? publishedDate(typeof session.start === 'string' ? session.start.slice(0, 10) : null);
+  const latestDay = eligible.map(day).filter(Boolean).sort().at(-1);
+  const sameDay = eligible.filter(session => day(session) === latestDay);
+  if (sameDay.length === 1) return sameDay[0];
+  if (!sameDay.length || sameDay.some(session => archiveStart(session) === null)) return null;
+  const ordered = sameDay.toSorted((a, b) => archiveStart(b) - archiveStart(a));
+  return archiveStart(ordered[0]) === archiveStart(ordered[1]) ? null : ordered[0];
+}
 export function positiveInteger(value) {
   const result = number(value); return Number.isInteger(result) && result > 0 ? result : null;
 }

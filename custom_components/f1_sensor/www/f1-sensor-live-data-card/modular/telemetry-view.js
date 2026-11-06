@@ -60,7 +60,7 @@ export class F1TelemetryView extends LitElement {
       ${model.replay.loaded && !model.selectionChanged ? html`<div class="pickers"><label><span>${this.w('modular.driver_to_add')}</span><select aria-label=${this.w('modular.driver_to_add')} .value=${driver?.id ?? ''} ?disabled=${disabled || model.selected.length >= 4} @change=${event => { this.draftDriver = event.target.value; this.draftLap = ''; }}><option value="">${this.w('modular.choose_driver')}</option>${model.drivers.map(driver => html`<option value=${driver.id}>${driver.name}</option>`)}</select></label>
       <label><span>${this.w('modular.recorded_lap')}</span><select aria-label=${this.w('modular.recorded_lap')} .value=${lap} ?disabled=${disabled || !driver || model.selected.length >= 4} @change=${event => { this.draftLap = event.target.value; }}>${(driver?.laps ?? []).map(lap => html`<option value=${String(lap)}>${lap}</option>`)}</select></label></div>
       <button ?disabled=${disabled || !candidate || model.selected.includes(candidate) || model.selected.length >= 4} @click=${() => this.select([...model.selected, candidate])}>${this.w('modular.add_lap')}</button>` : ''}
-      <p class="muted">${this.w('modular.choose_up_to_four_laps_the_list_confirms_recorded_lap_boundaries_telemetry_availability_is')}</p>`;
+      `;
   }
   plot(channel) {
     const model = this.model, axis = model.options.axis, colorsForMode = colors[this.settings?.mode] ?? colors.dark;
@@ -86,10 +86,10 @@ export class F1TelemetryView extends LitElement {
     if (!this.model || !this.module) return html``;
     const model = this.model, channels = model.fields.map(id => id.replace(/^telemetry_/, '')).filter(id => CHANNELS[id]);
     const presentation = model.options.presentation, tab = model.series.find(item => item.id === this.table) ?? model.series[0];
-    return html`<details ?open=${!model.compared || this.pickerOnly}><summary>${this.w('modular.selected_laps')} · ${model.selected.length}</summary>${this.picker()}</details>${this.pickerOnly ? '' : html`
+    return html`<p class="muted">${this.w('modular.telemetry_complete_recording_scope')}</p><details ?open=${!model.compared || this.pickerOnly}><summary>${this.w('modular.selected_laps')} · ${model.selected.length}</summary>${this.picker()}</details>${this.pickerOnly ? '' : html`
       <div class="controls"><button ?disabled=${!model.canCompare || model.readonly || model.comparing} @click=${() => this.send('compare')}>${this.w('modular.compare_selected_laps')}</button>${model.comparing ? html`<span role="status">${this.w('modular.fetching_selected_telemetry')}</span>` : ''}</div>
       ${model.compareError || model.compareDisconnected ? html`<p role="alert">${this.w('modular.the_comparison_could_not_be_loaded_for_this_session_check_the_replay_and_try')}</p>` : ''}
-      ${model.compared ? html`${model.options.show_explanation !== false ? html`<details><summary>${this.w('modular.about_the_telemetry')}</summary><p class="muted">${this.w('modular.up_to_500_samples_per_lap_gaps_stay_open_brake_is_a_signal_not')}</p>
+      ${model.compared ? html`${model.options.show_explanation !== false ? html`<details><summary>${this.w('modular.about_the_telemetry')}</summary><p class="muted">${this.w('modular.telemetry_observed_window_explanation')}</p>
       ${channels.includes('delta_s') || model.options.axis === 'distance' ? html`<p class="muted">${this.w('modular.distance_is_estimated_from_continuous_speed_samples_the_first_sample_may_be_up_to')}: ${model.series[0] ? this.seriesName(model.series[0]) : '—'}.</p>` : ''}
       </details>` : ''}${!channels.length ? html`<p class="empty">${this.w('modular.choose_curves_in_the_editor')}</p>` : html`${presentation !== 'table' ? channels.map(channel => html`<h3>${this.title(channel)}</h3>${this.plot(channel)}`) : ''}
       ${presentation === 'chart' ? html`<button aria-expanded=${String(Boolean(this.table))} @click=${() => { this.table = this.table ? '' : model.series[0]?.id ?? ''; }}>${this.table ? this.w('modular.hide_data_table') : this.w('modular.show_data_table')}</button>` : ''}

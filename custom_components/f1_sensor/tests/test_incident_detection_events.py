@@ -319,6 +319,10 @@ async def test_incident_event_includes_safe_track_map_location_context(hass) -> 
         assert location["stale"] is False
         assert location["confidence"] in {"medium", "high"}
         assert location["sector"] in {1, 2, 3}
+        assert location["approximate_track_third"] == location["sector"]
+        assert location["sector_basis"] == "geometry_third"
+        assert "approximate track section" in location["description"]
+        assert ", sector " not in location["description"]
         assert "x" not in location
         assert "y" not in location
         assert "z" not in location
