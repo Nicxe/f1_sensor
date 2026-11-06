@@ -228,7 +228,15 @@ export class F1ModuleView extends LitElement {
   static properties = { module: { attribute: false }, model: { attribute: false }, settings: { attribute: false }, expanded: { state: true }, timingExpanded: { state: true }, stintTable: { state: true }, seekDraft: { state: true }, syncDraft: { state: true }, clearConfirm: { state: true }, timingGapMode: { state: true } };
   static styles = sharedStyles;
   constructor() { super(); this.expanded = ''; this.timingExpanded = []; this.clearConfirm = false; this.raceQueue = []; }
-  disconnectedCallback() { super.disconnectedCallback(); clearTimeout(this.raceTimer); clearTimeout(this.clearTimer); }
+  disconnectedCallback() {
+    super.disconnectedCallback(); clearTimeout(this.raceTimer); clearTimeout(this.clearTimer);
+    // Hidden/disabled nodes are reused by the card. They must not retain a
+    // Race Trace snapshot while source/protection updates bypass their render.
+    // Lit also disconnects nodes while moving them within the same render.
+    queueMicrotask(() => {
+      if (!this.isConnected && this.model?.metric === 'cumulative_lap_delta') this.model = null;
+    });
+  }
   get language() { return this.settings?.language ?? 'en'; }
   w(source, replacements = {}) { return words(this.language, source, replacements); }
   willUpdate() {

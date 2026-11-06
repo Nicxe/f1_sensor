@@ -48,6 +48,7 @@ from custom_components.f1_sensor.const import (
 from custom_components.f1_sensor.live_delay import LiveDelayReferenceController
 from custom_components.f1_sensor.live_window import LiveAvailabilityTracker
 from custom_components.f1_sensor.runtime import F1RuntimeData
+from custom_components.f1_sensor.signalr import LiveBus
 from custom_components.f1_sensor.team_radio_transcription import (
     TRANSCRIPTION_MANAGER_KEY,
 )
@@ -102,6 +103,7 @@ async def test_dev_jolpica_stats_reporting_logs_resets_and_deduplicates(
 
 class FakeLiveBus:
     last_instance = None
+    configure_observations = LiveBus.configure_observations
 
     def __init__(
         self,

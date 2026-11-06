@@ -37,6 +37,8 @@ from .const import (
 )
 from .formation_start import FormationStartTracker
 from .helpers import CARDATA_MAX_LINE_BYTES, parse_cardata_lines
+from .history import merge_analysis_session_info
+from .lap_history import MAX_TYRE_STINTS_PER_DRIVER, record_lap_time
 from .replay_start import ReplayStartReferenceController
 from .replay_timestamp import parse_replay_timestamp_ms
 from .signalr import timing_source_payload
@@ -93,7 +95,7 @@ INDEX_STATUS_NO_DATA = "no_data"
 INDEX_STATUS_ERROR = "error"
 # Index upgrades may rescan compatible frames. A normalization change must
 # instead download the original streams; rescanning cannot recover lost precision.
-CACHE_VERSION = 16
+CACHE_VERSION = 17
 NORMALIZATION_VERSION = 1
 ARCHIVE_IDENTITY_VERSION = 1
 FORMATION_SEARCH_WINDOW = timedelta(seconds=90)
@@ -1744,10 +1746,7 @@ class ReplaySessionManager:
         last_lap_times: dict[str, str],
         payload: dict,
     ) -> None:
-        """Accumulate lap history from TimingData frames.
-
-        Tracks LastLapTime changes to build lap-by-lap history for each driver.
-        """
+        """Accumulate each numbered time, including equal consecutive lap times."""
         lines = payload.get("Lines")
         if not isinstance(lines, dict):
             return
@@ -1779,7 +1778,9 @@ class ReplaySessionManager:
                 except (TypeError, ValueError):
                     number_of_laps = None
                 if number_of_laps is not None:
-                    driver_entry["completed_laps"] = number_of_laps
+                    completed = driver_entry.get("completed_laps")
+                    if not isinstance(completed, int) or number_of_laps > completed:
+                        driver_entry["completed_laps"] = number_of_laps
 
             # Track position updates
             if "Position" in td:
@@ -1802,38 +1803,86 @@ class ReplaySessionManager:
             elif isinstance(last_lap_data, str):
                 last_lap_value = last_lap_data
 
-            if last_lap_value is not None:
-                prev_lap_time = last_lap_times.get(rn_key)
-                if prev_lap_time != last_lap_value:
-                    # New lap completed
-                    last_lap_times[rn_key] = last_lap_value
+            if isinstance(last_lap_value, str) and last_lap_value:
+                last_lap_times[rn_key] = last_lap_value
+                lap_number = number_of_laps
+                if lap_number is None:
+                    completed = driver_entry.get("completed_laps")
+                    lap_number = completed if isinstance(completed, int) else None
+                use_lap_num, _changed = record_lap_time(
+                    driver_entry,
+                    last_lap_value,
+                    lap_number,
+                    explicit_number=td.get("NumberOfLaps"),
+                    snapshot=payload.get("_f1_snapshot") is True,
+                )
+                if use_lap_num == 1 and driver_entry.get("grid_position") is None:
+                    driver_entry["grid_position"] = driver_entry.get(
+                        "_current_position"
+                    )
 
-                    last_lap_num = driver_entry.get("last_recorded_lap", 0)
-                    use_lap_num = number_of_laps
-                    if use_lap_num is None:
-                        completed = driver_entry.get("completed_laps")
-                        use_lap_num = completed if isinstance(completed, int) else None
-                    if not use_lap_num or use_lap_num <= 0:
-                        use_lap_num = last_lap_num + 1
-                    current_pos = driver_entry.get("_current_position")
-
-                    # Capture grid position on first lap
-                    if use_lap_num == 1 and driver_entry.get("grid_position") is None:
-                        driver_entry["grid_position"] = current_pos
-
-                    # Record the lap time
-                    lap_key = str(use_lap_num)
-                    driver_entry["laps"][lap_key] = last_lap_value
-                    if last_lap_num < use_lap_num:
-                        driver_entry["last_recorded_lap"] = use_lap_num
-                    with suppress(Exception):
-                        completed = driver_entry.get("completed_laps", 0) or 0
-                        if isinstance(completed, int) and completed < use_lap_num:
-                            driver_entry["completed_laps"] = use_lap_num
+    def _merge_timingapp_lap_history_state(
+        self, state: dict[str, Any], payload: dict
+    ) -> None:
+        """Apply raw stint lap pairs to the same history used by TimingData."""
+        lines = payload.get("Lines")
+        if not isinstance(lines, dict):
+            return
+        for rn, row in lines.items():
+            if not isinstance(row, dict):
+                continue
+            stints = row.get("Stints")
+            if isinstance(stints, list):
+                items = enumerate(stints)
+            elif isinstance(stints, dict):
+                items = stints.items()
+            else:
+                continue
+            ordered = sorted(
+                (
+                    (index, stint)
+                    for raw_index, stint in items
+                    if (index := _parse_replay_int(raw_index)) is not None
+                    and index < MAX_TYRE_STINTS_PER_DRIVER
+                    and isinstance(stint, dict)
+                ),
+                key=lambda item: item[0],
+            )
+            if not ordered:
+                continue
+            latest = ordered[-1][1]
+            lap_time = latest.get("LapTime")
+            if not isinstance(lap_time, str) or not lap_time:
+                continue
+            history = state.setdefault(
+                str(rn),
+                {
+                    "laps": {},
+                    "last_recorded_lap": 0,
+                    "completed_laps": 0,
+                    "grid_position": None,
+                },
+            )
+            record_lap_time(
+                history,
+                lap_time,
+                latest.get("LapNumber"),
+                explicit_number=latest.get("LapNumber"),
+                snapshot=payload.get("_f1_snapshot") is True,
+            )
 
     @staticmethod
     def _has_lap_history_state(state: dict[str, Any]) -> bool:
         return isinstance(state, dict) and bool(state)
+
+    def _merge_replay_session_info(
+        self, previous: dict, payload: dict
+    ) -> tuple[dict, bool]:
+        """Preserve full sparse session metadata with the shared identity rules."""
+        _analysis_info, changed = merge_analysis_session_info(previous, payload)
+        merged = {} if changed else deepcopy(previous)
+        self._deep_merge_replay_state(merged, payload)
+        return merged, changed
 
     def _extract_grid_from_driver_race_info(
         self,
@@ -1925,15 +1974,32 @@ class ReplaySessionManager:
         timingdata_state: dict[str, Any] = {}
         lap_history_state: dict[str, Any] = {}
         last_lap_times: dict[str, str] = {}
+        session_start_index = 0
 
-        for frame in frames:
+        for frame_index, frame in enumerate(frames):
             if frame.timestamp_ms > start_ms:
                 break
             if frame.stream in skip_initial:
                 continue
-            if frame.stream == "TopThree" and isinstance(frame.payload, dict):
+            if frame.stream == "SessionInfo" and isinstance(frame.payload, dict):
+                info, changed = self._merge_replay_session_info(
+                    initial_state.get("SessionInfo", {}), frame.payload
+                )
+                if changed:
+                    initial_state.clear()
+                    topthree_state = {"lines": [None, None, None], "withheld": False}
+                    timingapp_state.clear()
+                    timingdata_state.clear()
+                    lap_history_state.clear()
+                    last_lap_times.clear()
+                    session_start_index = frame_index
+                initial_state["SessionInfo"] = info
+            elif frame.stream == "TopThree" and isinstance(frame.payload, dict):
                 self._merge_topthree_state(topthree_state, frame.payload)
             elif frame.stream == "TimingAppData" and isinstance(frame.payload, dict):
+                self._merge_timingapp_lap_history_state(
+                    lap_history_state, frame.payload
+                )
                 self._merge_timingapp_state(timingapp_state, frame.payload)
             elif frame.stream == "TimingData" and isinstance(frame.payload, dict):
                 self._merge_lap_history_state(
@@ -1967,7 +2033,7 @@ class ReplaySessionManager:
             set(REPLAY_STREAMS) - set(initial_state.keys()) - skip_initial
         )
         if streams_needing_first:
-            for frame in frames:
+            for frame in frames[session_start_index:]:
                 if frame.stream in streams_needing_first:
                     if frame.stream == "TopThree" and isinstance(frame.payload, dict):
                         self._merge_topthree_state(topthree_state, frame.payload)
@@ -2126,9 +2192,21 @@ class ReplaySessionManager:
             return
 
         state: dict[str, Any] = accumulator["state"]
-        if frame.stream == "TopThree":
+        if frame.stream == "SessionInfo":
+            info, changed = self._merge_replay_session_info(
+                state.get("SessionInfo", {}), frame.payload
+            )
+            if changed:
+                accumulator.clear()
+                accumulator.update(self._new_seek_checkpoint_accumulator())
+                state = accumulator["state"]
+            state["SessionInfo"] = info
+        elif frame.stream == "TopThree":
             self._merge_topthree_state(accumulator["topthree_state"], frame.payload)
         elif frame.stream == "TimingAppData":
+            self._merge_timingapp_lap_history_state(
+                accumulator["lap_history_state"], frame.payload
+            )
             self._merge_timingapp_state(accumulator["timingapp_state"], frame.payload)
         elif frame.stream == "TimingData":
             self._merge_lap_history_state(
@@ -2950,6 +3028,24 @@ class ReplayController:
         """Get the current transport (for playback status)."""
         return self._transport
 
+    @property
+    def replay_active(self) -> bool:
+        """Whether replay currently owns input, including pre-transport catch-up."""
+        return self._replay_active
+
+    @property
+    def active_session_id(self) -> str | None:
+        """Identify actual consumed replay input, independently of selector changes."""
+        if not self._replay_active:
+            return None
+        index = (
+            getattr(self._transport, "_index", None)
+            if self._transport is not None
+            else self._session_manager.get_loaded_index()
+        )
+        session_id = getattr(index, "session_id", None)
+        return session_id if isinstance(session_id, str) and session_id else None
+
     def _get_start_reference(self) -> str:
         if self._start_reference_controller is not None:
             return self._start_reference_controller.current
@@ -3171,12 +3267,11 @@ class ReplayController:
             _LOGGER.debug("Track map replay geometry preload failed", exc_info=True)
 
     async def _stop_active_replay_transport(self) -> None:
-        if self._transport is not None:
-            await self._transport.close()
+        transport, self._transport = self._transport, None
+        if transport is not None:
+            await transport.close()
 
         await self._live_bus.async_close()
-
-        self._transport = None
 
         if self._playback_task is not None:
             self._playback_task.cancel()
@@ -3185,12 +3280,12 @@ class ReplayController:
             self._playback_task = None
 
     def _ensure_replay_active(self) -> None:
-        self._live_bus.set_heartbeat_expectation(False)
-        if self._live_state is not None:
-            self._live_state.set_state(True, "replay")
         if not self._replay_active:
             self._original_transport_factory = self._live_bus._transport_factory
             self._replay_active = True
+        self._live_bus.set_heartbeat_expectation(False)
+        if self._live_state is not None:
+            self._live_state.set_state(True, "replay")
 
     def _replay_transport_factory(self) -> ReplayTransport:
         if not self._replay_active or self._transport is None:
@@ -3210,7 +3305,13 @@ class ReplayController:
             len(initial_state),
             list(initial_state.keys()),
         )
-        for stream, payload in initial_state.items():
+        # Bind the session and restore full lap evidence before merged timing
+        # snapshots seed the latest lap and make the history appear non-empty.
+        ordered = sorted(
+            initial_state.items(),
+            key=lambda item: {"SessionInfo": 0, "LapHistory": 1}.get(item[0], 2),
+        )
+        for stream, payload in ordered:
             if isinstance(payload, dict):
                 self._live_bus.inject_message(
                     stream, timing_source_payload(stream, payload, snapshot=True)
@@ -3245,7 +3346,16 @@ class ReplayController:
         )
         if paused:
             self._transport.pause()
-        await self._live_bus.swap_transport(self._replay_transport_factory)
+        # Catch-up has already consumed source frames in the reset generation.
+        # A transport handoff must not invalidate that exact prepared evidence.
+        observation_epoch = getattr(self._live_bus, "observation_epoch", None)
+        if isinstance(observation_epoch, str) and observation_epoch:
+            await self._live_bus.swap_transport(
+                self._replay_transport_factory,
+                preserve_observation_epoch=observation_epoch,
+            )
+        else:
+            await self._live_bus.swap_transport(self._replay_transport_factory)
         self._playback_task = self._hass.async_create_task(self._run_playback())
 
     async def async_seek_by(self, seconds: int) -> None:
@@ -3471,6 +3581,9 @@ class ReplayController:
         include_start_frame = start_from_ms <= baseline_ms
         self._set_state(ReplayState.SEEKING)
         self._ensure_replay_active()
+        await self._stop_active_replay_transport()
+        if not self._control_is_current(index, generation):
+            return
         await self._run_replay_reset_callbacks()
         if not self._control_is_current(index, generation):
             return
