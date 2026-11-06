@@ -8,6 +8,8 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from custom_components.f1_sensor import analysis_websocket as ws
+from custom_components.f1_sensor.const import DOMAIN
+from custom_components.f1_sensor.no_spoiler import NoSpoilerModeManager
 
 
 class _Connection:
@@ -82,6 +84,7 @@ async def test_history_timeline_not_loaded_success_and_errors(
 async def test_telemetry_compare_not_loaded_success_and_errors(
     hass, monkeypatch
 ) -> None:
+    hass.data.setdefault(DOMAIN, {})["no_spoiler_manager"] = NoSpoilerModeManager(hass)
     connection = _Connection()
     message = {"id": 4, "selections": [{"driver_number": 4, "lap_number": 1}]}
     monkeypatch.setattr(ws, "_resolve_runtime", Mock(return_value=None))
@@ -109,6 +112,7 @@ async def test_telemetry_compare_not_loaded_success_and_errors(
 async def test_telemetry_catalog_reads_named_session_and_explains_unavailable(
     hass, monkeypatch
 ) -> None:
+    hass.data.setdefault(DOMAIN, {})["no_spoiler_manager"] = NoSpoilerModeManager(hass)
     connection = _Connection()
     message = {"id": 44, "expected_session_id": "selected-replay"}
     monkeypatch.setattr(ws, "_resolve_runtime", Mock(return_value=None))

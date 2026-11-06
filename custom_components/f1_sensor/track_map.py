@@ -19,6 +19,7 @@ from .helpers import (
     POSITION_Z_MAX_LINE_BYTES,
     decode_raw_deflate_json_payload,
 )
+from .track_map_annotation_contract import ANNOTATION_LAYOUTS
 from .track_map_static_geometry import (
     STATIC_TRACK_GEOMETRIES,
     STATIC_TRACK_GEOMETRY_ALIAS_TO_KEY,
@@ -153,6 +154,8 @@ class TrackMapLocationContext:
     confidence: str
     description: str | None = None
     sector: int | None = None
+    approximate_track_third: int | None = None
+    sector_basis: str | None = None
     corner: str | None = None
     pit_lane: bool | None = None
     track_segment: int | None = None
@@ -175,6 +178,8 @@ class TrackMapLocationContext:
             "confidence": self.confidence,
             "description": self.description,
             "sector": self.sector,
+            "approximate_track_third": self.approximate_track_third,
+            "sector_basis": self.sector_basis,
             "corner": self.corner,
             "pit_lane": self.pit_lane,
             "track_segment": self.track_segment,
@@ -997,6 +1002,20 @@ class TrackMapStore:
         geometry_context = _position_geometry_context(position, self._geometry)
         fallback_state = _track_map_fallback_state(self._session, self._geometry)
         status_context = _position_status_context(position.status)
+        mismatched_circuit = bool(
+            self._session
+            and self._geometry
+            and self._session.circuit_key
+            and self._geometry.circuit_key
+            and self._session.circuit_key != self._geometry.circuit_key
+        )
+        if (
+            stale
+            or mismatched_circuit
+            or _static_geometry_layout_conflicts(self._session, self._geometry)
+            or status_context.get("pit_lane") is True
+        ):
+            geometry_context["approximate_track_third"] = None
         confidence = _location_context_confidence(
             stale=stale,
             status_context=status_context,
@@ -1016,6 +1035,8 @@ class TrackMapStore:
             confidence=confidence,
             description=_location_description(status_context, geometry_context),
             sector=geometry_context.get("sector"),
+            approximate_track_third=geometry_context.get("approximate_track_third"),
+            sector_basis=geometry_context.get("sector_basis"),
             corner=None,
             pit_lane=status_context.get("pit_lane"),
             track_segment=geometry_context.get("track_segment"),
@@ -1466,7 +1487,11 @@ def build_track_geometry_from_position_groups(
 def get_static_track_geometry_for_session(
     session: TrackMapSessionMetadata | None,
 ) -> TrackGeometry | None:
-    """Return static catalog geometry for a session when available."""
+    """Select a circuit outline, without certifying its historical layout.
+
+    The base catalog has one outline per circuit key, not per season. Optional
+    annotations use a separate season/layout/fingerprint binding contract.
+    """
     if session is None:
         return None
     return get_static_track_geometry(
@@ -1920,7 +1945,7 @@ def _position_status_context(status: str) -> dict[str, bool | str | None]:
 def _position_geometry_context(
     position: TrackMapPosition,
     geometry: TrackGeometry | None,
-) -> dict[str, int | float | None]:
+) -> dict[str, int | float | str | None]:
     if geometry is None or len(geometry.points) < 2:
         return {}
 
@@ -1931,6 +1956,7 @@ def _position_geometry_context(
         return {}
 
     nearest: tuple[int, float, float] | None = None
+    nearest_thirds: set[int] = set()
     for index, (start, end) in enumerate(
         zip(geometry.points, geometry.points[1:], strict=False)
     ):
@@ -1953,10 +1979,17 @@ def _position_geometry_context(
             round(start[1] + (segment_dy * fraction)),
         )
         distance = _point_distance(target, projected)
+        segment_len = segment_len_sq**0.5
+        path_progress = cumulative[index] + (segment_len * fraction)
+        progress = path_progress / total_length
+        third = max(1, min(3, int(progress * 3) + 1))
         if nearest is None or distance < nearest[1]:
-            segment_len = segment_len_sq**0.5
-            path_progress = cumulative[index] + (segment_len * fraction)
-            nearest = (index + 1, distance, path_progress / total_length)
+            if nearest is None or abs(distance - nearest[1]) > 1e-6:
+                nearest_thirds.clear()
+            nearest = (index + 1, distance, progress)
+            nearest_thirds.add(third)
+        elif abs(distance - nearest[1]) <= 1e-6:
+            nearest_thirds.add(third)
 
     if nearest is None:
         return {}
@@ -1967,6 +2000,8 @@ def _position_geometry_context(
         "track_segment": segment_index,
         "distance_to_track": round(distance, 1),
         "sector": sector,
+        "approximate_track_third": sector if len(nearest_thirds) == 1 else None,
+        "sector_basis": "geometry_third",
     }
 
 
@@ -2009,9 +2044,9 @@ def _location_description(
         label = status_context.get("normalized")
     if not isinstance(label, str) or not label:
         return None
-    sector = geometry_context.get("sector")
-    if sector is not None:
-        return f"{label}, sector {sector}"
+    third = geometry_context.get("approximate_track_third")
+    if third is not None:
+        return f"{label}, approximate track section {third} of 3"
     return label
 
 
@@ -2072,6 +2107,32 @@ def _static_track_geometry_catalog_entry(
     if catalog_key is None:
         return None
     return STATIC_TRACK_GEOMETRIES.get(catalog_key)
+
+
+def _static_geometry_layout_conflicts(
+    session: TrackMapSessionMetadata | None,
+    geometry: TrackGeometry | None,
+) -> bool:
+    """Detect a documented layout conflict, without certifying unknown layouts.
+
+    Source season alone is not a validity range. Reuse the reviewed layout
+    identities already maintained for annotations; unknown combinations remain
+    unverified and must never be promoted to official timing-sector context.
+    """
+    if session is None or not _is_static_track_geometry(geometry):
+        return False
+    entry = STATIC_TRACK_GEOMETRIES.get(geometry.circuit_key)
+    year_match = re.match(r"^([0-9]{4})/", session.path or "")
+    if entry is None or year_match is None or geometry.points != entry["points"]:
+        return False
+    selected_layout = ANNOTATION_LAYOUTS.get(
+        (session.circuit_key, int(year_match.group(1)))
+    )
+    provenance = entry.get("provenance") or {}
+    source_layout = ANNOTATION_LAYOUTS.get(
+        (geometry.circuit_key, provenance.get("source_season"))
+    )
+    return bool(selected_layout and source_layout and selected_layout != source_layout)
 
 
 def _static_circuit_key(

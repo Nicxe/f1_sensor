@@ -9,8 +9,10 @@ from types import SimpleNamespace
 
 from homeassistant.helpers.entity_component import EntityComponent
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.setup import async_setup_component
 from homeassistant.util import dt as dt_util
 import pytest
+from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
 from custom_components.f1_sensor.binary_sensor import F1RaceWeekSensor
 from custom_components.f1_sensor.calendar import F1SeasonCalendar
@@ -367,7 +369,7 @@ def test_matching_api_opener_without_time_retains_approved_provisional_target(
     ("date", "circuit_id"),
     [("2027-03-21", "bahrain"), ("2027-03-14", "yas_marina")],
 )
-def test_other_date_only_api_race_uses_normal_default_with_estimate_disclosure(
+def test_other_date_only_api_race_preserves_date_without_a_timestamp(
     hass, monkeypatch, date, circuit_id
 ) -> None:
     monkeypatch.setattr(dt_util, "utcnow", lambda: _OFF_SEASON)
@@ -379,8 +381,90 @@ def test_other_date_only_api_race_uses_normal_default_with_estimate_disclosure(
 
     snapshot = NextRaceModel(coordinator, None, "offseason", None).snapshot()
 
-    assert snapshot.value == f"{date}T00:00:00+00:00"
+    assert snapshot.value is None
+    assert snapshot.attributes["race_date"] == date
+    assert snapshot.attributes["race_start_utc"] is None
+    assert snapshot.attributes["race_start"] is None
+    assert snapshot.attributes["race_start_local"] is None
     assert snapshot.attributes["circuit_id"] == circuit_id
     assert snapshot.attributes["schedule_source"] == "jolpica"
-    assert snapshot.attributes["race_start_estimated"] is True
+    assert snapshot.attributes["race_start_estimated"] is False
     assert payload == original
+
+
+@pytest.mark.parametrize(
+    ("circuit_id", "now", "retained"),
+    [
+        ("monza", "2027-03-21T02:59:00Z", True),
+        ("monza", "2027-03-21T03:01:00Z", True),
+        ("monza", "2027-03-21T22:59:59Z", True),
+        ("monza", "2027-03-21T23:00:00Z", False),
+        ("unknown", "2027-03-22T11:59:59Z", True),
+        ("unknown", "2027-03-22T12:00:00Z", False),
+    ],
+)
+def test_next_race_keeps_an_untimed_event_until_its_date_has_passed(
+    hass, monkeypatch, circuit_id, now, retained
+) -> None:
+    monkeypatch.setattr(dt_util, "utcnow", lambda: datetime.fromisoformat(now))
+    race = _api_opener(date="2027-03-21", circuit_id=circuit_id)
+    coordinator = SimpleNamespace(
+        hass=hass, data=_payload(season="2027", races=[race]), last_update_success=True
+    )
+    snapshot = NextRaceModel(coordinator, None, "dates", None).snapshot()
+    assert snapshot.value is None
+    assert bool(snapshot.attributes) is retained
+    if retained:
+        assert snapshot.attributes["race_date"] == "2027-03-21"
+        assert snapshot.attributes["race_name"] == "API Grand Prix"
+
+
+@pytest.mark.parametrize(("time", "expected_calls"), [(None, 0), ("00:00:00Z", 1)])
+async def test_next_race_time_automation_requires_a_published_time(
+    hass, freezer, cleanup_test_entity_components, time, expected_calls
+) -> None:
+    freezer.move_to("2027-03-20T23:55:00Z")
+    race = _api_opener(date="2027-03-21", time=time)
+    race["FirstPractice"] = {"date": "2027-03-19"}
+    coordinator = DataUpdateCoordinator(hass, _LOGGER, name="Published next race")
+    coordinator.async_set_updated_data(_payload(season="2027", races=[race]))
+    sensor = F1NextRaceSensor(coordinator, "date_sensor", "dates", "F1")
+    component = EntityComponent(_LOGGER, "sensor", hass)
+    hass.data.setdefault("_f1_sensor_test_entity_components", []).append(component)
+    await component.async_add_entities([sensor])
+    state = hass.states.get(sensor.entity_id)
+    assert state.state == ("unknown" if time is None else "2027-03-21T00:00:00+00:00")
+    assert state.attributes["race_date"] == "2027-03-21"
+    assert state.attributes["first_practice_date"] == "2027-03-19"
+    assert state.attributes["first_practice_start_utc"] is None
+    calls = []
+
+    async def record(call):
+        calls.append(call)
+
+    hass.services.async_register("test", "record", record)
+    assert await async_setup_component(
+        hass,
+        "automation",
+        {
+            "automation": [
+                {
+                    "id": "next_race_timestamp",
+                    "alias": "Next race timestamp",
+                    "triggers": [{"trigger": "time", "at": sensor.entity_id}],
+                    "actions": [{"action": "test.record"}],
+                }
+            ]
+        },
+    )
+    await hass.async_block_till_done()
+    freezer.move_to("2027-03-21T00:01:00Z")
+    async_fire_time_changed(hass, dt_util.utcnow())
+    await hass.async_block_till_done()
+    assert len(calls) == expected_calls
+    await hass.services.async_call(
+        "automation",
+        "turn_off",
+        {"entity_id": "automation.next_race_timestamp"},
+        blocking=True,
+    )

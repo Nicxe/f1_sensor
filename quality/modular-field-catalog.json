@@ -7184,13 +7184,13 @@
                 "session",
                 "driver"
               ],
-              "label": "Estimated degradation",
+              "label": "modular.strategy_trend",
               "mobile": 2,
               "modes": [
                 "live",
                 "replay"
               ],
-              "path": "strategy.stints[].degradation_seconds_per_lap",
+              "path": "strategy.stints[].lap_time_trend.seconds_per_lap",
               "presentations": [
                 "table",
                 "detail"
@@ -7397,7 +7397,7 @@
                 "live",
                 "replay"
               ],
-              "path": "strategy.stints[].pit_loss_seconds",
+              "path": "strategy.stints[].stint_change_estimate.seconds",
               "presentations": [
                 "table",
                 "detail"
@@ -7782,7 +7782,7 @@
                 "session",
                 "comparison"
               ],
-              "label": "Median pace by driver",
+              "label": "modular.strategy_descriptive_pace",
               "mobile": 2,
               "modes": [
                 "live",
@@ -7824,13 +7824,13 @@
                 "session",
                 "comparison"
               ],
-              "label": "Pace difference",
+              "label": "modular.strategy_paired_difference",
               "mobile": 2,
               "modes": [
                 "live",
                 "replay"
               ],
-              "path": "strategy.teammate_comparisons[].delta_seconds",
+              "path": "strategy.teammate_comparisons[].matched_comparison.delta_seconds",
               "presentations": [
                 "table",
                 "detail"
@@ -7851,7 +7851,7 @@
                 "updated": "not_provided",
                 "displayed": "snapshot"
               },
-              "type": "seconds_duration",
+              "type": "seconds_delta",
               "unit": null
             },
             {
@@ -7866,13 +7866,13 @@
                 "session",
                 "comparison"
               ],
-              "label": "Lower median pace",
+              "label": "modular.strategy_paired_leader",
               "mobile": 2,
               "modes": [
                 "live",
                 "replay"
               ],
-              "path": "strategy.teammate_comparisons[].faster_driver",
+              "path": "strategy.teammate_comparisons[].matched_comparison.faster_driver",
               "presentations": [
                 "table",
                 "detail"

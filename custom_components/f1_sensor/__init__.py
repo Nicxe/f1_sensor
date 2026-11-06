@@ -3995,6 +3995,8 @@ class IncidentCoordinator(DataUpdateCoordinator):
             confidence=payload.get("confidence"),
             description=payload.get("description"),
             sector=payload.get("sector"),
+            approximate_track_third=payload.get("approximate_track_third"),
+            sector_basis=payload.get("sector_basis"),
             corner=payload.get("corner"),
             pit_lane=payload.get("pit_lane"),
             track_segment=payload.get("track_segment"),
@@ -5445,6 +5447,10 @@ class ChampionshipPredictionCoordinator(
         self._drivers: dict[str, dict[str, Any]] = {}
         self._teams: dict[str, dict[str, Any]] = {}
         self._driver_map: dict[str, dict[str, Any]] = {}
+        self._prediction_session_key: str | None = None
+        self._prediction_meeting_key: str | None = None
+        self._prediction_session_info: dict[str, Any] = {}
+        self._prediction_session_kind: str | None = None
 
         self._deliver_handle: asyncio.Handle | None = None
         self._state: dict[str, Any] = {
@@ -5463,6 +5469,9 @@ class ChampionshipPredictionCoordinator(
                 "entry": None,
             },
             "last_update": None,
+            "session_key": None,
+            "session_type": None,
+            "prediction_status": "waiting_for_session",
         }
 
     async def async_close(self, *_):
@@ -5496,6 +5505,10 @@ class ChampionshipPredictionCoordinator(
         if not self.available:
             _clear_delayed_ingest_state(self)
             self._reset_store()
+        else:
+            # Reconnection makes the source available before fresh SessionInfo.
+            # Publish that pending state even when unbound predictions are dropped.
+            self._schedule_deliver()
 
     def set_delay(self, seconds: int) -> None:
         _apply_delay_with_queue(self, seconds)
@@ -5503,6 +5516,11 @@ class ChampionshipPredictionCoordinator(
     def _reset_store(self) -> None:
         self._drivers = {}
         self._teams = {}
+        self._driver_map = {}
+        self._prediction_session_key = None
+        self._prediction_meeting_key = None
+        self._prediction_session_info = {}
+        self._prediction_session_kind = None
         self._state = {
             "drivers": {},
             "teams": {},
@@ -5519,9 +5537,71 @@ class ChampionshipPredictionCoordinator(
                 "entry": None,
             },
             "last_update": None,
+            "session_key": None,
+            "session_type": None,
+            "prediction_status": "waiting_for_session",
         }
         with suppress(Exception):
             self.async_set_updated_data(self._state)
+
+    def _on_session_info(self, payload: Any) -> None:
+        """Bind eligibility to delivered session metadata, preserving sparse deltas."""
+        if not isinstance(payload, dict):
+            return
+        raw_key = payload.get("Key", payload.get("SessionKey"))
+        key = str(raw_key).strip() if raw_key is not None else None
+        meeting = payload.get("Meeting")
+        raw_meeting = meeting.get("Key") if isinstance(meeting, dict) else None
+        meeting_key = str(raw_meeting).strip() if raw_meeting is not None else None
+        changed = (
+            key is not None
+            and self._prediction_session_key is not None
+            and key != self._prediction_session_key
+        ) or (
+            meeting_key is not None
+            and self._prediction_meeting_key is not None
+            and meeting_key != self._prediction_meeting_key
+        )
+        if changed:
+            # Earlier callbacks have already been delivered in receipt order.
+            # Keep later queued frames: they belong after this boundary.
+            self._reset_store()
+        if key:
+            self._prediction_session_key = key
+        if meeting_key:
+            self._prediction_meeting_key = meeting_key
+        for field in ("Type", "Name"):
+            value = payload.get(field)
+            if isinstance(value, str) and value.strip():
+                self._prediction_session_info[field] = value.strip()
+        text = " ".join(self._prediction_session_info.values()).lower()
+        if any(
+            word in text for word in ("qualifying", "shootout", "practice", "testing")
+        ):
+            kind = "other"
+        elif "sprint" in text:
+            kind = "sprint"
+        elif "race" in text:
+            kind = "race"
+        else:
+            kind = None
+        self._prediction_session_kind = kind
+        self._schedule_deliver()
+
+    def _prediction_status(self) -> str:
+        if not self._prediction_session_key or self._prediction_session_kind is None:
+            return "waiting_for_session"
+        if self._prediction_session_kind not in {"race", "sprint"}:
+            return "not_applicable"
+        return "ready" if self._drivers or self._teams else "waiting_for_prediction"
+
+    @property
+    def prediction_context(self) -> dict[str, str | None]:
+        """Return the delivered identity required for restoring prediction state."""
+        return {
+            "session_key": self._prediction_session_key,
+            "session_type": self._prediction_session_kind,
+        }
 
     def _schedule_deliver(self) -> None:
         self._deliver()
@@ -5663,6 +5743,9 @@ class ChampionshipPredictionCoordinator(
         if _is_no_spoiler_blocked(self):
             return
 
+        if self._prediction_status() in {"waiting_for_session", "not_applicable"}:
+            self._drivers.clear()
+            self._teams.clear()
         p1_rn, p1_entry = self._pick_predicted_driver_p1()
         ident = self._driver_map.get(str(p1_rn), {}) if p1_rn else {}
         p1_tla = ident.get("tla") if isinstance(ident, dict) else None
@@ -5700,18 +5783,23 @@ class ChampionshipPredictionCoordinator(
                 "entry": dict(t1_entry) if isinstance(t1_entry, dict) else None,
             },
             "last_update": dt_util.utcnow().isoformat(timespec="seconds"),
+            "session_key": self._prediction_session_key,
+            "session_type": self._prediction_session_kind,
+            "prediction_status": self._prediction_status(),
         }
         self.async_set_updated_data(self._state)
 
     def _on_bus_message(self, msg: dict) -> None:
         if not isinstance(msg, dict):
             return
+        if self._prediction_status() in {"waiting_for_session", "not_applicable"}:
+            return
         self._ingest_prediction(msg)
         self._schedule_deliver()
 
     async def async_config_entry_first_refresh(self):
         await super().async_config_entry_first_refresh()
-        # Seed driver identity for replay mode (single-stream dump).
+        # Driver identity does not establish session eligibility.
         self._seed_driver_map_from_ergast()
         # Reset on index/session rollover
         try:
@@ -5725,6 +5813,12 @@ class ChampionshipPredictionCoordinator(
             self._session_unsub = None
         # Subscriptions
         bus = self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")
+        with suppress(Exception):
+            self._unsubs.append(
+                bus.subscribe(
+                    "SessionInfo", _wrap_delayed_handler(self, self._on_session_info)
+                )
+            )
         with suppress(Exception):
             self._unsubs.append(
                 bus.subscribe(

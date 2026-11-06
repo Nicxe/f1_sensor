@@ -123,6 +123,14 @@ The selectors, playback buttons and media player remain the controls for Replay 
 
 A loaded replay also supplies selected-lap comparisons in [Replay telemetry](/features/weekend-analysis#compare-replay-laps). Browsing [Historical archive](/features/historical-results) is a separate operation: it displays classifications and does not load or start a replay.
 
+### Archive checks and saved sessions
+
+Before playback, F1 Sensor compares the archive's session and meeting identifiers with your selection. A conflicting identifier stops loading before any archived sensor updates or notifications are delivered. Choose another session, or retry after the archive has been corrected. Missing identifiers leave the archive unverified; matching identifiers do not guarantee that every timing value is correct.
+
+Elapsed archive times use millisecond precision. Fractional seconds are interpreted consistently, finer precision is truncated, and invalid timestamps are skipped instead of becoming the start of the session. Durations can exceed 24 hours.
+
+A saved session from an incompatible timestamp parser is downloaded again when you load it. If that download fails, playback remains unavailable and you can retry later. A replacement becomes usable only after its files have been built and checked. Compatible saved sessions are reused, and index-only improvements do not require another download.
+
 ## Replay Mode vs Developer mode
 
 Use Replay Mode to watch a completed session. [Developer mode](/help/developer-mode#developer-mode-vs-replay-mode) is for repeatable tests using a local dump; it starts when the integration loads, has no pause or seek controls, and is hidden in normal builds.

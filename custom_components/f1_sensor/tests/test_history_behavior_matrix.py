@@ -67,7 +67,7 @@ def test_history_scalar_normalizers_and_session_kinds() -> None:
     assert history._session_kind("Race", None) == "race"
     assert history._session_kind("Test", None) == "other"
     assert history._combine_date_time(None, None) is None
-    assert history._combine_date_time("2026-09-01", None) == ("2026-09-01T00:00:00Z")
+    assert history._combine_date_time("2026-09-01", None) is None
 
 
 @pytest.mark.asyncio
@@ -155,7 +155,7 @@ def test_lap_store_deleted_and_reinstated_race_control_messages() -> None:
 
     assert store._duration_seconds("bad") is None
     assert store._matching_lap(99, None) is None
-    assert store._matching_lap(4, None) is not None
+    assert store._matching_lap(4, None) is None
     assert store.diagnostics()["updates"] >= 3
 
 

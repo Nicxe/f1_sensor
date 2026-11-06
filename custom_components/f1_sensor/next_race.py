@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from copy import deepcopy
 from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from homeassistant.util import dt as dt_util
 
 from .const import RACE_SWITCH_GRACE
-from .helpers import _parse_race_datetime, get_next_race
+from .data_helpers import _published_date, _published_session_start
+from .helpers import _parse_race_datetime, get_circuit_timezone, get_next_race
 
 # Official date and location checked on 2026-11-01. F1 still lists the race
 # time as TBC. 15:00 UTC is a provisional dashboard target, not an official time.
@@ -42,6 +44,7 @@ def resolve_next_race(
     now: datetime | None = None,
     grace: timedelta = RACE_SWITCH_GRACE,
     default_time: str = "00:00:00Z",
+    retain_date_only: bool = False,
 ) -> tuple[datetime | None, dict | None]:
     """Prefer API races; bridge only the 2026/2027 calendar gap.
 
@@ -72,9 +75,40 @@ def resolve_next_race(
         else race
         for race in races
     ]
-    selected = get_next_race(
-        candidates, now=now_utc, grace=grace, default_time=default_time
-    )
+    if retain_date_only:
+        selected = (None, None)
+        for race in candidates:
+            if not isinstance(race, dict):
+                continue
+            start = _published_session_start(race.get("date"), race.get("time"))
+            if start is not None:
+                if start + grace > now_utc:
+                    selected = (start, race)
+                    break
+            elif (date := _published_date(race.get("date"))) is not None:
+                # This is only an event-selection boundary, never a start time.
+                cutoff = datetime.fromisoformat(date).replace(tzinfo=UTC) + timedelta(
+                    hours=36
+                )
+                circuit = race.get("Circuit")
+                timezone = (
+                    get_circuit_timezone(circuit.get("circuitId"))
+                    if isinstance(circuit, dict)
+                    else None
+                )
+                if timezone:
+                    try:
+                        cutoff = datetime.fromisoformat(date).replace(
+                            tzinfo=ZoneInfo(timezone)
+                        ) + timedelta(days=1)
+                    except ZoneInfoNotFoundError:
+                        pass
+                if now_utc < cutoff:
+                    return None, {**race, "race_start_estimated": False}
+    else:
+        selected = get_next_race(
+            candidates, now=now_utc, grace=grace, default_time=default_time
+        )
     if selected[1] is not None:
         if not selected[1].get("time"):
             return selected[0], {**selected[1], "race_start_estimated": True}

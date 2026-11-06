@@ -36,6 +36,12 @@ A generation retires earlier work after reload, session changes or replay rebuil
 
 Static areas publish on change. General live data is limited to one publication per second per area. Context and protection changes are delivered immediately. No Spoiler Mode and Live Delay apply to initial snapshots, caches and reconnects as well as later updates.
 
+Use explicit `status` and `reason` values when describing availability. `source_inactive` alone does not prove ordinary session downtime. `source_update_failed` marks a stale source update; the age of a rarely changing message does not. A `ready` payload can contain unknown individual values without making its other fields unavailable.
+
+Championship prediction attributes include `session_key`, `session_type` and `prediction_status` (`waiting_for_session`, `not_applicable`, `waiting_for_prediction` or `ready`). Prediction data requires an identified Race or Sprint. Older payloads can lack these additive attributes and retain their existing availability handling.
+
+Replay status attributes include `download_error_code` and `archive_identity`. Known load codes are `archive_identity_conflict` and `cache_normalization_incompatible`; an unknown code keeps the generic load-error presentation. Archive identity status `missing` means there was insufficient evidence to verify the recording, not a known conflict. Both fields are also available on the existing replay status sensor.
+
 ## Shared ownership and special transports
 
 Runtime owns neutral calculation models, coordinator listeners, persisted session accumulators and time-dependent updates. Existing providers, HTTP caches, storage and the shared LiveBus perform collection. No hidden sensor entities are created for card data. Multiple clients share each data area and underlying coordinator demand; removing the final client releases its on-demand listeners. Necessary incremental history retains background demand within existing session windows when live timing is enabled. Static sources warm lazily, with parent sources ready before derived forecasts, documents or circuit history. Closing a card releases on-demand polling and dependency listeners; an active sensor retains its own demand.

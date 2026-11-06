@@ -341,6 +341,21 @@ test('calendar retains date-only sessions without inventing midnight and handles
   assert.equal(scheduleRows(hass, entry, module, Date.parse('2026-09-14T12:00:00Z')).rows[0].next, true);
 });
 
+test('date-only next-race attributes are usable through an unknown timestamp entity and direct ready data', () => {
+  const attributes = { race_name: 'Date pending', race_date: '2026-09-14', first_practice_date: '2026-09-12', race_start_utc: null };
+  const module = normalizeConfig({ modules: [{ type: 'calendar', options: { sessions: ['race', 'practice_1'] } }] }).modules[0];
+  const hass = { states: { 'sensor.weekend': state(attributes, 'unknown') } };
+  const entityEntry = { entities: { next_race: 'sensor.weekend' } };
+  const directEntry = { data_api: { enabled: ['next_race'] }, card_data: { next_race: { status: 'ready', data: { status: 'ready', source: 'static', payload: { state: null, attributes } } } } };
+  for (const entry of [entityEntry, directEntry]) {
+    const model = scheduleRows(hass, entry, module, Date.parse('2026-09-10T12:00:00Z'));
+    assert.equal(model.source.status, 'available');
+    assert.deepEqual(model.rows.map(row => [row.session, row.date, row.start]), [['practice_1', '2026-09-12', null], ['race', '2026-09-14', null]]);
+  }
+  hass.states['sensor.weekend'].attributes = {};
+  assert.equal(scheduleRows(hass, entityEntry, module).source.status, 'unknown');
+});
+
 test('date-only filtering uses the circuit date or waits until the date is past in every timezone', () => {
   const entry = { entities: { next_race: 'sensor.weekend' } };
   const module = normalizeConfig({ modules: [{ type: 'calendar', options: { sessions: ['race'], past: 'hide' } }] }).modules[0];
@@ -352,7 +367,7 @@ test('date-only filtering uses the circuit date or waits until the date is past 
   assert.equal(scheduleRows(hass, entry, module, Date.parse('2026-09-15T11:59:00Z')).rows.length, 1);
   assert.equal(scheduleRows(hass, entry, module, Date.parse('2026-09-15T12:00:00Z')).rows.length, 0);
   attributes.date = '2026-09-16'; attributes.race_start_utc = '2026-09-16';
-  for (const candidate of ['2026-09-16', '2026-09-16T12:00:00', 17, { slice: 17 }]) {
+  for (const candidate of ['2026-09-16', '2026-09-16T12:00:00', '2026-09-16T24:00:00Z', 17, { slice: 17 }]) {
     attributes.race_start_utc = candidate;
     const row = scheduleRows(hass, entry, module, Date.parse('2026-09-15T12:00:00Z')).rows[0];
     assert.equal(row.start, null);

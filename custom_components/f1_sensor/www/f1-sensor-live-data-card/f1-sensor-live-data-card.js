@@ -3,6 +3,7 @@ const cacheKey = new URL(import.meta.url).searchParams.get('v');
 const cacheSuffix = cacheKey ? `?v=${encodeURIComponent(cacheKey)}` : '';
 const cacheBustedImport = (path) => import(`${path}${cacheSuffix}`);
 const { normalizeTeamName, getTeamLogoMeta, handleTeamLogoError } = await cacheBustedImport('./platform/branding.js');
+const { archiveSessionStarted, latestArchiveSession } = await cacheBustedImport('./modular/semantics.js');
 const cacheBustedAssetUrl = (path) => {
   const url = new URL(path, import.meta.url);
   if (cacheKey) url.searchParams.set('v', cacheKey);
@@ -13040,15 +13041,16 @@ class F1LastRaceResultsCard extends LitElement {
       if (generation !== this._archiveRequestGeneration) return;
       this._archiveCatalog = catalog;
       const meetings = asEntityList(catalog?.meetings);
-      const selectedMeeting = [...meetings].reverse().find(
-        (meeting) => this._archiveSessions(meeting).some((session) => session.final),
+      const saved = this._archiveManualSelection;
+      const manual = saved?.year === this._archiveYear && saved?.entryId === this.config.history_entry_id ? saved : null;
+      const selectedMeeting = manual ? meetings.find((meeting) => String(meeting.meeting_key) === manual.meetingKey) : [...meetings].reverse().find(
+        (meeting) => this._archiveSessions(meeting).some((session) => archiveSessionStarted(session, meeting.circuit_timezone)),
       ) || meetings.find((meeting) => this._archiveSessions(meeting).length > 0);
       this._archiveMeetingKey = selectedMeeting
         ? String(selectedMeeting.meeting_key)
         : null;
       const sessions = this._archiveSessions(selectedMeeting);
-      const selectedSession = [...sessions].reverse().find((session) => session.final)
-        || sessions[0];
+      const selectedSession = manual?.sessionKey ? sessions.find((session) => String(session.session_key) === manual.sessionKey) : latestArchiveSession(sessions, selectedMeeting?.circuit_timezone);
       this._archiveSessionKey = selectedSession
         ? String(selectedSession.session_key)
         : null;
@@ -13128,16 +13130,21 @@ class F1LastRaceResultsCard extends LitElement {
 
   _selectArchiveMeeting(event) {
     this._archiveMeetingKey = event.target.value;
+    this._archiveManualSelection = { year: this._archiveYear, entryId: this.config.history_entry_id, meetingKey: this._archiveMeetingKey, sessionKey: null };
     const sessions = this._archiveSessions();
-    const selected = [...sessions].reverse().find((session) => session.final)
-      || sessions[0];
+    const selected = latestArchiveSession(sessions, this._selectedArchiveMeeting()?.circuit_timezone);
     this._archiveSessionKey = selected ? String(selected.session_key) : null;
     ++this._archiveRequestGeneration;
-    return selected ? this._loadArchiveSession() : undefined;
+    if (selected) return this._loadArchiveSession();
+    this._archiveResults = null;
+    this._archiveStatus = 'empty';
+    this.requestUpdate();
+    return undefined;
   }
 
   _selectArchiveSession(event) {
     this._archiveSessionKey = event.target.value;
+    this._archiveManualSelection = { year: this._archiveYear, entryId: this.config.history_entry_id, meetingKey: this._archiveMeetingKey, sessionKey: this._archiveSessionKey };
     ++this._archiveRequestGeneration;
     return this._loadArchiveSession();
   }
@@ -13174,6 +13181,7 @@ class F1LastRaceResultsCard extends LitElement {
             ${this._renderArchiveControls(meetings, sessions)}
           </div>
 
+          ${session?.cancelled === true ? html`<p class="cpd-archive-message">${f1Translate(this.hass, 'modular.archive_session_cancelled', 'This session was cancelled. Any available records are shown below.')}</p>` : null}
           ${this._archiveStatus === 'loading_catalog' || this._archiveStatus === 'loading_session'
             ? html`<div class="cpd-archive-message">Loading ${this._archiveStatus === 'loading_catalog' ? 'season archive' : 'classification'}…</div>`
             : this._archiveStatus === 'error'
@@ -13183,7 +13191,9 @@ class F1LastRaceResultsCard extends LitElement {
                 </div>
               `
               : this._archiveStatus === 'empty'
-                ? html`<div class="cpd-archive-message">No race, sprint, or qualifying results are available for this season.</div>`
+                ? html`<div class="cpd-archive-message">${sessions.length
+                  ? f1Translate(this.hass, 'modular.no_session_matches_this_selection_choose_another_event_or_session', 'No session matches this selection. Choose another event or session.')
+                  : 'No race, sprint, or qualifying results are available for this season.'}</div>`
                 : rows.length === 0
                   ? html`<div class="cpd-archive-message">No classification is available for this session.</div>`
                   : html`
@@ -13233,6 +13243,7 @@ class F1LastRaceResultsCard extends LitElement {
         </label>
         <label>Session
           <select .value=${String(this._archiveSessionKey || '')} @change=${this._selectArchiveSession}>
+            ${!this._archiveSessionKey ? html`<option value="" disabled selected>${f1Translate(this.hass, 'modular.choose_a_recorded_session', 'Choose a recorded session')}</option>` : null}
             ${sessions.map((session) => html`
               <option
                 value=${String(session.session_key)}
@@ -35192,6 +35203,8 @@ class F1WeekendHubCard extends LitElement {
       return html`<div class="wh-empty">Load a replay session to compare selected laps. Live raw telemetry is never exposed as Home Assistant states.</div>`;
     }
     return html`
+      <p class="wh-small wh-muted">${f1Translate(this.hass, 'modular.telemetry_complete_recording_scope')}</p>
+      <p class="wh-small wh-muted">${f1Translate(this.hass, 'modular.telemetry_observed_window_explanation')}</p>
       <div class="wh-telemetry-form">
         <label class="wh-control">
           <span class="wh-control-label">Driver</span>

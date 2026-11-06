@@ -63,6 +63,12 @@ class LapQuality:
     inferred: bool
     confidence: float
     reasons: tuple[str, ...]
+    timing_integrity: str = "incomplete"
+    pace_suitability: str = "uncertain"
+    pace_reasons: tuple[str, ...] = ()
+    deletion_status: str = "unknown"
+    track_status_observed: bool = False
+    race_control_observed: bool = False
 
     def as_dict(self) -> dict[str, Any]:
         """Return a JSON-serializable quality description."""
@@ -73,6 +79,18 @@ class LapQuality:
             "inferred": self.inferred,
             "confidence": self.confidence,
             "reasons": list(self.reasons),
+            "timing_integrity": self.timing_integrity,
+            "pace_suitability": self.pace_suitability,
+            "pace_reasons": list(self.pace_reasons),
+            "deletion_status": self.deletion_status,
+            "coverage": {
+                "track_status": "observed"
+                if self.track_status_observed
+                else "not_observed",
+                "race_control": "observed"
+                if self.race_control_observed
+                else "not_observed",
+            },
         }
 
 
@@ -88,6 +106,7 @@ def assess_lap_quality(
     track_status: str | None = None,
     previous_track_status: str | None = None,
     inferred: bool = False,
+    race_control_observed: bool = False,
 ) -> LapQuality:
     """Classify one live or replay lap using the local quality contract.
 
@@ -129,6 +148,54 @@ def assess_lap_quality(
     if _track_status_has_disruption(previous_track_status):
         reasons.append("first_lap_after_safety_car")
 
+    # Keep the legacy clean/evidence fields stable. The additive contract is
+    # explicit about unknown context and does not equate pace with validity.
+    complete_sectors = len(parsed_sectors) == 3 and all(
+        value is not None for value in parsed_sectors
+    )
+    if (parsed_lap is not None and parsed_lap <= 0) or any(
+        value is not None and value <= 0 for value in parsed_sectors
+    ):
+        integrity = "invalid"
+    elif parsed_lap is None or not complete_sectors:
+        integrity = "incomplete"
+    elif "sector_sum_mismatch" in reasons:
+        integrity = "inconsistent"
+    else:
+        integrity = "consistent"
+    status = str(track_status or "").strip()
+    status_observed = bool(status) and all(code in "1234567" for code in status)
+    pace_reasons = list(reasons)
+    if integrity == "invalid":
+        pace_reasons.append("invalid_timing")
+    if not status_observed:
+        pace_reasons.append("unknown_track_status")
+    exclusions = {
+        "deleted",
+        "pit_in",
+        "pit_out",
+        "safety_car_or_red_flag",
+        "first_lap_after_safety_car",
+    }
+    suitability = (
+        "excluded"
+        if exclusions.intersection(reasons)
+        else "uncertain"
+        if pace_reasons or integrity != "consistent"
+        else "eligible"
+    )
+    deletion_status = (
+        "reinstated"
+        if reinstated
+        else "deleted"
+        if effective_deleted is True
+        else "not_deleted"
+        if effective_deleted is False
+        else "not_reported"
+        if race_control_observed
+        else "unknown"
+    )
+
     return LapQuality(
         deleted=effective_deleted,
         deletion_reason=effective_reason,
@@ -136,6 +203,12 @@ def assess_lap_quality(
         inferred=bool(inferred),
         confidence=round(max(0.0, min(1.0, confidence)), 2),
         reasons=tuple(reasons),
+        timing_integrity=integrity,
+        pace_suitability=suitability,
+        pace_reasons=tuple(pace_reasons),
+        deletion_status=deletion_status,
+        track_status_observed=status_observed,
+        race_control_observed=bool(race_control_observed),
     )
 
 
@@ -312,6 +385,7 @@ def normalize_lap_record(
         track_status=payload.get("track_status", payload.get("TrackStatus")),
         previous_track_status=previous_track_status,
         inferred=bool(payload.get("inferred", payload.get("Inferred"))),
+        race_control_observed=payload.get("RaceControlObserved") is True,
     )
     return LapRecord(
         provider=provider,

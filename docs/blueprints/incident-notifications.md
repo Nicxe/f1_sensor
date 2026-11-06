@@ -83,7 +83,7 @@ Practice sessions can include installation laps, garage work, slow running, and 
 
 If you enable Candidate events, some alerts can come from F1TV Auth car movement data correlated with yellow flag, Virtual Safety Car, Safety Car, or red flag context. Keep these alerts conservative because they are earlier than confirmed public timing or Race Control evidence.
 
-When Track Map location data is available, the event can include an optional location summary such as `on track, sector 2` or `off track, sector 1`. The blueprint can include that summary in the notification text, but Track Map and F1TV Auth are not required for the basic incident alert flow.
+When Track Map location data is available, the event can include an optional location summary such as `on track, approximate track section 2 of 3`. These sections divide the map outline into thirds; they are not official timing sectors. The blueprint can include that summary in the notification text, but Track Map and F1TV Auth are not required for the basic incident alert flow.
 
 Public confirmed incident alerts work without F1TV Auth. F1TV Auth can improve candidate signals, and Track Map can improve location context when fresh position data exists.
 

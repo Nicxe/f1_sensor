@@ -28,6 +28,12 @@ Race and Sprint classifications can include grid, laps, finish status and points
 
 Archive data is requested on demand. Choosing an event does not load every season in the background or start a replay.
 
+Automatic selection uses published start times. When a session has only a date, it becomes eligible after that day has passed in the circuit timezone, or in every timezone if the circuit timezone is unknown. If two sessions cannot be ordered reliably, choose one in the session selector. You can also select an untimed session manually; a passed date does not guarantee that its classification has been published.
+
+If the session selector is hidden and automatic selection cannot determine the session, **Choose a recorded session** opens it temporarily. This does not change your saved card settings. Explicitly cancelled sessions are excluded from automatic selection, but you can still select them manually to inspect any available records.
+
+Published classifications can be corrected later. Refreshing the archive can retrieve those corrections; an empty response is not proof of a final result.
+
 ## Open the archive first
 
 Use the visual editor for normal setup. This YAML creates a card containing only the Historical archive module and starts with 2024 selected:

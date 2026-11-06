@@ -6,12 +6,14 @@ from collections.abc import Callable, Mapping, Sequence
 from contextlib import suppress
 from copy import deepcopy
 from datetime import UTC, datetime
+import math
 import re
 from typing import Any
 
 from homeassistant.core import HomeAssistant
 
-from .helpers import fetch_json
+from .data_helpers import _published_date, _published_session_start
+from .helpers import fetch_json, get_circuit_timezone
 from .jolpica_pagination import (
     async_paginate_jolpica,
     lap_leaf_keys,
@@ -105,11 +107,9 @@ def _session_kind(name: object, session_type: object) -> str:
 
 
 def _combine_date_time(date_value: object, time_value: object) -> str | None:
-    date_text = _text(date_value)
-    if date_text is None:
+    if _published_session_start(date_value, time_value) is None:
         return None
-    time_text = _text(time_value) or "00:00:00Z"
-    return f"{date_text}T{time_text}"
+    return f"{date_value}T{time_value}"
 
 
 class HistoryService:
@@ -329,7 +329,7 @@ class HistoryService:
                     race.get("time"),
                 )
             )
-            sessions.sort(key=lambda item: item.get("start") or "")
+            sessions.sort(key=lambda item: (item["date"] or "", item["start"] or ""))
             meetings.append(
                 {
                     "meeting_key": f"jolpica:{year}:{round_number}",
@@ -338,6 +338,7 @@ class HistoryService:
                     "circuit": _text(circuit.get("circuitName")),
                     "country": _text(location.get("country")),
                     "location": _text(location.get("locality")),
+                    "circuit_timezone": get_circuit_timezone(circuit.get("circuitId")),
                     "sessions": sessions,
                 }
             )
@@ -373,6 +374,7 @@ class HistoryService:
         time_value: object,
     ) -> dict[str, Any]:
         start = _combine_date_time(date_value, time_value)
+        date = _published_date(date_value)
         results_coverage = (
             "available"
             if kind in {"qualifying", "sprint", "race"}
@@ -383,7 +385,9 @@ class HistoryService:
             "canonical_session_id": f"{year}:{round_number}:{kind}:{name}",
             "name": name,
             "kind": kind,
+            "date": date,
             "start": start,
+            "start_precision": "datetime" if start else "date" if date else "unknown",
             "end": None,
             "cancelled": False,
             "provider": "jolpica",
@@ -561,6 +565,43 @@ _REINSTATED_LAP_RE = re.compile(
 )
 
 
+def merge_analysis_session_info(
+    previous: Mapping[str, Any], delta: Mapping[str, Any]
+) -> tuple[dict[str, Any], bool]:
+    """Merge sparse analysis metadata, resetting only on a known identity change."""
+
+    def identity(info):
+        meeting = _mapping(info.get("Meeting"))
+        return (
+            _text(meeting.get("Key") or meeting.get("Id")),
+            _text(info.get("Key") or info.get("SessionKey")),
+            _text(info.get("Path")),
+            _text(info.get("Name")),
+        )
+
+    before, incoming = identity(previous), identity(delta)
+    changed = any(
+        old and new and old != new
+        for old, new in zip(before[:2], incoming[:2], strict=True)
+    )
+    if not before[1] and not incoming[1]:
+        changed |= bool(before[2] and incoming[2] and before[2] != incoming[2])
+        if not before[2] and not incoming[2]:
+            changed |= bool(before[3] and incoming[3] and before[3] != incoming[3])
+    merged = {} if changed else deepcopy(dict(previous))
+    for field in ("Name", "Type", "SessionType", "Path", "SessionStatus"):
+        if (value := _text(delta.get(field))) is not None:
+            merged[field] = value
+    if incoming[1]:
+        merged["Key"] = incoming[1]
+    meeting = {**_mapping(merged.get("Meeting")), **_mapping(delta.get("Meeting"))}
+    if incoming[0]:
+        meeting["Key"] = incoming[0]
+    if meeting:
+        merged["Meeting"] = meeting
+    return merged, bool(changed)
+
+
 class LapAnalysisStore:
     """Accumulate the same lap contract from live or replay TimingData."""
 
@@ -580,6 +621,9 @@ class LapAnalysisStore:
         self._laps: dict[tuple[int, int], LapRecord] = {}
         self._order: list[tuple[int, int]] = []
         self._track_status: str | None = None
+        self._race_control_observed = False
+        self._unresolved_lap_controls = 0
+        self._unresolved_lap_control_signatures: dict[int, None] = {}
         self._previous_track_status: str | None = None
         self._post_disruption_baselines: dict[int, int | None] = {}
         self._post_disruption_laps: dict[int, int] = {}
@@ -588,6 +632,7 @@ class LapAnalysisStore:
         ] = {}
         self._active_session_id: str | None = None
         self._active_session_type: str | None = None
+        self._session_info: dict[str, Any] = {}
         self._unsubs: list[Callable[[], None]] = []
         self._updates = 0
         self._attach()
@@ -605,6 +650,10 @@ class LapAnalysisStore:
     def _on_session_info(self, payload: Any) -> None:
         if not isinstance(payload, Mapping):
             return
+        payload, changed = merge_analysis_session_info(self._session_info, payload)
+        if changed:
+            self._reset_session()
+        self._session_info = payload
         meeting = _mapping(payload.get("Meeting"))
         session_id_parts = (
             _text(meeting.get("Key") or meeting.get("Id")),
@@ -614,8 +663,6 @@ class LapAnalysisStore:
             _text(payload.get("Name")),
         )
         session_id = ":".join(part for part in session_id_parts if part)
-        if session_id and self._active_session_id not in {None, session_id}:
-            self._reset_session()
         if session_id:
             self._active_session_id = session_id
         self._active_session_type = _text(
@@ -627,6 +674,9 @@ class LapAnalysisStore:
         self._laps.clear()
         self._order.clear()
         self._track_status = None
+        self._race_control_observed = False
+        self._unresolved_lap_controls = 0
+        self._unresolved_lap_control_signatures.clear()
         self._previous_track_status = None
         self._post_disruption_baselines.clear()
         self._post_disruption_laps.clear()
@@ -641,6 +691,7 @@ class LapAnalysisStore:
         self._reset_session()
         self._active_session_id = None
         self._active_session_type = None
+        self._session_info = {}
 
     def _effective_session_type(self) -> str | None:
         return self._active_session_type or self._session_type()
@@ -708,18 +759,41 @@ class LapAnalysisStore:
                     self._previous_status_for_lap(driver, lap_number),
                 )
             track_status, previous_track_status = self._lap_track_context[key]
+            current_lap = self._laps.get(key)
             normalized_payload = deepcopy(state)
             normalized_payload["RacingNumber"] = str(driver)
             normalized_payload["TrackStatus"] = track_status
+            normalized_payload["RaceControlObserved"] = (
+                current_lap.quality.race_control_observed
+                if current_lap is not None
+                else self._race_control_observed
+            )
+            if current_lap is not None:
+                # A timing revision can improve the recorded time without
+                # undoing the explicit legal status of this particular lap.
+                for field in ("deleted", "deletion_reason", "reinstated"):
+                    if field in current_lap.source_payload:
+                        normalized_payload[field] = current_lap.source_payload[field]
             lap = normalize_lap_record(
                 normalized_payload,
                 provider=self._source_provider(),
                 session_type=self._effective_session_type(),
                 previous_track_status=previous_track_status,
             )
-            current_lap = self._laps.get(key)
-            if current_lap is not None and not self._prefer_lap_candidate(
-                current_lap, lap
+            supplied_time = delta.get("LastLapTime")
+            if isinstance(supplied_time, Mapping):
+                supplied_time = supplied_time.get("Value")
+            time_revision = (
+                current_lap is not None
+                and supplied_time not in (None, "")
+                and lap.lap_duration != current_lap.lap_duration
+            )
+            # A source correction can reduce timing consistency until its sectors
+            # arrive. Completeness must not keep the superseded eligible time.
+            if (
+                current_lap is not None
+                and not time_revision
+                and not self._prefer_lap_candidate(current_lap, lap)
             ):
                 continue
             if current_lap == lap:
@@ -750,6 +824,7 @@ class LapAnalysisStore:
     def _on_race_control(self, payload: Any) -> None:
         if not isinstance(payload, Mapping):
             return
+        self._race_control_observed = True
         messages = payload.get("Messages")
         if isinstance(messages, Mapping):
             items = [item for item in messages.values() if isinstance(item, Mapping)]
@@ -768,15 +843,37 @@ class LapAnalysisStore:
                 continue
             driver = int(match.group("driver"))
             duration = self._duration_seconds(match.group("time"))
-            target = self._matching_lap(driver, duration)
+            # The general message Lap field can describe the leader's current
+            # lap. Only an explicit lap number in the deletion text identifies
+            # this driver's affected lap.
+            lap_match = re.search(r"\bLAP\s+(\d+)\b", message, re.IGNORECASE)
+            lap_number = int(lap_match.group(1)) if lap_match else None
+            target = self._matching_lap(driver, duration, lap_number)
             if target is None:
+                signature = hash(
+                    (
+                        message,
+                        _text(item.get("Utc") or item.get("Timestamp")),
+                        _text(item.get("Id") or item.get("id")),
+                    )
+                )
+                if signature not in self._unresolved_lap_control_signatures:
+                    self._unresolved_lap_controls += 1
+                    self._unresolved_lap_control_signatures[signature] = None
+                    if len(self._unresolved_lap_control_signatures) > self._max_laps:
+                        self._unresolved_lap_control_signatures.pop(
+                            next(iter(self._unresolved_lap_control_signatures))
+                        )
                 continue
             source = dict(target.source_payload)
+            source["RaceControlObserved"] = True
             if reinstated is not None:
                 source["reinstated"] = True
                 source["deleted"] = False
                 source.pop("deletion_reason", None)
             else:
+                source.pop("reinstated", None)
+                source.pop("Reinstated", None)
                 source["deleted"] = True
                 source["deletion_reason"] = deleted.group("reason") or "Lap deleted"
             key = (driver, target.lap_number or 0)
@@ -790,8 +887,9 @@ class LapAnalysisStore:
                 session_type=self._effective_session_type(),
                 previous_track_status=previous_track_status,
             )
-            self._laps[key] = updated
-            self._updates += 1
+            if updated != target:
+                self._laps[key] = updated
+                self._updates += 1
 
     @staticmethod
     def _duration_seconds(value: str) -> float | None:
@@ -800,17 +898,22 @@ class LapAnalysisStore:
             return int(minutes) * 60 + float(seconds)
         return None
 
-    def _matching_lap(self, driver: int, duration: float | None) -> LapRecord | None:
+    def _matching_lap(
+        self, driver: int, duration: float | None, lap_number: int | None = None
+    ) -> LapRecord | None:
+        if duration is None or not math.isfinite(duration) or duration <= 0:
+            return None
+        duration_ms = round(duration * 1000)
         candidates = [
             lap
             for (lap_driver, _), lap in self._laps.items()
-            if lap_driver == driver and lap.lap_duration is not None
+            if lap_driver == driver
+            and (lap_number is None or lap.lap_number == lap_number)
+            and lap.lap_duration is not None
+            and math.isfinite(lap.lap_duration)
+            and round(lap.lap_duration * 1000) == duration_ms
         ]
-        if not candidates:
-            return None
-        if duration is None:
-            return candidates[-1]
-        return min(candidates, key=lambda lap: abs((lap.lap_duration or 0) - duration))
+        return candidates[0] if len(candidates) == 1 else None
 
     @classmethod
     def _deep_merge(cls, target: dict[str, Any], delta: Mapping[str, Any]) -> None:
@@ -875,6 +978,7 @@ class LapAnalysisStore:
             "drivers": len({driver for driver, _ in self._laps}),
             "updates": self._updates,
             "max_laps": self._max_laps,
+            "unresolved_lap_controls": self._unresolved_lap_controls,
         }
 
     async def async_close(self) -> None:

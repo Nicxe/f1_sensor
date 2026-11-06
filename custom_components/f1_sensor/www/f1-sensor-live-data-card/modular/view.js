@@ -394,14 +394,21 @@ export class F1ModuleView extends LitElement {
     if (selectedRound && !meetingChoices.some(([id]) => id === selectedRound)) meetingChoices.push([selectedRound, `${selectedRound} · ${this.w('modular.saved_selection_unavailable')}`]);
     if (selectedSession && !sessionChoices.some(([id]) => id === selectedSession)) sessionChoices.push([selectedSession, this.w('modular.saved_session_unavailable')]);
     const errorMessage = model.disconnected ? this.w('modular.home_assistant_is_disconnected_the_archive_will_reload_after_reconnection') : model.error ? this.w('modular.the_archive_could_not_be_loaded_try_again_when_the_source_is_available') : null;
-    return html`${options.show_session_selector ? html`<div class="archive-pickers">
+    const showPicker = options.show_session_selector || this.archivePickerOpen;
+    return html`${showPicker ? html`<div class="archive-pickers">
       ${picker('year', this.w('modular.year'), model.year, years)}
       ${picker('round', this.w('modular.grand_prix'), selectedRound, [['', this.w('modular.latest_started_event')], ...meetingChoices])}
       ${picker('session_key', this.w('modular.session'), selectedSession, [['', this.w('modular.latest_supported_session')], ...sessionChoices])}
     </div>` : ''}
+    ${model.session?.cancelled === true ? html`<p class="provenance">${this.w('modular.archive_session_cancelled')}</p>` : ''}
     ${errorMessage ? html`${this.empty(errorMessage)}${!model.disconnected ? html`<button @click=${() => this.choose('retry', true)}>${this.w('modular.retry_archive')}</button>` : ''}`
       : model.loading ? this.empty(this.w('modular.loading_archive'))
-      : !model.session ? this.empty(this.w('modular.no_session_matches_this_selection_choose_another_event_or_session'))
+      : !model.session ? html`${this.empty(this.w('modular.no_session_matches_this_selection_choose_another_event_or_session'))}
+        ${!showPicker && model.sessions.length ? html`<button @click=${async () => {
+          this.archivePickerOpen = true; this.requestUpdate();
+          await this.updateComplete;
+          this.renderRoot.querySelector('[data-focus="archive-session_key"]')?.focus();
+        }}>${this.w('modular.choose_a_recorded_session')}</button>` : ''}`
       : model.unsupported ? this.empty(options.content === 'classification' ? this.w('modular.this_source_provides_race_sprint_and_qualifying_results_results_for_this_session_are_unavailable') : this.w('modular.historical_lap_times_and_positions_are_available_for_races_only'))
       : model.invalidIdentity ? this.empty(this.w('modular.the_returned_lap_data_belongs_to_a_different_session_reload_the_archive'))
       : model.invalidRange ? this.empty(this.w('modular.the_first_lap_is_after_the_last_lap_adjust_the_range_in_the_editor'))
@@ -527,13 +534,42 @@ export class F1ModuleView extends LitElement {
     </table></div><div class="section-head" style="margin:10px 0"><span class="muted">${rows.length} ${this.w('modular.of')} ${this.model.countTotal} ${this.w('modular.competitors')}</span>
       ${this.model.countTotal > this.module.options.rows ? html`<button data-focus="pit-count-expand" @click=${() => this.choose('rows', 500)}>${this.w('modular.show_all')}</button>` : ''}</div>`;
   }
+  strategyEvidence() {
+    const rows = this.model.rows ?? [], content = this.module.options.content;
+    if (!rows.length || content === 'pit_outcomes') return '';
+    return html`<details class="strategy-evidence"><summary>${this.w('modular.strategy_method_and_supporting_laps')}</summary>
+      ${['compound_comparison', 'crossover'].includes(content) ? html`<p>${this.w('modular.strategy_descriptive_only')}</p>`
+        : html`<ul>${repeat(rows, row => row.id, row => {
+          if (content === 'teammates') {
+            const evidence = row.comparison_evidence;
+            return html`<li><strong>${row.incident_drivers}</strong>
+              ${evidence?.status === 'descriptive' ? html`<p>${this.w('modular.strategy_descriptive_only')}</p>` : html`
+                <p>${this.w('modular.strategy_matched_method')}</p>
+                <p>${this.w('modular.strategy_pairs')}: ${evidence.used_pairs ?? '—'} / ${evidence.possible_pairs ?? '—'} · ${this.w('modular.laps')}: ${evidence.lap_range?.join('–') ?? '—'}</p>
+                ${evidence.status !== 'ready' ? html`<p>${this.w('modular.strategy_insufficient_evidence')}</p>` : ''}
+                <p>${this.w('modular.strategy_spread')}: ${evidence.spread ? evidence.spread.map(formatDelta).join(' – ') + ' s' : '—'}</p>
+                ${evidence.exclusion_reasons.length ? html`<ul>${evidence.exclusion_reasons.map(item => html`<li>${this.w(`modular.strategy_reason_${item.reason}`)}: ${item.count}</li>`)}</ul>` : ''}
+                ${evidence.pairs.length ? html`<ul>${evidence.pairs.map(pair => html`<li>${this.w('modular.lap')} ${pair.lap}: ${pair.first_time !== null && pair.second_time !== null ? `${formatTime(pair.first_time)} − ${formatTime(pair.second_time)} = ` : ''}${formatDelta(pair.delta)} s</li>`)}</ul>` : ''}
+              `}</li>`;
+          }
+          const trend = row.trend_evidence, pit = row.pit_evidence;
+          return html`<li><strong>${row.driver} · ${this.w('modular.stint')} ${row.stint_number ?? '—'}</strong>
+            <p>${this.w('modular.strategy_trend_method')}</p>
+            <p>${this.w('modular.laps')}: ${trend?.laps?.join(', ') || '—'}</p>
+            ${trend?.status !== 'ready' ? html`<p>${this.w(trend?.status === 'descriptive' ? 'modular.strategy_descriptive_only' : 'modular.strategy_insufficient_evidence')}</p>` : ''}
+            <p>${this.w('modular.strategy_pit_method')}</p>
+            <p>${this.w('modular.strategy_transition_lap')}: ${pit?.transition_lap ?? '—'} · ${this.w('modular.strategy_baseline')}: ${formatTime(pit?.baseline_seconds)}</p>
+            <p>${this.w('modular.laps')}: ${pit?.baseline_laps?.join(', ') || '—'}</p>
+            ${pit?.status !== 'ready' ? html`<p>${this.w('modular.strategy_insufficient_evidence')}</p>` : ''}</li>`;
+        })}</ul>`}</details>`;
+  }
   strategy() {
     const rows = this.model.rows ?? [], presentation = this.module.options.presentation;
-    if (this.module.options.content !== 'stints' || presentation === 'table' || !rows.length) return this.results();
+    if (this.module.options.content !== 'stints' || presentation === 'table' || !rows.length) return html`${this.strategyEvidence()}${this.results()}`;
     const valid = rows.filter(row => Number.isInteger(row.stint_first_lap) && Number.isInteger(row.stint_last_lap) && row.stint_first_lap > 0 && row.stint_last_lap >= row.stint_first_lap);
     const first = Math.min(...valid.map(row => row.stint_first_lap)), last = Math.max(...valid.map(row => row.stint_last_lap)), extent = last - first + 1;
     const showTable = presentation === 'both' || this.stintTable;
-    return html`<div class="stint-chart"><p class="muted">${this.w('modular.bars_span_the_first_to_last_observed_lap_missing_laps_can_exist_inside_a')}</p>
+    return html`${this.strategyEvidence()}<div class="stint-chart"><p class="muted">${this.w('modular.bars_span_the_first_to_last_observed_lap_missing_laps_can_exist_inside_a')}</p>
       <ol class="stint-bars" tabindex="0" aria-label=${this.w('modular.recorded_stint_ranges_and_coverage')}>${repeat(rows, row => row.id, row => {
         const drawable = valid.includes(row), compound = compoundMeta(row.tyre);
         const left = drawable ? (row.stint_first_lap - first) / extent * 100 : 0, width = drawable ? (row.stint_last_lap - row.stint_first_lap + 1) / extent * 100 : 0;
@@ -648,7 +684,8 @@ export class F1ModuleView extends LitElement {
           </select></label>`;
         })}</div><div class="replay-controls" part="controls">${options.refresh ? send('refresh', 'Refresh session list') : ''}${send('load', 'Load selected replay')}</div>
       </details>` : ''}
-      ${model.downloadError ? html`<p role="alert">${this.w('modular.the_replay_download_failed_try_loading_the_selected_session_again')}</p>` : ''}
+      ${model.downloadError ? html`<p role="alert">${this.w(model.downloadErrorCode === 'archive_identity_conflict' ? 'modular.replay_identity_conflict' : model.downloadErrorCode === 'cache_normalization_incompatible' ? 'modular.replay_cache_incompatible' : 'modular.the_replay_download_failed_try_loading_the_selected_session_again')}</p>` : ''}
+      ${showStatus && model.loaded && model.archiveIdentity === 'missing' ? html`<p class="muted">${this.w('modular.replay_identity_missing')}</p>` : ''}
       ${model.indexError ? html`<p>${this.w('modular.the_session_list_could_not_be_retrieved_try_refreshing_it')}</p>` : ''}
       ${model.request?.pending ? html`<p role="status">${this.w('modular.sending_replay_command')}</p>` : model.request?.error ? html`<p role="alert">${this.w('modular.the_replay_command_failed_check_the_current_status_before_trying_again')}</p>` : model.request?.busy ? html`<p role="status">${this.w('modular.command_not_sent_another_card_was_sending_a_replay_command_check_the_current_status')}</p>` : ''}
     `;

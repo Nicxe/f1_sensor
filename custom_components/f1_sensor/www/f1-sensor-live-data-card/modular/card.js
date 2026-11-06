@@ -626,7 +626,10 @@ export class F1SensorCard extends LitElement {
           else {
             const auth = data.source(viewHass, viewEntry, 'f1tv_token_status');
             const authNeedsAttention = auth.status === 'available' && ['expired', 'invalid', 'rejected', 'refresh_failed'].includes(String(auth.state).toLowerCase());
-            if (authNeedsAttention) model.notice = this.w('modular.f1tv_access_needs_attention_so_live_championship_projections_are_hidden_published_standings_remain_available');
+            if (model.projection.status === 'not_applicable' && effective.options.show_availability_notice !== false) model.notice = this.w('modular.projection_not_applicable');
+            else if (authNeedsAttention) model.notice = this.w('modular.f1tv_access_needs_attention_so_live_championship_projections_are_hidden_published_standings_remain_available');
+            else if (model.projection.status === 'waiting_for_session' && effective.options.show_availability_notice !== false) model.notice = this.w('modular.projection_waiting_for_session');
+            else if (model.projection.status === 'waiting_for_prediction' && effective.options.show_availability_notice !== false) model.notice = this.w('modular.projection_waiting_for_prediction');
             else if (effective.options.show_availability_notice !== false) model.notice = this.w('modular.projection_unavailable_live_projections_need_f1tv_access_and_a_supported_race_feed_archived_replay');
           }
         }
@@ -679,6 +682,14 @@ export class F1SensorCard extends LitElement {
           else model.blocked = this.w('modular.map_connection_interrupted_your_settings_are_kept');
         }
         if (model.blocked && module.unavailable === 'hide' && !this.modelPreview) model.hidden = true;
+        const mapSnapshot = this.modelPreview?.map ?? this.mapState.data?.snapshot;
+        if (!model.blocked && mapSnapshot?.source === 'live' && data.array(mapSnapshot.drivers).length === 0) {
+          const auth = data.source(viewHass, viewEntry, 'f1tv_token_status');
+          const token = auth.status === 'available' ? String(auth.state).toLowerCase() : null;
+          model.notice = this.w(mapSnapshot.status === 'no_session' ? 'modular.source_waiting_for_session'
+            : ['expired', 'invalid', 'rejected', 'refresh_failed'].includes(token) ? 'modular.map_auth_needed'
+              : token === 'valid' ? 'modular.map_token_no_positions' : 'modular.map_positions_pending');
+        }
       }
       if (definition?.stream === 'analysis') {
         const adapter = module.type === 'strategy' ? analysisData.strategyModel : module.type === 'battles' ? analysisData.battlesModel : analysisData.timelineModel;
@@ -721,7 +732,7 @@ export class F1SensorCard extends LitElement {
         if (model.source.status !== 'available') {
           const auth = data.source(viewHass, viewEntry, 'f1tv_token_status');
           const authNeedsAttention = auth.status === 'available' && ['expired', 'invalid', 'rejected', 'refresh_failed'].includes(String(auth.state).toLowerCase());
-          if (authNeedsAttention) model.capabilityMessage = this.w('modular.f1tv_access_needs_attention_so_live_pit_stop_data_is_hidden_replay_data_remains');
+          if (authNeedsAttention) { model.capabilityMessage = this.w('modular.f1tv_access_needs_attention_so_live_pit_stop_data_is_hidden_replay_data_remains'); model.capabilityAuthBlocked = true; }
           else if (module.options.show_availability_notice !== false) model.capabilityMessage = this.w('modular.pit_stop_timing_needs_f1tv_access_and_a_supported_feed_or_an_archived_replay');
         } else {
           if (model.countRows.length) notices.push(this.w('modular.pit_counts_without_details'));
@@ -821,10 +832,13 @@ export class F1SensorCard extends LitElement {
         if (!this.modelPreview && ['disconnected', 'error', 'refreshing'].includes(this.eventState.status)) model.notice = this.w('modular.connection_interrupted_saved_messages_may_be_incomplete');
       }
       if (model.source && ['missing', 'disabled', 'unavailable', 'unknown'].includes(model.source.status)) {
-        if (['missing', 'disabled'].includes(model.source.status) || module.unavailable !== 'retain' || (!model.rows?.length && !model.items?.length && !model.series?.length)) model.blocked = model.source.status === 'disabled' ? this.missingMessage('disabled') : model.capabilityMessage ?? this.missingMessage(model.source.status);
+        const sourceKey = data.sourceStatusKey(model.source, data.sessionPhase(viewHass, viewEntry));
+        const sourceMessage = model.capabilityAuthBlocked ? model.capabilityMessage : sourceKey ? this.w(sourceKey) : model.capabilityMessage ?? this.missingMessage(model.source.status);
+        if (['missing', 'disabled'].includes(model.source.status) || module.unavailable !== 'retain' || (!model.rows?.length && !model.items?.length && !model.series?.length)) model.blocked = model.source.status === 'disabled' ? this.missingMessage('disabled') : sourceMessage;
         else model.notice = this.w('modular.saved_data_source_currently_unavailable');
         if (module.unavailable === 'hide' && !this.modelPreview) model.hidden = true;
       }
+      if (model.source?.data_status === 'stale') model.notice = [model.notice, this.w('modular.source_update_failed')].filter(Boolean).join(' ');
       if (saved.retained) {
         model.retained = true;
         this.retainedRoster ??= data.source(viewHass, viewEntry, 'driver_list');
