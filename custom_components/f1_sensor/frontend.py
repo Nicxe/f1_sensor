@@ -59,6 +59,7 @@ LIVE_DATA_CARD_ASSET_FILENAMES = (
     "modular/race-trace-data.js",
     "modular/race-trace-markers.js",
     "modular/race-trace-source.js",
+    "modular/event-focus.js",
     "modular/minisector-data.js",
     "modular/season-data.js",
     "modular/session-data.js",

@@ -187,6 +187,14 @@ The base graph remains available when marker data is unsupported or waiting. In 
 
 Enabling markers uses the card's shared analysis subscription and the existing F1 connection. Pit markers depend on the available pit-stop feed, which retains its existing live authentication requirement; selecting the option does not unlock that feed.
 
+### Session timeline event focus
+
+In **Session timeline**, enable **Enable event focus** to inspect an event. When the event has a verified timestamp and session context, **Inspect event** shows its available details. If a Race Trace chart in the same card contains the event's confirmed lap, the chart also inspects that lap; its reference driver and anchor do not change.
+
+To share a selection between cards, put them in the same card control group and enable **Share event focus**. Other groups, dashboards, views and connections remain independent. The selection does not change integration sensors or start replay navigation.
+
+Event focus waits when the source, session, delay or No Spoiler state cannot be verified. A Race Control or pit message without a verified event time is not selectable. An observed track-status marker can instead use its verified source frame without inventing an event timestamp. In replay, event focus is available only for a verified track-status frame; batched messages and replay navigation remain unavailable until an individual message can be mapped to a verified position in the loaded recording. The timeline itself remains available under its existing visibility rules.
+
 ### Season progression module {/* #progression-module */}
 
 Add **Season progression** and choose drivers or teams. Compare cumulative points, points per round or wins; narrow the round range and selected competitors, then choose a chart, table or both.

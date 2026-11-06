@@ -77,6 +77,12 @@ export class F1SeriesChart extends LitElement {
     if (this.lastTraceContext !== this.model?.traceContext) {
       this.inspectedLap = null; this.lastTraceContext = this.model?.traceContext;
     }
+    const focus = this.model?.traceEventFocus;
+    if (focus?.key !== this.lastEventFocusKey) {
+      if (focus && this.model?.rounds?.some(round => round.id === focus.lap)) this.inspectedLap = focus.lap;
+      else if (this.lastEventFocusKey) this.inspectedLap = null;
+      this.lastEventFocusKey = focus?.key;
+    }
     if (this.inspectedLap !== null && !this.model?.rounds?.some(round => round.id === this.inspectedLap)) this.inspectedLap = null;
   }
   get isTrace() { return this.model?.metric === 'cumulative_lap_delta'; }
@@ -108,8 +114,11 @@ export class F1SeriesChart extends LitElement {
     const text = this.w(event.anchor_type === 'driver_lap' ? 'modular.race_trace_marker_driver_detail' : 'modular.race_trace_marker_reference_detail', replacements);
     return event.description ? `${text} · ${event.description}` : text;
   }
+  focusMarker(event) {
+    this.dispatchEvent(new CustomEvent('f1-event-focus', { bubbles: true, composed: true, detail: { eventId: event.id } }));
+  }
   eventList(events = []) {
-    return events.length ? html`<ul class="event-list">${repeat(events, event => event.id, event => html`<li>${eventSymbols[event.kind]} ${event.text}</li>`)}</ul>` : '';
+    return events.length ? html`<ul class="event-list">${repeat(events, event => event.id, event => html`<li>${eventSymbols[event.kind]} ${this.model.focusableMarkerIds?.includes(event.id) ? html`<button @click=${() => this.focusMarker(event)}>${event.text}</button>` : event.text}</li>`)}</ul>` : '';
   }
   eventTrack(rounds, markers) {
     if (!markers?.events.length) return '';

@@ -47,7 +47,7 @@ export function timelineModel(snapshot, module, focus = {}) {
     const drivers = numbers.map(rn => people.find(person => id(person.driver_number) === rn) ?? { driver_number: rn });
     const signals = array(raw.supporting_signals).map(text).filter(Boolean);
     const derived = ['position', 'battle'].includes(raw.category) || raw.provider === 'local_estimate';
-    events.set(key, { id: `${snapshot.session_id ?? ''}:${key}`, revision, sequence: number(raw.sequence), numbers,
+    events.set(key, { id: `${snapshot.session_id ?? ''}:${key}`, eventId: key, revision, sequence: number(raw.sequence), numbers,
       codes: drivers.map(person => text(person.tla)).filter(Boolean), teams: drivers.map(person => text(person.team)).filter(Boolean),
       incident_drivers: drivers.map(person => text(person.tla) ?? text(person.name) ?? id(person.driver_number)).join(' / ') || null,
       incident_lap: positiveInteger(raw.lap_number), event_time: text(raw.occurred_at),

@@ -445,6 +445,7 @@ export const MODULES = {
     compound_gap: { ...FIELDS.compound_gap, source: 'analysis', path: 'strategy.compound_comparison[].delta_to_fastest', estimated: true },
   } }),
   timeline: module('timeline', 'Session timeline', ['event_time', 'incident_drivers', 'incident_lap', 'analysis_title', 'analysis_description', 'analysis_category', 'analysis_source', 'analysis_quality'], {
+    event_focus: { type: 'boolean', default: false, label: 'Enable event focus' },
     categories: { type: 'list', values: ['session', 'track_status', 'race_control', 'lap_control', 'investigation', 'lap', 'pit', 'weather', 'radio', 'position', 'battle', 'classification'], default: [], label: 'Categories (empty = all)' },
     search: { type: 'text', default: '', label: 'Text contains' },
     order: { type: 'enum', values: ['newest', 'oldest'], default: 'newest', label: 'Order' },

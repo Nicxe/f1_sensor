@@ -368,3 +368,98 @@ async def test_cleared_driver_projection_keeps_explicit_pending_observation(hass
     assert model.extra_state_attributes["race_trace_observation"]["status"] == "pending"
     assert model.extra_state_attributes["race_trace_observation"]["context"] is None
     await driver.async_close()
+
+
+@pytest.mark.asyncio
+async def test_race_control_focus_provenance_belongs_to_consumed_raw_event(hass):
+    delay = LiveDelayController(hass, "entry")
+    bus = LiveBus(hass, None)
+    bus.configure_observations("entry", delay, lambda: None)
+    delayed = f1._DelayedAnalysisBus(hass, bus, 0, delay, None)
+    laps = LapAnalysisStore(delayed, source_provider=lambda: "f1_live")
+    analysis = Phase4AnalysisStore(delayed, laps, source_provider=lambda: "f1_live")
+    try:
+        _emit(bus, "SessionInfo", {"Key": 123, "Type": "Race"})
+        _emit(bus, "TimingData", _lap(2), 100)
+        marker_as_of = analysis.snapshot()["race_trace_markers"]["as_of"]
+        _emit(
+            bus,
+            "RaceControlMessages",
+            {"Messages": [{"Message": "CAR 18 LAP 14 DELETED"}]},
+            101,
+        )
+        assert analysis.snapshot()["race_trace_markers"]["as_of"] == marker_as_of
+        event = analysis.snapshot()["timeline"]["events"][-1]
+        assert event["focus_observation"]["status"] == "ready"
+        assert event["focus_observation"]["context"]["session_id"] == "123"
+        assert event["focus_observation"]["timing_as_of"]["time_domain"] == "utc"
+        _emit(
+            bus,
+            "RaceControlMessages",
+            {"Messages": [{"Message": "CAR 18 LAP 14 DELETED"}]},
+            102,
+        )
+        assert analysis.snapshot()["timeline"]["events"][-1] == event
+        await delay.async_set_delay(30)
+        assert event["focus_observation"]["context"]["delay_epoch"] == 0
+    finally:
+        await analysis.async_close()
+        await laps.async_close()
+        await delayed.async_close()
+        await delay.async_close()
+
+
+@pytest.mark.asyncio
+async def test_track_marker_focus_uses_the_same_single_frame_as_its_marker(hass):
+    delay = LiveDelayController(hass, "entry")
+    bus = LiveBus(hass, None)
+    bus.configure_observations("entry", delay, lambda: None)
+    delayed = f1._DelayedAnalysisBus(hass, bus, 0, delay, None)
+    laps = LapAnalysisStore(delayed, source_provider=lambda: "f1_live")
+    analysis = Phase4AnalysisStore(delayed, laps, source_provider=lambda: "f1_live")
+    try:
+        _emit(bus, "SessionInfo", {"Key": 123, "Type": "Race"})
+        _emit(bus, "TimingData", _lap(2), 100)
+        _emit(bus, "TrackStatus", {"Status": "6", "Message": "VIRTUAL SAFETY CAR"}, 101)
+        event = analysis.snapshot()["timeline"]["events"][-1]
+        observation = event["focus_observation"]
+        marker = analysis.snapshot()["race_trace_markers"]["events"][-1]
+        assert observation["event_time_basis"] == "single_frame"
+        assert observation["timing_as_of"] == marker["observation_cursor"]
+        assert observation["context"]["token"] == marker["context_token"]
+        assert event["occurred_at"] is None
+    finally:
+        await analysis.async_close()
+        await laps.async_close()
+        await delayed.async_close()
+        await delay.async_close()
+
+
+@pytest.mark.asyncio
+async def test_pit_focus_requires_an_individual_source_utc(hass):
+    delay = LiveDelayController(hass, "entry")
+    bus = LiveBus(hass, None)
+    bus.configure_observations("entry", delay, lambda: None)
+    delayed = f1._DelayedAnalysisBus(hass, bus, 0, delay, None)
+    laps = LapAnalysisStore(delayed, source_provider=lambda: "f1_live")
+    analysis = Phase4AnalysisStore(delayed, laps, source_provider=lambda: "f1_live")
+    try:
+        _emit(bus, "SessionInfo", {"Key": 123, "Type": "Race"})
+        _emit(bus, "TimingData", _lap(2), 100)
+        _emit(bus, "PitStopSeries", {"PitTimes": {"4": {"0": {"Lap": 2}}}}, 101)
+        event = analysis.snapshot()["timeline"]["events"][-1]
+        assert event["focus_observation"] is None
+        _emit(
+            bus,
+            "PitStopSeries",
+            {"PitTimes": {"4": {"1": {"Lap": 3, "Utc": "2025-07-06T14:01:41"}}}},
+            102,
+        )
+        event = analysis.snapshot()["timeline"]["events"][-1]
+        assert event["focus_observation"]["event_time_basis"] == "utc_field"
+        assert event["lap_number"] == 3
+    finally:
+        await analysis.async_close()
+        await laps.async_close()
+        await delayed.async_close()
+        await delay.async_close()

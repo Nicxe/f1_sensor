@@ -169,7 +169,7 @@ export function normalizeConfig(input) {
   for (const key of ['viewing_controls', 'show_focus_control', 'show_freeze_control']) bool(config.context[key], `context.${key}`);
   config.context.selection = normalizeSelection(config.context.selection, 'context.selection', false);
   strings(config.context.share, 'context.share');
-  for (const value of config.context.share) choice(value, ['focus', 'selection'], 'context.share');
+  for (const value of config.context.share) choice(value, ['focus', 'selection', 'event_focus'], 'context.share');
   if (config.context.scope === 'group' && !config.context.group.trim()) fail('context.group', 'enter a group name');
   if (config.modules === undefined) config.modules = copyConfig(PRESETS.weekend.modules);
   if (!Array.isArray(config.modules)) fail('modules', 'expected a list');
