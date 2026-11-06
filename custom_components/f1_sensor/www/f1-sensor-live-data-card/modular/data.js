@@ -757,6 +757,7 @@ function calibrationModel(hass, entry, { online, replay, protection, localSpoile
 // combines a saved primary source with newly received dependency values.
 export function retainedSourceKey(module) {
   const options = module.options;
+  if (module.type === 'lap_chart' && options.metric === 'cumulative_lap_delta') return null;
   return ({
     timing: 'driver_positions', lap_chart: 'driver_positions',
     tyres: options.content === 'statistics' ? 'tyre_statistics' : 'current_tyres',

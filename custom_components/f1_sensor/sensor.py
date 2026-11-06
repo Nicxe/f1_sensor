@@ -3368,7 +3368,7 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     """
 
     _device_category = "drivers"
-    _unrecorded_attributes = frozenset({"drivers"})
+    _unrecorded_attributes = frozenset({"drivers", "race_trace_observation"})
     _PIT_OUT_HOLD_SECONDS = 6.0
 
     _attr_translation_key = "driver_positions"

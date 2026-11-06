@@ -140,9 +140,52 @@ Published [driver standings](/entities/driver-standings) and [constructor standi
 
 ### Lap history chart module {/* #lap-chart-module */}
 
-Add **Lap history chart**. Choose lap time or change between laps, select drivers and a lap range, and use a chart, table or both. Limit the number of driver series when you want a clearer comparison.
+Add **Lap history chart**. Choose lap time, change between laps or **Race Trace**, select drivers and a lap range, and use a chart, table or both. Existing lap-time and lap-change configurations keep their behavior.
 
 The module uses the session's [observed driver timing](/entities/driver-positions). Use [Historical archive](/features/historical-results) for another year's published results or available historical lap data. Classification and lap coverage are separate.
+
+**Race Trace** compares accumulated recorded lap times in an identified **Race** or **Sprint**, live or in replay. It requires no additional F1 TV access beyond the timing data already available to the card.
+
+1. Select **Race Trace** as the measure.
+2. Choose a fixed **Reference driver** and up to three comparison drivers. The reference counts toward the four-driver limit. Leaving the comparison selection empty shows only the reference.
+3. Leave **Reset after lap** at `0` to use the earliest common completed lap with confirmed timing association, or choose an explicit lap. The card shows the actual anchor, including when recording starts late.
+4. Choose **Chart**, **Table** or **Both**. Adjust **First lap** and **Last lap** to change the displayed interval.
+
+Each comparison starts at zero **after** the anchor lap. The anchor's lap time is not included in the sum:
+
+```text
+Delta at lap n = sum of (driver lap time − reference lap time)
+                for laps after the anchor through lap n
+```
+
+Positive values mean the driver has accumulated more recorded lap time than the reference since the anchor; negative values mean less. For example, with an anchor after lap 1:
+
+| Lap | Reference | Comparison driver | Accumulated delta |
+| --- | --- | --- | --- |
+| 1 | 90.0 s | 91.0 s | 0.0 s |
+| 2 | 90.0 s | 89.5 s | −0.5 s |
+| 3 | 91.0 s | 92.0 s | +0.5 s |
+| 4 | 90.0 s | 110.0 s | +20.5 s |
+
+The automatic anchor stays fixed for the same session context, reference and driver selection. Receiving an older lap later does not move it. Changing the displayed interval does not reset the sum; use **Reset after lap** for that. Changing the reference or comparison drivers establishes a new comparison. Shared driver focus does not replace the reference.
+
+A missing, invalid or uncertain lap breaks that driver's line and all following cumulative values. A missing reference lap affects every comparison. Filling the gap or receiving an accepted correction recalculates the following values. If the locked anchor becomes unavailable, the view waits for that anchor to return or for you to choose another one. It never silently restarts at zero.
+
+Race Trace compares the same lap numbers, with a maximum of 500 laps. It does **not** measure the simultaneous gap between cars, distance to the leader or wall-clock race time. Crossings are not evidence of an overtake, and fewer recorded laps do not prove a retirement or lapping. Recorded pit and neutralised laps remain included; no red-flag pause is added or subtracted. An official lap-time deletion alone does not remove an otherwise available recorded duration.
+
+[Live Delay and No Spoiler](/cards/shared-options) apply to the graph, table and event details. Older backends without the required [lap-history contract](/reference/card-data-api#lap-history-for-race-trace) show Race Trace as unsupported while existing lap-time charts remain available. A supported backend waits when session identity or confirmed lap data is still missing.
+
+**Event markers** are optional and start disabled. Select **Pit stop**, **Safety Car**, **Virtual Safety Car** or **Red flag** to add observed events. In YAML, the `event_markers` option defaults to `[]` and accepts `pit`, `sc`, `vsc` and `red_flag`.
+
+Pit markers use an explicit driver and lap. Global flag markers use the reference driver's last confirmed completed lap at the event observation, labelled **after observed reference lap**. This does not locate the event at an exact instant or mean that it affected the whole lap. Events without a safe anchor remain in the timeline rather than being assigned a guessed lap.
+
+Start, ending announcement and observed end are separate points. **Ending announced** does not mean the track is clear. Missing starts or ends are not filled in, and no shaded interval or invented endpoint is drawn. Markers appear in a separate event strip, including when that lap's cumulative delta is missing. Use **Inspect lap** with the keyboard to read details; the table includes the same events. Markers do not change delta values or seek the replay.
+
+Marker history is limited by the shared timeline's 500 retained events, including completed laps for every driver. Earlier pit stops and flags can therefore be missing by the end of a race even when Race Trace still has the full recorded lap history. The markers are not a complete race-event archive.
+
+The base graph remains available when marker data is unsupported or waiting. In particular, events wait if analysis has advanced beyond the timing observation used by the graph. During an interruption, or after the final timing update, they may keep waiting until another timing observation arrives. Older backends with the lap-history contract can therefore show the graph even when they cannot supply markers.
+
+Enabling markers uses the card's shared analysis subscription and the existing F1 connection. Pit markers depend on the available pit-stop feed, which retains its existing live authentication requirement; selecting the option does not unlock that feed.
 
 ### Season progression module {/* #progression-module */}
 

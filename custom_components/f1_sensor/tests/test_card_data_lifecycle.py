@@ -8,6 +8,7 @@ from threading import get_ident
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
+from homeassistant.config_entries import ConfigEntryState
 from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 import pytest
@@ -16,13 +17,21 @@ from pytest_homeassistant_custom_component.common import (
     async_fire_time_changed,
 )
 
-from custom_components.f1_sensor import RaceControlCoordinator
+from custom_components.f1_sensor import LiveDriversCoordinator, RaceControlCoordinator
 from custom_components.f1_sensor.card_data import CardDataStore
 from custom_components.f1_sensor.const import DOMAIN
 from custom_components.f1_sensor.live_window import LiveAvailabilityTracker
 from custom_components.f1_sensor.no_spoiler import NoSpoilerModeManager
+from custom_components.f1_sensor.replay_mode import (
+    ReplayController,
+    ReplayIndex,
+    ReplaySession,
+    ReplayState,
+    ReplayTransport,
+)
 from custom_components.f1_sensor.runtime import active_sensor_demand
 from custom_components.f1_sensor.sensor import F1TrackLimitsSensor
+from custom_components.f1_sensor.signalr import LiveBus
 
 
 class Source:
@@ -384,3 +393,160 @@ async def test_home_assistant_stop_closes_runtime_owned_clock_and_sources(hass):
     assert owner._timer is None
     sources.async_close.assert_awaited_once()
     await owner.async_close()
+
+
+@pytest.fixture
+async def active_replay_card_data(hass, tmp_path):
+    """Use actual replay selection and TimingData paths without starting playback."""
+    entry, data, owner = setup(hass)
+    entry.mock_state(hass, ConfigEntryState.SETUP_IN_PROGRESS)
+    bus = LiveBus(hass, AsyncMock())
+    session = data["session_info_coordinator"]
+    session.data = {"Key": "archive-A", "Type": "Race", "Name": "Race"}
+    drivers = LiveDriversCoordinator(hass, session, bus=bus, config_entry=entry)
+    await drivers.async_config_entry_first_refresh()
+    drivers._replay_mode = True
+    controller = ReplayController(hass, entry.entry_id, AsyncMock(), bus)
+    manager = controller.session_manager
+    now = dt_util.utcnow()
+    sessions = [
+        ReplaySession(
+            year=2025,
+            meeting_key=1,
+            meeting_name="Test",
+            session_key=key,
+            session_name="Race",
+            session_type="Race",
+            path=f"2025/Test/{key}",
+            start_utc=now,
+            end_utc=now,
+        )
+        for key in (10, 20)
+    ]
+    index = ReplayIndex(
+        session_id=sessions[0].unique_id,
+        total_frames=0,
+        duration_ms=10000,
+        session_started_at_ms=0,
+        frames_file=tmp_path / "frames.jsonl",
+        index_file=tmp_path / "index.json",
+    )
+    manager._available_sessions = sessions
+    manager._selected_session = sessions[0]
+    manager._loaded_index = index
+    manager._state = ReplayState.PLAYING
+    controller._replay_active = True
+    controller._transport = ReplayTransport(hass, index)
+    data.update(replay_controller=controller, drivers_coordinator=drivers, live_bus=bus)
+    owner._storage.async_load = AsyncMock(return_value=None)
+    owner._storage.async_save = AsyncMock()
+    await owner.async_start()
+    stop = owner.subscribe(
+        ["driver_positions", "session_context"], lambda _message: None
+    )
+    bus.inject_message("SessionInfo", session.data)
+    bus.inject_message("DriverList", {"4": {"RacingNumber": "4", "Tla": "NOR"}})
+    bus.inject_message("SessionStatus", {"Status": "Started"})
+
+    def timing(lap):
+        bus.inject_message(
+            "TimingData",
+            {
+                "Lines": {
+                    "4": {
+                        "NumberOfLaps": lap,
+                        "LastLapTime": {"Value": "1:30.000"},
+                    }
+                }
+            },
+        )
+
+    timing(2)
+    try:
+        yield SimpleNamespace(
+            owner=owner,
+            data=data,
+            controller=controller,
+            manager=manager,
+            sessions=sessions,
+            index=index,
+            timing=timing,
+        )
+    finally:
+        stop()
+        await owner.async_close()
+        await controller.async_close()
+        await drivers.async_close()
+
+
+@pytest.mark.parametrize("operation_mode", ["live", "development"])
+@pytest.mark.parametrize("selection", ["session", "year"])
+async def test_active_replay_card_data_follows_transport_not_selection(
+    active_replay_card_data,
+    operation_mode,
+    selection,
+):
+    state = active_replay_card_data
+    state.data["operation_mode"] = operation_mode
+    before = state.owner.snapshot("driver_positions")
+    assert before["source"] == "replay"
+    assert before["context"]["session_id"] == state.sessions[0].unique_id
+    assert before["payload"]["attributes"]["drivers"][0]["completed_laps"] == 2
+    if selection == "session":
+        await state.manager.async_select_session(state.sessions[1].unique_id)
+    else:
+        state.manager.async_fetch_sessions = AsyncMock(return_value=[])
+        await state.manager.async_set_year(state.manager.selected_year - 1)
+    state.timing(3)
+    current = state.owner.snapshot("driver_positions")
+    assert current["source"] == "replay"
+    assert current["context"]["session_id"] == state.sessions[0].unique_id
+    assert current["generation"] == before["generation"]
+    assert current["payload"]["attributes"]["drivers"][0]["completed_laps"] == 3
+
+
+@pytest.mark.parametrize("operation_mode", ["live", "development"])
+async def test_active_replay_without_index_stays_pending_after_year_selection(
+    active_replay_card_data,
+    operation_mode,
+):
+    state = active_replay_card_data
+    state.data["operation_mode"] = operation_mode
+    state.controller._transport = None
+    state.manager.async_fetch_sessions = AsyncMock(return_value=[])
+    await state.manager.async_set_year(state.manager.selected_year - 1)
+    state.timing(3)
+    current = state.owner.snapshot("driver_positions")
+    assert current["source"] == "replay"
+    assert current["context"]["session_id"] is None
+    assert current["status"] == "loading"
+    assert current["reason"] == "waiting_for_current_context"
+    assert current["payload"] is None
+
+    # Catch-up can have a verified loaded index before its transport is created.
+    state.manager._loaded_index = state.index
+    state.timing(4)
+    recovered = state.owner.snapshot("driver_positions")
+    assert recovered["source"] == "replay"
+    assert recovered["context"]["session_id"] == state.sessions[0].unique_id
+    assert recovered["status"] == "ready"
+    assert recovered["payload"]["attributes"]["drivers"][0]["completed_laps"] == 4
+
+
+@pytest.mark.parametrize("operation_mode", ["live", "development"])
+async def test_inactive_controller_keeps_actual_live_or_legacy_file_identity(
+    active_replay_card_data,
+    operation_mode,
+):
+    state = active_replay_card_data
+    state.data["operation_mode"] = operation_mode
+    state.controller._replay_active = False
+    state.controller._transport = None
+    await state.manager.async_select_session(state.sessions[1].unique_id)
+    state.timing(3)
+    current = state.owner.snapshot("driver_positions")
+    assert current["source"] == (
+        "replay" if operation_mode == "development" else "live"
+    )
+    assert current["context"]["session_id"] == "archive-A"
+    assert current["status"] == "ready"

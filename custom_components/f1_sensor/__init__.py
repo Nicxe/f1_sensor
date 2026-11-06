@@ -160,6 +160,7 @@ from .jolpica_pagination import (
     standings_leaf_keys,
     validate_single_page_jolpica,
 )
+from .lap_history import MAX_TYRE_STINTS_PER_DRIVER, record_lap_time
 from .lap_position_websocket import (
     LAP_POSITION_WS_MARKER,
     async_register_lap_position_websocket,
@@ -179,6 +180,7 @@ from .no_spoiler import NoSpoilerModeManager
 from .providers import ProviderRegistry
 from .push_laps import PushLapTracker, empty_push_lap
 from .qualifying_deltas import empty_push_lap_delta
+from .race_trace_observation import pending_observation
 from .race_weather import F1RaceWeatherCoordinator
 from .replay import ReplaySignalRClient
 from .replay_mode import ReplayController, ReplayState
@@ -252,7 +254,6 @@ RACE_CONTROL_LOG_MAX_FIELD_CHARS = 512
 RACE_CONTROL_LOG_EVENT_ID_CHARS = 40
 MAX_DELAY_QUEUE_ITEMS = 2048
 DELAY_QUEUE_DROP_LOG_INTERVAL = 60.0
-MAX_TYRE_STINTS_PER_DRIVER = 32
 MAX_TYRE_STINT_INDEX = MAX_TYRE_STINTS_PER_DRIVER - 1
 PITSTOP_MAX_HISTORY_PER_CAR = 10
 PITSTOP_MAX_CARS = 30
@@ -1100,6 +1101,7 @@ class _DelayedAnalysisBus:
         self._handlers: dict[str, list[Callable[[Any], None]]] = {}
         self._last_payload: dict[str, Any] = {}
         self._stream_unsubs: dict[str, Callable[[], None]] = {}
+        self._observation_reset_listeners: list[Callable[[], None]] = []
         self._closed = False
         _init_stream_delay_state(
             self,
@@ -1139,7 +1141,33 @@ class _DelayedAnalysisBus:
             handler(payload)
 
     def set_delay(self, seconds: int) -> None:
+        if max(0, int(seconds or 0)) != self._delay:
+            self._invalidate_observations()
         _apply_delay_with_queue(self, seconds)
+
+    def consumed_observation(self, payload: Any) -> dict[str, Any]:
+        """Expose only provenance from this bus's actually delivered callback."""
+        observe = getattr(self._bus, "consumed_observation", None)
+        return (
+            observe(payload, self._delay)
+            if callable(observe)
+            else pending_observation()
+        )
+
+    def add_observation_reset_listener(
+        self, listener: Callable[[], None]
+    ) -> Callable[[], None]:
+        self._observation_reset_listeners.append(listener)
+
+        def _unsubscribe() -> None:
+            with suppress(ValueError):
+                self._observation_reset_listeners.remove(listener)
+
+        return _unsubscribe
+
+    def _invalidate_observations(self) -> None:
+        for listener in tuple(self._observation_reset_listeners):
+            listener()
 
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
         if reason == "init":
@@ -1155,6 +1183,7 @@ class _DelayedAnalysisBus:
 
     def reset_for_replay(self) -> None:
         """Discard raw frames from the previous playback generation."""
+        self._invalidate_observations()
         _clear_delayed_ingest_state(self)
         self._last_payload.clear()
 
@@ -1166,6 +1195,7 @@ class _DelayedAnalysisBus:
             unsubscribe()
         self._stream_unsubs.clear()
         self._handlers.clear()
+        self._observation_reset_listeners.clear()
         self._last_payload.clear()
 
 
@@ -2670,9 +2700,28 @@ async def _async_setup_entry(
     transaction.track(replay_controller)
     await replay_controller.async_initialize()
 
+    def _observation_replay_session_id() -> str | None:
+        return replay_controller.active_session_id
+
     def _lap_analysis_provider() -> str:
-        replay_active = bool(getattr(replay_controller, "_replay_active", False))
+        replay_active = replay_controller.replay_active
         return "replay" if replay_active else "f1_live"
+
+    live_bus.configure_observations(
+        entry.entry_id,
+        delay_controller,
+        _observation_replay_session_id,
+        source_provider=lambda: (
+            "replay"
+            if operation_mode == OPERATION_MODE_DEVELOPMENT
+            or _lap_analysis_provider() == "replay"
+            else "live"
+        ),
+        transport_ready=lambda: (
+            not replay_controller.replay_active
+            or replay_controller.transport is not None
+        ),
+    )
 
     def _lap_analysis_session_type() -> str | None:
         data = getattr(session_coordinator, "data", None)
@@ -5916,6 +5965,8 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         self._tyre_missing_warning_logged = False
         self._state: dict[str, Any] = {
             "drivers": {},
+            "lap_history_session_type": None,
+            "race_trace_observation": pending_observation(),
             "leader_rn": None,
             "lap_current": None,
             "lap_total": None,
@@ -5990,16 +6041,26 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         self._reset_session_state("replay_reset")
 
     def _on_sessioninfo(self, payload: dict) -> None:
-        self._push_laps.update("SessionInfo", payload)
-        if self._publish_push_laps():
-            self._schedule_deliver()
-        session_key = _stream_session_key(payload)
-        if session_key is None or session_key == self._live_session_key:
+        if not isinstance(payload, dict):
             return
-        changed = self._live_session_key is not None
-        self._live_session_key = session_key
-        if changed:
-            self._reset_session_state("session_change")
+        session_key = _stream_session_key(payload)
+        if session_key is not None and session_key != self._live_session_key:
+            changed = self._live_session_key is not None
+            self._live_session_key = session_key
+            if changed:
+                self._reset_session_state("session_change")
+        changed = False
+        if "Type" in payload:
+            raw_type = payload["Type"]
+            session_type = (
+                raw_type.strip() or None if isinstance(raw_type, str) else None
+            )
+            if self._state.get("lap_history_session_type") != session_type:
+                self._state["lap_history_session_type"] = session_type
+                changed = True
+        self._push_laps.update("SessionInfo", payload)
+        if self._publish_push_laps() or changed:
+            self._schedule_deliver()
 
     def _reset_session_state(self, reason: str) -> None:
         """Clear previous-session timing without dropping queued current-session frames."""
@@ -6013,6 +6074,8 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         self._push_laps.reset()
         self._state = {
             "drivers": {},
+            "lap_history_session_type": None,
+            "race_trace_observation": pending_observation(),
             "leader_rn": None,
             "lap_current": None,
             "lap_total": None,
@@ -6215,7 +6278,13 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 yield seg_num, lap_data
 
     def _ingest_completed_lap(
-        self, rn: str, lap_time: str, lap_num: int | None = None
+        self,
+        rn: str,
+        lap_time: str,
+        lap_num: int | None = None,
+        *,
+        explicit_number: Any = None,
+        snapshot: bool = False,
     ) -> bool:
         """Ingest a completed lap atomically across timing, history, and stint stats."""
         if not isinstance(lap_time, str) or not lap_time:
@@ -6253,7 +6322,9 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             timing["best_lap"] = lap_time
             changed = True
 
-        if self._record_lap_for_history(rn, lap_time, lap_num):
+        if self._record_lap_for_history(
+            rn, lap_time, lap_num, explicit_number=explicit_number, snapshot=snapshot
+        ):
             changed = True
         if self._record_lap_time_for_stint(rn, lap_time):
             changed = True
@@ -6405,7 +6476,8 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 except (TypeError, ValueError):
                     number_of_laps = None
                 if number_of_laps is not None:
-                    if lap_history.get("completed_laps") != number_of_laps:
+                    completed = lap_history.get("completed_laps")
+                    if not isinstance(completed, int) or number_of_laps > completed:
                         lap_history["completed_laps"] = number_of_laps
                         changed = True
             # IMPORTANT: Only set fields that are present in this delta payload.
@@ -6442,7 +6514,11 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                     completed = lap_history.get("completed_laps")
                     lap_num = completed if isinstance(completed, int) else None
                 if last_lap is not None and self._ingest_completed_lap(
-                    rn, last_lap, lap_num
+                    rn,
+                    last_lap,
+                    lap_num,
+                    explicit_number=td.get("NumberOfLaps"),
+                    snapshot=payload.get("_f1_snapshot") is True,
                 ):
                     changed = True
                 if self._merge_last_lap_status(
@@ -7012,10 +7088,15 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
     def set_delay(self, seconds: int) -> None:
         new_delay = max(0, int(seconds or 0))
         if new_delay != self._delay:
+            self._state["race_trace_observation"] = pending_observation("delay_changed")
+            for driver in self._state.get("drivers", {}).values():
+                history = driver.get("lap_history", {})
+                if history.get("lap_metadata"):
+                    history["lap_metadata"] = {}
             self._minisectors.reset("live_delay_change")
             self._push_laps.reset()
-            if self._publish_push_laps():
-                self._schedule_deliver()
+            self._publish_push_laps()
+            self._schedule_deliver()
         _apply_delay_with_queue(self, seconds)
 
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
@@ -7031,6 +7112,9 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         if _is_no_spoiler_live_state(reason):
             _clear_delayed_ingest_state(self)
             self._minisectors.reset("spoiler_protected")
+            self._state["race_trace_observation"] = pending_observation(
+                "spoiler_protected"
+            )
             self._push_laps.reset()
             return
         self.available = is_live
@@ -7046,6 +7130,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             with suppress(Exception):
                 self._state = {
                     "drivers": {},
+                    "race_trace_observation": pending_observation("source_unavailable"),
                     "leader_rn": None,
                     "lap_current": None,
                     "lap_total": None,
@@ -7367,7 +7452,13 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                         lap_num = int(lap_num_raw) if lap_num_raw is not None else None
                     except (TypeError, ValueError):
                         lap_num = None
-                    if self._ingest_completed_lap(rn, lap_time, lap_num):
+                    if self._ingest_completed_lap(
+                        rn,
+                        lap_time,
+                        lap_num,
+                        explicit_number=lap_num_raw,
+                        snapshot=payload.get("_f1_snapshot") is True,
+                    ):
                         changed = True
 
         if stints_changed:
@@ -7488,7 +7579,13 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         return False
 
     def _record_lap_for_history(
-        self, rn: str, lap_time: str, lap_num: int | None = None
+        self,
+        rn: str,
+        lap_time: str,
+        lap_num: int | None = None,
+        *,
+        explicit_number: Any = None,
+        snapshot: bool = False,
     ) -> bool:
         """Record a completed lap time in the driver's lap history.
 
@@ -7505,36 +7602,22 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         timing = entry.get("timing", {})
         current_position = timing.get("position")
 
-        # Determine lap number: use provided lap_num when available
-        last_lap_num = lap_history.get("last_recorded_lap", 0)
-        try:
-            use_lap_num = int(lap_num) if lap_num is not None else None
-        except (TypeError, ValueError):
-            use_lap_num = None
-        if not use_lap_num or use_lap_num <= 0:
-            use_lap_num = last_lap_num + 1
+        use_lap_num, changed = record_lap_time(
+            lap_history,
+            lap_time,
+            lap_num,
+            explicit_number=explicit_number,
+            snapshot=snapshot,
+        )
 
         # Capture grid position on first lap if not already set
         if use_lap_num == 1 and lap_history.get("grid_position") is None:
             lap_history["grid_position"] = current_position
 
-        # Store the lap time (just the time, position is tracked separately)
-        lap_key = str(use_lap_num)
-        prev_time = lap_history["laps"].get(lap_key)
-        if prev_time == lap_time and last_lap_num >= use_lap_num:
-            return self._mark_sector_lap_completed(entry, use_lap_num)
-        lap_history["laps"][lap_key] = lap_time
-        if last_lap_num < use_lap_num:
-            lap_history["last_recorded_lap"] = use_lap_num
-        # Keep completed_laps in sync with highest seen lap
-        with suppress(Exception):
-            completed = lap_history.get("completed_laps", 0) or 0
-            if isinstance(completed, int) and completed < use_lap_num:
-                lap_history["completed_laps"] = use_lap_num
-
-        self._update_fastest_lap(rn, use_lap_num, lap_time)
-        self._mark_sector_lap_completed(entry, use_lap_num)
-        return True
+        if changed:
+            self._update_fastest_lap(rn, use_lap_num, lap_time)
+        sectors_changed = self._mark_sector_lap_completed(entry, use_lap_num)
+        return changed or sectors_changed
 
     def _mark_sector_lap_completed(self, entry: dict[str, Any], lap_num: int) -> bool:
         """Mark current sector progress as a completed lap."""
@@ -7981,7 +8064,13 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             return
         if self._state.get("frozen") and not self._replay_mode:
             return
-        if self._merge_timingdata(td):
+        observe = getattr(self._bus, "consumed_observation", None)
+        observation = (
+            observe(td, self._delay) if callable(observe) else pending_observation()
+        )
+        observation_changed = self._state.get("race_trace_observation") != observation
+        self._state["race_trace_observation"] = observation
+        if self._merge_timingdata(td) or observation_changed:
             self._schedule_deliver()
 
     def _on_timingapp(self, ta: dict) -> None:
@@ -8094,6 +8183,10 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 completed_laps = history_data.get("completed_laps")
                 if laps or grid_pos:
                     lap_history["laps"] = dict(laps)
+                    metadata = history_data.get("lap_metadata")
+                    lap_history["lap_metadata"] = (
+                        deepcopy(metadata) if isinstance(metadata, dict) else {}
+                    )
                     lap_history["grid_position"] = grid_pos
                     lap_history["last_recorded_lap"] = last_lap
                     if isinstance(completed_laps, int):

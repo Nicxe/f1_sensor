@@ -7,12 +7,15 @@ from collections.abc import Awaitable, Callable, Mapping, Sequence
 from contextlib import suppress
 from copy import deepcopy
 from dataclasses import dataclass, replace
+from datetime import UTC, datetime
 import hashlib
 import math
 from statistics import median, quantiles
 from typing import Any
 
 from .history import LapAnalysisStore, merge_analysis_session_info
+from .lap_history import MAX_TYRE_STINTS_PER_DRIVER, confirmed_race_trace_lap
+from .race_trace_observation import OBSERVATION_STREAMS, pending_observation
 
 PHASE4_ANALYSIS_STREAMS = frozenset(
     {
@@ -149,6 +152,7 @@ class TimelineEvent:
     confidence: float = 1.0
     final: bool = False
     supporting_signals: tuple[str, ...] = ()
+    race_trace_marker: dict[str, Any] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         """Return the stable WebSocket event contract."""
@@ -190,6 +194,17 @@ class UnifiedTimelineStore:
                 revision=current.revision,
                 sequence=current.sequence,
             )
+            if candidate.race_trace_marker and current.race_trace_marker:
+                # Receiving an unchanged pit row again is not a new event or
+                # revision. Keep its original observation and frozen anchor.
+                retained_marker = {
+                    **candidate.race_trace_marker,
+                    "observation_cursor": current.race_trace_marker[
+                        "observation_cursor"
+                    ],
+                }
+                if replace(candidate, race_trace_marker=retained_marker) == current:
+                    return current
             if candidate == current:
                 return current
             event = replace(
@@ -213,6 +228,20 @@ class UnifiedTimelineStore:
     def snapshot(self) -> list[dict[str, Any]]:
         """Return events in their stable sequence order."""
         return [event.as_dict() for event in self._events.values()]
+
+    def marker_snapshot(self, token: str) -> list[dict[str, Any]]:
+        """Project markers from the existing bounded, revisioned event store."""
+        return [
+            {
+                **deepcopy(event.race_trace_marker),
+                "event_id": event.event_id,
+                "revision": event.revision,
+                "description": event.description,
+            }
+            for event in self._events.values()
+            if event.race_trace_marker is not None
+            and event.race_trace_marker.get("context_token") == token
+        ]
 
 
 def _linear_slope(samples: list[tuple[int, float]]) -> float | None:
@@ -937,7 +966,13 @@ class Phase4AnalysisStore:
         self.closed = False
         self._unsubs: list[Callable[[], None]] = []
         self._updates = 0
+        self._race_trace_observation = pending_observation()
+        self._race_trace_anchors: dict[str, dict[str, Any]] = {}
+        self._race_trace_track_status: str | None = None
         self._attach()
+        listen = getattr(bus, "add_observation_reset_listener", None)
+        if callable(listen):
+            self._unsubs.append(listen(self._invalidate_race_trace))
 
     def _attach(self) -> None:
         callbacks = {
@@ -972,7 +1007,11 @@ class Phase4AnalysisStore:
         if self.closed:
             return
         self._observed_streams.add(stream)
+        if stream in OBSERVATION_STREAMS and stream != "SessionInfo":
+            self._observe_race_trace_context(payload)
         handler(payload)
+        if stream == "SessionInfo":
+            self._observe_race_trace_context(payload)
         self._updates += 1
         self._notify_listeners()
 
@@ -1021,6 +1060,7 @@ class Phase4AnalysisStore:
         confidence: float = 1.0,
         signals: tuple[str, ...] = (),
         final: bool = False,
+        race_trace_marker: dict[str, Any] | None = None,
     ) -> TimelineEvent:
         source = payload or {}
         return self._timeline.upsert(
@@ -1042,10 +1082,12 @@ class Phase4AnalysisStore:
                 confidence=confidence,
                 final=final,
                 supporting_signals=signals,
+                race_trace_marker=race_trace_marker,
             )
         )
 
     def _reset_session(self) -> None:
+        self._invalidate_race_trace(notify=False)
         self._timeline.clear()
         self._session_status = None
         self._track_status = None
@@ -1069,6 +1111,98 @@ class Phase4AnalysisStore:
         self._pit_context.clear()
         self._penalty_context.clear()
         self._observed_streams.clear()
+
+    def _invalidate_race_trace(self, *, notify: bool = True) -> None:
+        self._race_trace_observation = pending_observation("context_changed")
+        self._race_trace_anchors.clear()
+        self._race_trace_track_status = None
+        if notify:
+            self._notify_listeners()
+
+    def _observe_race_trace_context(self, payload: Any) -> None:
+        observe = getattr(self._bus, "consumed_observation", None)
+        observation = observe(payload) if callable(observe) else pending_observation()
+        if observation.get("context") != self._race_trace_observation.get("context"):
+            self._invalidate_race_trace(notify=False)
+        self._race_trace_observation = observation
+
+    def _race_trace_marker(self, **fields: Any) -> dict[str, Any] | None:
+        observation = self._race_trace_observation
+        if observation["status"] != "ready":
+            return None
+        return {
+            **fields,
+            "context_token": observation["context"]["token"],
+            "observation_cursor": deepcopy(observation["timing_as_of"]),
+        }
+
+    def _observe_race_trace_lap(self, driver: str, number: Any, value: Any) -> None:
+        observation = self._race_trace_observation
+        lap = confirmed_race_trace_lap(number, value)
+        driver_number = _as_int(driver)
+        if (
+            observation["status"] != "ready"
+            or lap is None
+            or driver_number is None
+            or not 1 <= driver_number <= 99
+        ):
+            return
+        driver = str(driver_number)
+        previous = self._race_trace_anchors.get(driver)
+        if previous is not None and previous["lap_number"] >= lap:
+            return
+        self._race_trace_anchors[driver] = {
+            "lap_number": lap,
+            "basis": "confirmed_completed",
+            "observation_cursor": deepcopy(observation["timing_as_of"]),
+        }
+
+    def _race_trace_reference_anchors(
+        self, payload: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        observation = self._race_trace_observation
+        if observation["status"] != "ready":
+            return {}
+        cursor = observation["timing_as_of"]
+        event_time = cursor["source_time_ms"]
+        if utc := _utc_text(payload):
+            # A provider UTC cannot be compared to a replay-offset clock.
+            if cursor["time_domain"] != "utc":
+                return {}
+            try:
+                timestamp = datetime.fromisoformat(utc.replace("Z", "+00:00"))
+                event_time = int(
+                    timestamp.replace(tzinfo=timestamp.tzinfo or UTC).timestamp() * 1000
+                )
+            except ValueError:
+                return {}
+        return {
+            driver: deepcopy(anchor)
+            for driver, anchor in self._race_trace_anchors.items()
+            if anchor["observation_cursor"]["time_domain"] == cursor["time_domain"]
+            and anchor["observation_cursor"]["source_time_ms"] <= event_time
+            and anchor["observation_cursor"]["sequence"] <= cursor["sequence"]
+        }
+
+    def _race_trace_snapshot(self) -> dict[str, Any]:
+        observation = self._race_trace_observation
+        context = observation["context"]
+        events = self._timeline.marker_snapshot(context["token"]) if context else []
+        as_of = (
+            max(events, key=lambda item: item["observation_cursor"]["sequence"])[
+                "observation_cursor"
+            ]
+            if events
+            else observation["timing_as_of"]
+        )
+        return {
+            "version": 1,
+            "status": observation["status"],
+            "reason": observation["reason"],
+            "context": deepcopy(context),
+            "as_of": deepcopy(as_of),
+            "events": events,
+        }
 
     def reset_for_replay(self) -> None:
         """Reset all accumulated state before replay playback is rebuilt."""
@@ -1167,13 +1301,37 @@ class Phase4AnalysisStore:
                 and (lap := _as_int(timing.get("NumberOfLaps"))) is not None
             }
         disrupted = status in {"2", "4", "5", "6", "7"}
+        kinds = {"4": "sc", "5": "red_flag", "6": "vsc", "7": "vsc"}
+        marker_kind = kinds.get(status)
+        marker_phase = "ending" if status == "7" else "start"
+        if status == "1":
+            marker_kind = kinds.get(self._race_trace_track_status)
+            marker_phase = "end"
+        marker = (
+            self._race_trace_marker(
+                kind=marker_kind,
+                phase=marker_phase,
+                source="TrackStatus",
+                reference_anchors=self._race_trace_reference_anchors(payload),
+            )
+            if marker_kind
+            else None
+        )
+        self._race_trace_track_status = (
+            status if self._race_trace_observation["status"] == "ready" else None
+        )
+        identity = f"track:{status}:{_utc_text(payload)}"
+        if marker:
+            cursor = marker["observation_cursor"]
+            identity = f"track:{status}:{marker['context_token']}:{cursor['sequence']}"
         self._event(
-            identity=f"track:{status}:{_utc_text(payload)}",
+            identity=identity,
             category="track_status",
             kind="track_status_changed",
             title=_text(payload.get("Message")) or f"Track status {status}",
             payload=payload,
             severity="warning" if disrupted else "success",
+            race_trace_marker=marker,
         )
 
     def _on_driver_list(self, payload: Any) -> None:
@@ -1212,6 +1370,15 @@ class Phase4AnalysisStore:
         for key, item in _items(payload.get("Lines")):
             target = self._timing_app.setdefault(key, {})
             _deep_merge(target, item)
+            for index, stint in _items(item.get("Stints")):
+                parsed_index = _as_int(index)
+                if (
+                    parsed_index is not None
+                    and 0 <= parsed_index < MAX_TYRE_STINTS_PER_DRIVER
+                ):
+                    self._observe_race_trace_lap(
+                        key, stint.get("LapNumber"), stint.get("LapTime")
+                    )
             if (driver := _as_int(key)) is not None:
                 self._observe_strategy_tyres(driver)
 
@@ -1222,6 +1389,11 @@ class Phase4AnalysisStore:
         for key, item in _items(payload.get("Lines")):
             target = self._timing.setdefault(key, {})
             _deep_merge(target, item)
+            self._observe_race_trace_lap(
+                key,
+                item.get("NumberOfLaps"),
+                _mapping(item.get("LastLapTime")).get("Value"),
+            )
             if (driver := _as_int(key)) is not None:
                 completed = _as_int(target.get("NumberOfLaps"))
                 if completed is not None and self._green_phase_id is not None:
@@ -1409,17 +1581,20 @@ class Phase4AnalysisStore:
         if not isinstance(payload, Mapping):
             return
         source = payload.get("PitTimes", payload.get("Lines", {}))
-        for driver_key, driver_entries in _items(source):
+        entries = source.items() if isinstance(source, Mapping) else ()
+        for driver_key, driver_entries in entries:
             driver = _as_int(driver_key)
             if driver is None:
                 continue
             for item_key, item in _items(driver_entries):
                 pit = _mapping(item.get("PitStop")) or item
-                lap = _as_int(pit.get("Lap") or item.get("Lap"))
+                lap = _as_int(pit.get("Lap") if "Lap" in pit else item.get("Lap"))
+                if "RacingNumber" in pit and _as_int(pit["RacingNumber"]) != driver:
+                    lap = None
                 if lap is not None:
                     self._pit_context.setdefault(driver, set()).add(lap)
                 self._event(
-                    identity=f"pit:{driver}:{lap}:{item_key}",
+                    identity=f"pit:{driver}:{item_key}",
                     category="pit",
                     kind="pit_stop_completed",
                     title=f"Car {driver} pit stop",
@@ -1429,6 +1604,14 @@ class Phase4AnalysisStore:
                     lap_number=lap,
                     confidence=0.95,
                     signals=("PitStopSeries",),
+                    race_trace_marker=self._race_trace_marker(
+                        kind="pit",
+                        phase="point",
+                        driver_number=driver,
+                        lap_number=lap if lap is not None and 1 <= lap <= 500 else None,
+                        anchor_type="driver_lap",
+                        source="PitStopSeries",
+                    ),
                 )
 
     def _on_race_control(self, payload: Any) -> None:
@@ -1836,6 +2019,7 @@ class Phase4AnalysisStore:
                 "count": len(self._timeline.snapshot()),
             },
             "strategy": strategy,
+            "race_trace_markers": self._race_trace_snapshot(),
             "position_exchanges": list(self._exchange_history),
             "position_exchange_count": self._exchange_total,
             "position_exchange_retained_count": len(self._exchange_history),

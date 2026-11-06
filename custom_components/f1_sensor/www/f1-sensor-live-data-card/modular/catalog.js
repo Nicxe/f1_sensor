@@ -366,7 +366,10 @@ export const MODULES = {
     show_button_labels: { type: 'boolean', default: true, label: 'Show button labels' },
   }, ['replay_status', 'replay_player', 'replay_year_select', 'replay_session_select', 'replay_start_reference', 'replay_load', 'replay_refresh']),
   lap_chart: module('lap_chart', 'Lap history chart', ['lap_series'], {
-    metric: { type: 'enum', values: ['lap_time', 'lap_change'], default: 'lap_time', label: 'Measure' },
+    metric: { type: 'enum', values: ['lap_time', 'lap_change', 'cumulative_lap_delta'], default: 'lap_time', label: 'Measure' },
+    event_markers: { type: 'list', values: ['pit', 'sc', 'vsc', 'red_flag'], default: [], label: 'Event markers' },
+    reference_driver: { type: 'source_choice', default: '', label: 'Reference driver' },
+    anchor_lap: { type: 'integer', min: 0, max: 500, default: 0, label: 'Reset after lap (0 = automatic)' },
     presentation: { type: 'enum', values: ['chart', 'table', 'both'], default: 'chart', label: 'Presentation' },
     selected: { type: 'source_list', default: [], label: 'Drivers (empty = session order)' },
     start_lap: { type: 'integer', min: 0, max: 500, default: 0, label: 'First lap (0 = first observed)' },

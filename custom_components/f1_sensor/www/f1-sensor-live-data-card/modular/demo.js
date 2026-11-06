@@ -142,5 +142,36 @@ export function makeDemo(scene = 'race', language = 'en', entryId = 'demo') {
   const minisectorCounts = [6, 7, 9];
   const minisectors = active ? { status: 'ready', reason: null, generation: 'demo-generation', sequence: 1, generated_at: new Date(now).toISOString(), drivers: Object.fromEntries(people.map((person, driverIndex) => [person.racing_number, { sectors: Object.fromEntries(minisectorCounts.map((count, sector) => [String(sector), { segments: Object.fromEntries(Array.from({ length: count }, (_, segment) => [String(segment), segment === (driverIndex + sector) % count ? 2051 : segment % 4 === 0 ? 2049 : segment === count - 1 && driverIndex === 3 ? 2064 : 2048])) }])) }])) }
     : { status: 'unavailable', reason: 'source_inactive', generation: 'demo-generation', sequence: 0, generated_at: new Date(now).toISOString(), drivers: {} };
-  return { hass: { states, locale: { language, time_format: '24', time_zone: 'Europe/Stockholm' }, language, config: { time_zone: 'Europe/Stockholm' }, themes: { darkMode: true } }, preview: { entries: [entry], events, now, analysis, map, minisectors, history, telemetry } };
+  // Only the labelled sample preview constructs this synthetic direct contract.
+  // Actual cards still require the integration's advertised metadata/envelopes.
+  const traceMarkerContext = { token: `demo-${scene}-markers`, entry_id: entry.entry_id, source: replaying ? 'replay' : 'live',
+    session_id: `demo-${scene}`, source_epoch: `demo-${scene}`, delay_epoch: 0, delay_seconds: 45 };
+  const traceCursor = sequence => ({ sequence, source_time_ms: (replaying ? 1800000 : now) + sequence * 1000,
+    time_domain: replaying ? 'replay_offset' : 'utc' });
+  analysis.status = 'ready';
+  analysis.race_trace_markers = { version: 1, status: 'ready', reason: null, context: traceMarkerContext, as_of: traceCursor(95), events: [
+    { event_id: 'demo-pit', revision: 1, kind: 'pit', phase: 'point', driver_number: 16, lap_number: 11, anchor_type: 'driver_lap',
+      source: 'PitStopSeries', context_token: traceMarkerContext.token, observation_cursor: traceCursor(90) },
+    { event_id: 'demo-vsc', revision: 1, kind: 'vsc', phase: 'start', source: 'TrackStatus', context_token: traceMarkerContext.token,
+      observation_cursor: traceCursor(80), reference_anchors: Object.fromEntries(people.map(person => [person.racing_number,
+        { lap_number: 10, basis: 'confirmed_completed', observation_cursor: traceCursor(79) }])) },
+  ] };
+  const raceTrace = () => {
+    const source = replaying ? 'replay' : 'live';
+    const protection = states[entry.global_entities.no_spoiler_mode]?.state;
+    const context = { session_id: `demo-${scene}`, replay_generation: 0, delay_seconds: 45 };
+    const drivers = (states[entry.entities.driver_positions]?.attributes?.drivers ?? []).map(driver => ({ ...driver,
+      lap_metadata: Object.fromEntries(Object.keys(driver.laps ?? {}).map(lap => [lap, { association: 'confirmed', reason: null }])) }));
+    const snapshots = {
+      session_context: { state: source, attributes: { no_spoiler: protection === 'off' ? false : protection === 'on' ? true : null } },
+      driver_positions: { state: drivers.length, attributes: { lap_history_version: 1, lap_history_session_type: name, drivers,
+        race_trace_observation: { version: 1, status: 'ready', reason: null, context: traceMarkerContext, timing_as_of: traceCursor(100) } } },
+    };
+    return { entry_id: entry.entry_id, data_api: { lap_history_version: 1, enabled: ['session_context', 'driver_positions'] },
+      card_data: Object.fromEntries(Object.entries(snapshots).map(([dataset, payload]) => [dataset, { status: 'ready', data: {
+        protocol_version: 1, entry_id: entry.entry_id, dataset, generation: `demo-${scene}`, revision: 1, source, context,
+        status: dataset === 'session_context' || drivers.length ? 'ready' : 'loading', payload, timestamps: { received_at: new Date(now).toISOString() },
+      } }])) };
+  };
+  return { hass: { states, locale: { language, time_format: '24', time_zone: 'Europe/Stockholm' }, language, config: { time_zone: 'Europe/Stockholm' }, themes: { darkMode: true } }, preview: { entries: [entry], events, now, analysis, map, minisectors, history, telemetry, raceTrace } };
 }

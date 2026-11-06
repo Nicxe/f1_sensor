@@ -427,10 +427,16 @@ class _AnalysisBroadcastHub:
             ):
                 return
             should_run = bool(getattr(live.availability, "is_live", False))
-            if requested and should_run:
-                await bus.start()
-            elif not requested:
-                await bus.async_close()
+            replay = getattr(self._runtime, "replay", None)
+            replay_owns_transport = (
+                replay is not None
+                and getattr(replay.controller, "replay_active", False) is True
+            )
+            if not replay_owns_transport:
+                if requested and should_run:
+                    await bus.start()
+                elif not requested:
+                    await bus.async_close()
             self._runtime.capabilities.active_streams = bus.active_streams
             legacy = self._runtime.get("signalr_stream_capabilities")
             if isinstance(legacy, dict):

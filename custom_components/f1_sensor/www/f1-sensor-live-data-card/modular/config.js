@@ -219,6 +219,16 @@ export function normalizeConfig(input) {
       else if (spec.type === 'list') { strings(item.options[key], optionPath); for (const value of item.options[key]) choice(value, spec.values, optionPath); }
       else text(item.options[key], optionPath);
     }
+    if (item.type === 'lap_chart' && item.options.metric === 'cumulative_lap_delta') {
+      const driverNumber = (value, optionPath) => {
+        if (!/^[0-9]+$/.test(value) || Number(value) < 1 || Number(value) > 99) fail(optionPath, 'choose a driver number from 1 to 99');
+        return String(Number(value));
+      };
+      const reference = item.options.reference_driver;
+      item.options.reference_driver = reference === '' ? '' : driverNumber(reference, `${path}.options.reference_driver`);
+      item.options.selected = [...new Set(item.options.selected.map(value => driverNumber(value, `${path}.options.selected`)))].filter(value => value !== item.options.reference_driver);
+      if (item.options.selected.length + (item.options.reference_driver ? 1 : 0) > 4) fail(`${path}.options.selected`, 'Race Trace supports at most four drivers including its reference');
+    }
     return item;
   });
   if (new Set(config.modules.map(item => item.id)).size !== config.modules.length) fail('modules', 'module IDs must be unique');
