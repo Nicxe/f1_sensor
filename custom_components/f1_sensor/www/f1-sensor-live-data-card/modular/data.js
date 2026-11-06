@@ -1,5 +1,5 @@
 const version = new URL(import.meta.url).searchParams.get('v');
-const { seconds, number, positiveInteger, lapChange, safeImageUrl, readSectors } = await import(`./semantics.js${version ? `?v=${encodeURIComponent(version)}` : ''}`);
+const { seconds, number, positiveInteger, lapChange, safeImageUrl, readSectors, publishedDate, publishedStart, circuitDay, dateHasPassed } = await import(`./semantics.js${version ? `?v=${encodeURIComponent(version)}` : ''}`);
 
 const { sessionKind, timingFields, moduleFields, fieldDefinition } = await import(`./catalog.js${version ? `?v=${encodeURIComponent(version)}` : ''}`);
 const { segmentStrip } = await import(`./minisector-data.js${version ? `?v=${encodeURIComponent(version)}` : ''}`);
@@ -32,6 +32,15 @@ export function source(hass, entry, key) {
     : !entityId ? 'missing' : !state || state.state === 'unavailable' ? 'unavailable'
       : state.state === 'unknown' ? 'unknown' : 'available';
   return { key, entity_id: entityId ?? null, status, state: state?.state ?? null, attributes: state?.attributes ?? {}, updated_at: state?.last_updated ?? null };
+}
+
+export function sourceStatusKey(selected, phase = 'unknown') {
+  if (selected?.data_status === 'unsupported') return 'modular.source_unsupported';
+  if (selected?.data_status === 'stale') return 'modular.source_update_failed';
+  if (selected?.reason === 'source_inactive') return phase === 'before' ? 'modular.source_waiting_for_session' : 'modular.source_inactive_unknown';
+  if (selected?.data_status === 'loading' || ['waiting_for_data', 'waiting_for_current_context'].includes(selected?.reason)) return 'modular.source_waiting_for_data';
+  if (selected?.reason === 'source_not_loaded') return 'modular.source_not_loaded';
+  return null;
 }
 
 // HA last_updated describes a state write, not a timing observation or receipt.
@@ -397,22 +406,6 @@ export const SESSION_FIELDS = [
   ['qualifying', 'qualifying', 'Qualifying', 'Qualifying'],
   ['race', 'race', null, 'Race'],
 ];
-const publishedDate = value => {
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
-  const parsed = new Date(`${value}T00:00:00Z`);
-  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value ? value : null;
-};
-function circuitDay(timezone, now) {
-  if (timezone) try {
-    const parts = Object.fromEntries(new Intl.DateTimeFormat('en', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(now).map(part => [part.type, part.value]));
-    return `${parts.year}-${parts.month}-${parts.day}`;
-  } catch { /* Unknown zone: callers use conservative worldwide bounds. */ }
-  return null;
-}
-function dateHasPassed(date, timezone, now) {
-  const today = circuitDay(timezone, now);
-  return today ? date < today : now >= Date.parse(`${date}T00:00:00Z`) + 36 * 3600_000;
-}
 export function scheduleRows(hass, entry, module, now = Date.now()) {
   const calendar = source(hass, entry, module.options.range === 'season' ? 'current_season' : 'next_race');
   const races = module.options.range === 'season' ? array(calendar.attributes.races) : [calendar.attributes];
@@ -421,8 +414,7 @@ export function scheduleRows(hass, entry, module, now = Date.now()) {
     if (!module.options.sessions.includes(id)) continue;
     const block = jolpica ? race[jolpica] : race;
     const candidate = race[`${prefix}_start_utc`] ?? race[`${prefix}_start`] ?? (block?.date && block?.time ? `${block.date}T${block.time}` : null);
-    const start = typeof candidate === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}.*(?:Z|[+-]\d{2}:\d{2})$/.test(candidate)
-      && publishedDate(candidate.slice(0, 10)) && Number.isFinite(Date.parse(candidate)) ? candidate : null;
+    const start = publishedStart(candidate);
     const date = publishedDate(block?.date) ?? publishedDate(race[`${prefix}_date`]) ?? publishedDate(typeof candidate === 'string' ? candidate.slice(0, 10) : null);
     if (!start && !date) continue;
     rows.push({ id: `${race.season ?? ''}:${race.round ?? ''}:${id}`, session: id, label: sourceText, meeting: race.race_name ?? race.raceName ?? null,
@@ -441,7 +433,10 @@ export function scheduleRows(hass, entry, module, now = Date.now()) {
     const dayAtNext = circuitDay(row.timezone, Date.parse(next.start));
     return dayAtNext ? row.date <= dayAtNext : Date.parse(`${row.date}T00:00:00Z`) - 14 * 3600_000 <= Date.parse(next.start);
   })) next.next = true;
-  return { rows: marked.filter(row => module.options.past !== 'hide' || !row.past), hiddenRows: module.options.past === 'hide' ? marked.filter(row => row.past).length : 0, source: calendar };
+  // A timestamp entity can be unknown while its published calendar dates are usable.
+  const calendarSource = calendar.status === 'unknown' && rows.some(row => row.date && !row.start)
+    ? { ...calendar, status: 'available' } : calendar;
+  return { rows: marked.filter(row => module.options.past !== 'hide' || !row.past), hiddenRows: module.options.past === 'hide' ? marked.filter(row => row.past).length : 0, source: calendarSource };
 }
 
 export function replayModel(hass, entry) {
@@ -489,7 +484,9 @@ export function replayModel(hass, entry) {
   return { source: status, playerStatus: player.status, replayState: state, selectedSession, sessionId, selectors, allowed, online, loaded, canSelect,
     duration: validProgress ? duration : null, position: validProgress ? position : null, syncPoints,
     download: state === 'loading' ? number(status.attributes.download_progress) : null,
-    downloadError: Boolean(status.attributes.download_error), indexError: Boolean(status.attributes.index_error), indexStatus: status.attributes.index_status,
+    downloadError: Boolean(status.attributes.download_error), downloadErrorCode: status.attributes.download_error_code ?? null,
+    archiveIdentity: status.attributes.archive_identity?.status ?? null,
+    indexError: Boolean(status.attributes.index_error), indexStatus: status.attributes.index_status,
     scope: entry?.title ?? entry?.entry_id ?? '',
     controlContext: JSON.stringify([entry?.entry_id, state, selectedSession, sessionId, selectors.year.state, selectors.session.state, selectors.reference.state,
       syncPoints.map(point => `${point.id}@${point.position}`).join(',')]),

@@ -39,9 +39,27 @@ An analysis event is an interpretation of observed timing. Its evidence score is
 
 **Strategy analysis** can show recorded stints, compound comparisons, teammate pace, estimated compound crossovers and observed pit-cycle outcomes. The module separates recorded values from estimates and includes evidence or sample counts where available.
 
-Strategy analysis excludes laps that would distort a pace comparison, including pit-lane laps, incomplete samples and laps affected by traffic or interruptions when the source identifies them. It can therefore wait for clean completed laps even after timing has started.
+Matched comparisons require laps eligible for pace analysis. Pit laps, deleted times, incomplete or inconsistent timing, unknown track status and identified interruptions do not qualify. There is no fuel-load or traffic correction. A comparison can therefore wait for usable completed laps even after timing has started.
 
-Use the module's content, compound, evidence-score and clean-lap filters to narrow the comparison. A lower median lap time indicates quicker recorded pace; it does not by itself prove the better race strategy.
+Open **Method and supporting laps** to see the method, used laps and exclusions. The content, compound, evidence-score and clean-lap filters control the displayed rows; a driver filter does not change the session-wide compound aggregates.
+
+### Compare matched teammate laps
+
+**Paired pace difference** uses the median of individual lap-time differences, with the first listed driver minus the second. Drivers are ordered by racing number so sorting or focus does not reverse the sign. Negative values mean the first driver recorded shorter times in the matched sample; an exact zero is a tie. It requires at least three pairs with the same lap number, tyre compound and observed green phase. The recorded tyre ages at the start of each lap may differ by at most two laps.
+
+For example, times of `[90, 91, 100]` seconds against `[91, 99, 101]` give differences of `[-1, -8, -1]` and a median of **−1 second**. Subtracting the two separate medians would give **−8 seconds**, which answers a different question.
+
+The displayed **Spread (Q1–Q3)** describes those paired differences. Quartiles use linear interpolation at index `(n − 1) × p`, with `p` equal to 0.25 or 0.75. This is a description of the sample, not a confidence interval. Possible pairs count every lap number observed for either driver. A missing observation or failed matching rule excludes that lap once, with one primary reason. Possible pairs therefore equal used pairs plus excluded pairs; fewer than three usable pairs produce no comparison or winner.
+
+Descriptive median pace by driver and compound summaries remain available. They can cover different running periods and do not establish which tyre compound is inherently faster. Older integration data without matching metadata remains descriptive and does not produce a paired winner.
+
+### Read trends and stint-change estimates
+
+**Observed lap-time trend** fits a straight line to lap duration against known tyre age at the start of each lap. It uses the latest observed green phase within one recorded stint, with at least five eligible laps spanning at least four laps of tyre age. If the latest phase has insufficient samples, an older phase's trend is not substituted. A value of `+0.2 s/lap` describes increasing recorded lap times; it is not a measurement of physical tyre degradation. Unknown tyre age stays unknown, including when recording starts partway through a stint.
+
+**Estimated stint-change loss** subtracts the previous stint's eligible-lap median from the observed transition-lap duration. The baseline uses all eligible laps in that stint's last observed green phase. It requires an observed physical tyre change, that transition lap with consistent timing, and at least three eligible baseline laps. The supporting details list the transition and baseline laps. Zero and negative estimates are valid arithmetic results and are displayed as recorded.
+
+This estimate is separate from stationary stop time, pit-lane time and the **Estimated lap loss** shown by **Pit stops**, which has its own reference-lap method. An initial snapshot after a tyre change does not prove where that change occurred. Incomplete evidence leaves the new estimate unavailable. Existing card configuration continues to work; older backend trend and loss fields are not substituted for these stricter values.
 
 ## Understand battles and position changes
 
@@ -54,6 +72,10 @@ A timing-position change alone does not prove an on-track overtake. Pit stops, p
 **Replay telemetry** compares up to four selected driver/lap pairs from the loaded replay. It can show recorded speed traces and a data table for the same samples.
 
 Use the replay session selector first, then choose only laps that exist in the telemetry catalogue. Live telemetry comparison and inferred corner annotations are not available. An archive classification does not imply that telemetry or complete sector data exists.
+
+This is retrospective analysis of the complete loaded recording, so you can select laps beyond the current playback position. No Spoiler Mode still protects access to the view.
+
+Lap windows use the recorded observations of each driver's completed-lap count. They are approximate timing windows, not verified finish-line crossing times. A later lap-time or sector update does not move an earlier observation. A late-start recording cannot supply a missing preceding lap boundary; the first lap also requires a recorded session start. Safety Car periods and red-flag pauses remain in the observed window without an invented time adjustment. Gaps in telemetry remain gaps, and distance estimates are withheld when recorded coverage is insufficient.
 
 ## Choose the right module after a session
 

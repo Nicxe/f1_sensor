@@ -688,7 +688,18 @@ class _ChampionshipPredictionBase(F1BaseEntity, RestoreEntity, SensorEntity):
         else:
             if self._is_stream_active():
                 last = await self.async_get_last_state()
-                if last and last.state not in (None, "unknown", "unavailable"):
+                context = getattr(self.coordinator, "prediction_context", {})
+                if (
+                    last
+                    and last.state not in (None, "unknown", "unavailable")
+                    and isinstance(context, dict)
+                    and context.get("session_key")
+                    and context.get("session_type") in {"race", "sprint"}
+                    and all(
+                        last.attributes.get(key) == value
+                        for key, value in context.items()
+                    )
+                ):
                     self._attr_native_value = last.state
                     self._attr_extra_state_attributes = dict(
                         getattr(last, "attributes", {}) or {}

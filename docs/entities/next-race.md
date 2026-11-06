@@ -25,8 +25,9 @@ Next race info.
 | season | string | Season year |
 | round | string | Round number |
 | race_name | string | Grand Prix name |
+| race_date | string or null | Published race date (`YYYY-MM-DD`), including when its start time is unknown |
 | schedule_source | string | `jolpica` for API data or `official_calendar_fallback` for the temporary 2027 opener |
-| race_start_estimated | boolean | `true` for the fallback or when Jolpica has not supplied a race start time; otherwise `false` |
+| race_start_estimated | boolean | `true` when the specific 2027 opener uses the provisional timestamp described below; unknown times for other races do not create estimates |
 | schedule_source_url | string or null | Official calendar source for the fallback; otherwise `null` |
 | scheduled_laps | number or null | Planned race laps; `null` when Jolpica has no value or its alpha data is unavailable |
 | sprint_scheduled_laps | number or null | Planned sprint laps; `null` when there is no sprint or no alpha value is available |
@@ -50,6 +51,8 @@ Next race info.
 | circuit_timezone | string | Local timezone (best effort) |
 
 ### Race and session timestamps
+
+Start attributes are `null` when a valid start time has not been published. A date alone does not become midnight. The corresponding `first_practice_date`, `second_practice_date`, `third_practice_date`, `qualifying_date`, `sprint_qualifying_date`, and `sprint_date` attributes retain a published date, or `null` when none is available.
 
 | Attribute | Type | Description |
 | --- | --- | --- |
@@ -77,6 +80,12 @@ Next race info.
 
 The planned lap counts come from Jolpica's alpha session data. They describe the scheduled distance, which can differ from the number of laps actually completed.
 
+## When the start time is unknown
+
+The sensor state is `unknown`, while the race name, circuit and published dates remain available. The card's schedule shows the date with **Start time not published** and leaves the countdown empty. A timestamp automation cannot use an invented midnight start. A genuinely published midnight remains a valid start time.
+
+An untimed race stays selected throughout its published day in the circuit timezone. If that timezone is unknown, selection waits until the date has passed in every timezone. Selecting the event does not assert that it has started or that results are available.
+
 ## Between the 2026 and 2027 seasons
 
 When the known 2026 schedule has no remaining races and Jolpica has not yet supplied an upcoming race, F1 Sensor temporarily uses the 2027 season opener. If the final 2026 race has no start time, the fallback waits until three hours after that race's UTC date has ended. This fallback also covers an empty 2027 calendar after New Year. A failed API request alone does not activate it.
@@ -91,7 +100,7 @@ While the fallback is active, `schedule_source` is `official_calendar_fallback` 
 
 An upcoming race from Jolpica takes priority as soon as it arrives through the normal schedule refresh. The schedule cache can retain data for up to 24 hours; the fallback adds no extra API polling. It expires three hours after its provisional race start and does not provide a full 2027 season calendar, results, or live timing.
 
-If Jolpica supplies the Bahrain opener on 14 March 2027 without a start time, the sensor keeps the provisional 15:00 UTC timestamp. Its `schedule_source` becomes `jolpica` and `schedule_source_url` becomes `null`, while `race_start_estimated` remains `true`. A start time supplied by Jolpica replaces the provisional time and clears the estimated flag. Other races with a date but no API start time retain the default of 00:00 UTC and also set `race_start_estimated` to `true`.
+If Jolpica supplies the Bahrain opener on 14 March 2027 without a start time, the sensor keeps the provisional 15:00 UTC timestamp. Its `schedule_source` becomes `jolpica` and `schedule_source_url` becomes `null`, while `race_start_estimated` remains `true`. A start time supplied by Jolpica replaces the provisional time and clears the estimated flag. Other races with a date but no valid API start time have an unknown timestamp; they no longer default to 00:00 UTC.
 
 ## Related references
 

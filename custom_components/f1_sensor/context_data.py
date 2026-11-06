@@ -48,6 +48,8 @@ class ReplayStatusProjection:
             "selected_session_key": snapshot.get("selected_session_key"),
             "download_progress": round(snapshot.get("download_progress", 0) * 100, 1),
             "download_error": snapshot.get("download_error"),
+            "download_error_code": snapshot.get("download_error_code"),
+            "archive_identity": deepcopy(snapshot.get("archive_identity")),
             "playback_position_s": relative_position_s,
             "playback_position_formatted": self._format_time(relative_position_s),
             "playback_total_s": duration_s - playback_start_s,

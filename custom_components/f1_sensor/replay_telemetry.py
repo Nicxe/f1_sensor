@@ -99,13 +99,22 @@ def _scan_replay_timing(
     frames_file: Path,
     selected_drivers: set[int] | None = None,
 ) -> tuple[
-    dict[tuple[int, int], int], tuple[datetime, int] | None, dict[int, dict[str, Any]]
+    dict[tuple[int, int], int],
+    tuple[datetime, int] | None,
+    dict[int, dict[str, Any]],
+    int | None,
 ]:
-    """Read bounded lap boundaries and the roster from this recording only."""
-    state: dict[int, dict[str, Any]] = {}
+    """Read count observation times, not verified finish-line crossing times.
+
+    LastLapTime and sectors arrive separately and may correct earlier data.
+    They cannot timestamp a passage. An initial count is only an observation;
+    it never supplies the missing preceding count or a missing session start.
+    """
+    last_counts: dict[int, tuple[int, int]] = {}
     completion: dict[tuple[int, int], int] = {}
     drivers: dict[int, dict[str, Any]] = {}
     anchor: tuple[datetime, int] | None = None
+    observed_session_start: int | None = None
     with frames_file.open("rb") as handle:
         for raw_line in handle:
             with suppress(
@@ -117,11 +126,19 @@ def _scan_replay_timing(
             ):
                 decoded = json.loads(raw_line)
                 frame_ms = int(decoded["t"])
+                if frame_ms < 0:
+                    continue
                 payload = decoded["p"]
                 if not isinstance(payload, Mapping):
                     continue
                 if anchor is None and (utc_value := _frame_utc(payload)) is not None:
                     anchor = (utc_value, frame_ms)
+                if (
+                    decoded.get("s") == "SessionStatus"
+                    and payload.get("Status") == "Started"
+                    and observed_session_start is None
+                ):
+                    observed_session_start = frame_ms
                 if decoded.get("s") == "DriverList":
                     for driver_key, delta in payload.items():
                         driver = _as_int(driver_key)
@@ -149,19 +166,23 @@ def _scan_replay_timing(
                         or not isinstance(delta, Mapping)
                     ):
                         continue
-                    target = state.setdefault(driver, {})
-                    _deep_merge(target, delta)
-                    lap = _as_int(target.get("NumberOfLaps"))
-                    last_lap = target.get("LastLapTime")
-                    if lap is not None and 0 < lap <= 500 and last_lap is not None:
-                        completion.setdefault((driver, lap), frame_ms)
-    return completion, anchor, drivers
+                    lap = _as_int(delta.get("NumberOfLaps"))
+                    if lap is None or not 0 < lap <= 500:
+                        continue
+                    previous = last_counts.get(driver)
+                    if previous is not None and (
+                        lap <= previous[0] or frame_ms <= previous[1]
+                    ):
+                        continue
+                    last_counts[driver] = (lap, frame_ms)
+                    completion[(driver, lap)] = frame_ms
+    return completion, anchor, drivers, observed_session_start
 
 
 def _closed_lap_windows(
     completion: Mapping[tuple[int, int], int],
     selections: Sequence[tuple[int, int]],
-    session_start_ms: int,
+    session_start_ms: int | None,
 ) -> dict[str, tuple[int, int]]:
     windows: dict[str, tuple[int, int]] = {}
     for driver, lap in selections:
@@ -178,18 +199,20 @@ def _scan_replay_windows(
     session_start_ms: int,
 ) -> tuple[dict[str, tuple[int, int]], tuple[datetime, int] | None]:
     """Find selected laps without extending late-start recordings backwards."""
-    completion, anchor, _drivers = _scan_replay_timing(
+    completion, anchor, _drivers, observed_start = _scan_replay_timing(
         frames_file, {driver for driver, _lap in selections}
     )
-    return _closed_lap_windows(completion, selections, session_start_ms), anchor
+    verified_start = session_start_ms if observed_start == session_start_ms else None
+    return _closed_lap_windows(completion, selections, verified_start), anchor
 
 
 def _scan_replay_catalog(
     frames_file: Path, session_start_ms: int
 ) -> list[dict[str, Any]]:
     """List recorded lap windows, without downloading remote car telemetry."""
-    completion, _anchor, people = _scan_replay_timing(frames_file)
-    windows = _closed_lap_windows(completion, list(completion), session_start_ms)
+    completion, _anchor, people, observed_start = _scan_replay_timing(frames_file)
+    verified_start = session_start_ms if observed_start == session_start_ms else None
+    windows = _closed_lap_windows(completion, list(completion), verified_start)
     laps_by_driver: dict[int, list[int]] = {}
     for key in windows:
         driver, lap = (int(value) for value in key.split(":"))
@@ -409,9 +432,11 @@ class ReplayTelemetryService:
             self._catalog = {
                 "protocol_version": 1,
                 "session_id": index.session_id,
+                "analysis_scope": "complete_recording",
                 "drivers": drivers,
                 "coverage": {
-                    "lap_windows": "recorded_boundaries",
+                    "lap_windows": "observation_based",
+                    "passage_times_verified": False,
                     "telemetry": "checked_on_request",
                 },
                 "limits": {
@@ -563,6 +588,16 @@ class ReplayTelemetryService:
                     "driver_number": driver,
                     "lap_number": lap,
                     "sample_count": len(samples),
+                    "window": {
+                        "start_ms": windows[key][0],
+                        "end_ms": windows[key][1],
+                        "basis": "observation_based",
+                        "start_source": "SessionStatus.Started"
+                        if lap == 1
+                        else "TimingData.NumberOfLaps",
+                        "end_source": "TimingData.NumberOfLaps",
+                        "passage_times_verified": False,
+                    },
                     "samples": samples,
                     "summary": {
                         "top_speed": top_speed,
@@ -585,6 +620,7 @@ class ReplayTelemetryService:
         result = {
             "protocol_version": 1,
             "provider": "replay",
+            "analysis_scope": "complete_recording",
             "session_id": index.session_id,
             "series": series,
             "coverage": {
@@ -608,6 +644,8 @@ class ReplayTelemetryService:
                 )
                 else "not_available",
                 "distance_quality": "continuous_speed_estimate",
+                "lap_windows": "observation_based",
+                "passage_times_verified": False,
                 "max_continuous_gap_seconds": 2,
                 "corner_annotations": "not_available",
                 "raw_home_assistant_states": "not_exposed",

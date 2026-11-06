@@ -16,6 +16,10 @@ Full season calendar with all sessions.
 
 The calendar appears in the Home Assistant calendar panel and shows each session as a separate event: Practice 1, Practice 2, Practice 3, Qualifying, Sprint Qualifying, Sprint, and Race. On sprint weekends, Practice 3 is replaced by Sprint Qualifying and Sprint.
 
+Sessions appear once their start time is published. If only a date is known, the integration creates neither a midnight event nor an all-day event in this calendar. You can still see the date in the card's schedule with **Start time not published**. This keeps calendar automations from starting at an invented time. An explicitly published midnight is supported.
+
+When a time is published or rescheduled, the normal calendar refresh updates the event with the same session identity. The specific provisional 2027 opener shown by [Next Race](/entities/next-race) does not add a provisional event to this calendar.
+
 ## State
 
 - `on` when a session is currently in progress; otherwise `off`.

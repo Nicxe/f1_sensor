@@ -104,7 +104,17 @@ export function makeDemo(scene = 'race', language = 'en', entryId = 'demo') {
     assumptions: ['Demonstration estimates from sample clean laps'],
   };
   analysis.drivers.push({ driver_number: 44, tla: 'HAM', name: 'Lewis Hamilton', team: 'Ferrari' });
-  analysis.strategy.teammate_comparisons = active ? [{ team: 'Ferrari', drivers: [16, 44], median_clean_pace: { 16: 81.12, 44: 81.32 }, delta_seconds: .2, faster_driver: 16, confidence: .8 }] : [];
+  analysis.strategy.teammate_comparisons = active ? [{ team: 'Ferrari', drivers: [16, 44], median_clean_pace: { 16: 81.12, 44: 81.32 }, delta_seconds: .2, faster_driver: 16, confidence: .8,
+    matched_comparison: { status: 'ready', method: 'matched_lap_differences', drivers: [16, 44], used_pairs: 5, possible_pairs: 8, excluded_pairs: 3,
+      excluded_reason_counts: { pace_not_eligible: 3 }, lap_range: [2, 6], delta_seconds: -.2, q1_seconds: -.2, q3_seconds: -.2, faster_driver: 16,
+      pairs: [2, 3, 4, 5, 6].map(lap => ({ lap_number: lap, first_seconds: 81.12, second_seconds: 81.32, delta_seconds: -.2, tyre_age_laps: [lap - 1, lap - 1], compound: 'HARD', green_phase_id: 'green:1' })) },
+  }] : [];
+  analysis.strategy.stints.forEach((stint, index) => {
+    stint.lap_time_trend = { status: 'ready', method: 'ols_lap_time_by_tyre_age', scope: 'latest_observed_green_phase', seconds_per_lap: .053 + index * .01,
+      sample_count: 6, age_range: [0, 7], lap_range: [1, 8], laps: [1, 2, 4, 5, 7, 8], green_phase_id: 'green:1', reason: null };
+    stint.stint_change_estimate = { status: 'insufficient_data', method: 'observed_transition_lap_minus_previous_eligible_median', seconds: null,
+      baseline_seconds: null, baseline_laps: [], transition_lap: null, sample_count: 0, reason: 'unobserved_stint_transition' };
+  });
   analysis.strategy.compound_crossover_indications = active ? [{ compounds: ['SOFT', 'MEDIUM'], estimated_tyre_age_laps: 8.5, observed_age_range: [5, 12], pace_at_crossover: 82.13, confidence: .75, status: 'observed_range_estimate' }] : [];
   analysis.strategy.undercut_overcut_outcomes = active ? [{ team: 'Ferrari', drivers: [44, 16], earlier_stop_driver: 44, later_stop_driver: 16, stop_laps: { 44: 10, 16: 12 }, positions_before: { 44: 3, 16: 2 }, positions_after: { 44: 2, 16: 3 }, result: 'undercut_succeeded', successful_driver: 44, confidence: .8, supporting_signals: ['stint_transition', 'lap_position_before', 'lap_position_after'] }] : [];
   const map = { entry_id: entry.entry_id, source: scene === 'replay' ? 'replay' : 'live', status: active ? 'active' : 'no_session', generated_at: new Date(now).toISOString(), stream_timestamp: new Date(now).toISOString(), stale: false, stale_after_seconds: 10,

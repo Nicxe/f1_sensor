@@ -1246,7 +1246,7 @@ test('strategy comparison views preserve uncertainty, compound graphics and acce
     { type: 'strategy', options: { content: 'pit_outcomes' } },
   ] } }));
   await expect(page.getByText('HAM: 1:21.320', { exact: true })).toBeVisible();
-  await expect(page.getByText('0.200 s', { exact: true })).toBeVisible();
+  await expect(page.getByText('-0.200 s', { exact: true })).toBeVisible();
   await expect(page.getByText('8.5 laps', { exact: true })).toBeVisible();
   await expect(page.getByText('5–12 laps', { exact: true })).toBeVisible();
   await expect(page.getByText('Undercut observed', { exact: true })).toBeVisible();

@@ -175,9 +175,9 @@ def test_track_map_geometry_edge_and_location_helpers() -> None:
         == "medium"
     )
     assert _location_description({"pit_lane": True}, {}) == "pit lane"
-    assert _location_description({"off_track": True}, {"sector": 2}) == (
-        "off track, sector 2"
-    )
+    assert _location_description(
+        {"off_track": True}, {"sector": 2, "approximate_track_third": 2}
+    ) == ("off track, approximate track section 2 of 3")
     assert _location_description({"on_track": True}, {}) == "on track"
     assert _location_description({"normalized": None}, {}) is None
 

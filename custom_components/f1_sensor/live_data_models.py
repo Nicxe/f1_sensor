@@ -2103,6 +2103,9 @@ class DriverPredictionModel(PredictionProjection):
             "predicted_driver_p1": pred if isinstance(pred, dict) else None,
             "drivers": drivers if isinstance(drivers, dict) else {},
             "last_update": last_update,
+            "session_key": payload.get("session_key"),
+            "session_type": payload.get("session_type"),
+            "prediction_status": payload.get("prediction_status"),
         }
 
 
@@ -2127,6 +2130,9 @@ class TeamPredictionModel(PredictionProjection):
             "predicted_team_p1": pred if isinstance(pred, dict) else None,
             "teams": teams if isinstance(teams, dict) else {},
             "last_update": last_update,
+            "session_key": payload.get("session_key"),
+            "session_type": payload.get("session_type"),
+            "prediction_status": payload.get("prediction_status"),
         }
 
 
