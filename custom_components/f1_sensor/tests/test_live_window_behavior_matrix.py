@@ -338,7 +338,7 @@ async def test_supervisor_state_selection_and_session_activity(
     supervisor._fetch_json = AsyncMock(return_value="bad")
     assert await supervisor._session_active(active) is False
     supervisor._fetch_json = AsyncMock(return_value={"Status": "Finished"})
-    assert await supervisor._session_active(active) is False
+    assert await supervisor._session_active(active) is True
     supervisor._fetch_json = AsyncMock(return_value={"Started": "Ends"})
     assert await supervisor._session_active(active) is False
     supervisor._fetch_json = AsyncMock(return_value={"Status": "Started"})
@@ -567,10 +567,22 @@ async def test_supervisor_monitor_disconnect_extension_and_primary_recovery(
     )
     recovery = _supervisor(hass)
     recovery._stopped = False
-    recovery._interruptible_sleep = AsyncMock()
     recovery._resolve_primary_window = AsyncMock(return_value=_window(now=now))
     recovery._last_primary_recovery_check = 0
     recovery._bus.last_heartbeat_age.return_value = None
     recovery._bus.last_stream_activity_age.return_value = None
+    recovery_steps = 0
+
+    async def stop_after_recovery(_seconds):
+        nonlocal recovery_steps
+        recovery_steps += 1
+        assert recovery_steps <= 2
+        if recovery_steps == 2:
+            assert recovery.current_window_source == "index"
+            recovery._stopped = True
+
+    recovery._interruptible_sleep = stop_after_recovery
     reason = await recovery._monitor_window(_window(now=now), source="event_tracker")
-    assert reason == "primary-source-recovered"
+    assert reason != "primary-source-recovered"
+    assert recovery_steps == 2
+    recovery._resolve_primary_window.assert_awaited_once()

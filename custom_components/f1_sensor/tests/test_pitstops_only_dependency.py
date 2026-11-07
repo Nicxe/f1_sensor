@@ -6,6 +6,7 @@ import base64
 from datetime import UTC, datetime, timedelta
 import json
 import re
+from unittest.mock import AsyncMock
 
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.helpers import entity_registry as er
@@ -14,6 +15,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.f1_sensor.const import CONF_LIVE_TIMING_AUTH_HEADER, DOMAIN
 from custom_components.f1_sensor.feature_plan import build_feature_plan
+from custom_components.f1_sensor.live_window import LiveSessionSupervisor
 
 
 def test_pitstops_only_requests_shared_counts_and_lap_history() -> None:
@@ -46,9 +48,13 @@ def _test_auth_header() -> str:
 
 @pytest.mark.asyncio
 async def test_pitstops_only_entry_delivers_counts_without_other_driver_entities(
-    hass, enable_custom_integrations, aioclient_mock
+    hass, enable_custom_integrations, aioclient_mock, monkeypatch
 ) -> None:
     """Automatic card capability planning already protects ordinary entries."""
+    # This test supplies its own input frames; discovery has transport-level tests.
+    monkeypatch.setattr(
+        LiveSessionSupervisor, "_discover_live_window", AsyncMock(return_value=None)
+    )
     aioclient_mock.get(re.compile(r"https://.*"), json={"Meetings": []})
     entry = MockConfigEntry(
         domain=DOMAIN,
