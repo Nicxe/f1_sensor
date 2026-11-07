@@ -9312,7 +9312,9 @@
         "current_tyres",
         "driver_list",
         "driver_positions",
-        "session_status"
+        "investigations",
+        "session_status",
+        "starting_grid"
       ],
       "variants": [
         {

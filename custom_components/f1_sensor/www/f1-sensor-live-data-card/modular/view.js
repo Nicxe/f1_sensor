@@ -220,6 +220,57 @@ export const sharedStyles = css`
   .timing-detail dt { color:var(--f1-muted); font-size:.85em; }
   .timing-detail dd { margin:2px 0 0; overflow-wrap:anywhere; }
   .timing-detail ol { margin:6px 0 0; padding-left:22px; }
+  .timing-position { display:inline-flex; align-items:center; gap:7px; }
+  .position-change { display:inline-block; min-width:2.5em; font-size:.8em; color:var(--f1-muted); }
+  .position-change.gain { color:var(--f1-gain,#176b36); }
+  .position-change.loss { color:var(--f1-loss,#ab2424); }
+  :host([data-mode=dark]) { --f1-gain:#75dc94; --f1-loss:#ffb3b3; }
+  .driver-badges { display:inline-flex; align-items:center; flex-wrap:wrap; gap:4px; }
+  .driver-badge { display:inline-block; padding:1px 5px; border:1px solid var(--f1-divider); border-radius:4px; font-size:.72em; line-height:1.4; font-weight:700; color:var(--f1-text); background:var(--f1-panel); }
+  .driver-badge[data-kind=time_penalty],.driver-badge[data-kind=drive_through],.driver-badge[data-kind=stop_go] { color:#745900; background:#fff3c4; }
+  .driver-badge[data-kind=in_pit],.driver-badge[data-kind=pit_out] { color:#005db5; background:#e5f1ff; }
+  :host([data-mode=dark]) .driver-badge[data-kind=time_penalty],:host([data-mode=dark]) .driver-badge[data-kind=drive_through],:host([data-mode=dark]) .driver-badge[data-kind=stop_go] { color:#f6d65c; background:#3c3218; }
+  :host([data-mode=dark]) .driver-badge[data-kind=in_pit],:host([data-mode=dark]) .driver-badge[data-kind=pit_out] { color:#a4d0ff; background:#1b3554; }
+  tr[data-retired=true] > td { color:var(--f1-muted); }
+  tr[data-retired=true] .driver { font-weight:500; }
+  :host([data-presentation=minimal]) tr[data-retired=true] .signal { color:var(--f1-muted)!important; }
+  tr[data-retired=true] .compound,tr[data-retired=true] .driver { filter:grayscale(1); }
+  .gap-stack { display:flex; flex-direction:column; gap:0; align-items:flex-end; line-height:1.35; font-variant-numeric:tabular-nums; }
+  .gap-stack .secondary { color:var(--f1-muted); font-size:.8em; }
+  .timing-decisions { list-style:none; padding:0; margin:10px 0 0; }
+  .timing-decisions li { padding:5px 0; overflow-wrap:anywhere; }
+  .timing-decisions small { display:block; color:var(--f1-muted); }
+  .driver-disclosure { --mdc-icon-size:16px; flex:0 0 16px; }
+  .tyre-inline { display:inline-flex; align-items:center; gap:5px; font-variant-numeric:tabular-nums; }
+  :host([data-presentation=minimal]) { font-size:.875rem; }
+  :host([data-presentation=minimal]) .section-head { margin-bottom:8px; }
+  :host([data-presentation=minimal]) .chip { border:0; padding:0; color:var(--f1-muted); }
+  :host([data-presentation=minimal]) .table-scroll { border:0; border-radius:0; scrollbar-gutter:auto; }
+  :host([data-presentation=minimal]) th { background:transparent; }
+  :host([data-presentation=minimal]) th,:host([data-presentation=minimal]) td { padding:4px 8px; }
+  :host([data-presentation=minimal]) [data-field] { text-align:right; }
+  :host([data-presentation=minimal]) [data-field=driver],:host([data-presentation=minimal]) [data-field=position],:host([data-presentation=minimal]) [data-field=team] { text-align:left; }
+  :host([data-presentation=minimal]) .cell-stack { align-items:flex-end; gap:0; }
+  :host([data-presentation=minimal]) .signal { border:0; padding:0; border-radius:0; gap:3px; }
+  :host([data-presentation=minimal]) .signal > span[aria-hidden] { font-size:.7em; }
+  :host([data-presentation=minimal]) .driver { min-height:28px; min-width:0; gap:6px; padding:0 5px; }
+  :host([data-presentation=minimal]) .compound,:host([data-presentation=minimal]) .compound img { width:20px; height:20px; }
+  :host([data-presentation=minimal]) .compound { flex-basis:20px; border-width:2px; font-size:.75em; }
+  :host([data-presentation=minimal]) .driver-headshot { width:22px; height:22px; }
+  :host([data-presentation=minimal]) .timing-detail-row > td { padding:0; background:transparent; }
+  :host([data-presentation=minimal]) .timing-detail { padding:10px 8px; border-left-width:2px; }
+  :host([data-presentation=minimal]) .timing-detail dl { gap:8px; }
+  :host([data-presentation=minimal]) .timing-detail-heading { margin-bottom:6px; }
+  .timing-summary th,.timing-summary td { padding:4px 6px; }
+  .timing-summary .driver { min-height:36px; }
+  .timing-summary .driver-badges { max-width:8em; }
+  @media (pointer:coarse) {
+    :host([data-presentation=minimal]) .driver,.timing-summary .driver { min-height:44px; }
+  }
+  @media (forced-colors:active) {
+    .driver-badge { color:CanvasText!important; background:Canvas!important; border-color:CanvasText; }
+    .position-change { color:CanvasText!important; }
+  }
   @media (prefers-reduced-motion:reduce) { *,*::before,*::after { animation:none!important; transition:none!important; scroll-behavior:auto!important; } }
   @media (forced-colors:active) { :host,ha-card { --f1-surface:Canvas!important; --f1-panel:Canvas!important; --f1-text:CanvasText!important; --f1-muted:CanvasText!important; --f1-border:CanvasText!important; --f1-divider:GrayText!important; --f1-focus:Highlight!important; } :host,ha-card { color:CanvasText!important; background:Canvas!important; } .signal,.chip,.compound,.track-symbol,.minisector-block { forced-color-adjust:auto; border-color:CanvasText!important; color:CanvasText!important; background:Canvas!important; } button { border:1px solid ButtonText; } .driver { border-left-color:CanvasText; } .muted,th,.provenance,.event-meta { color:CanvasText; } }
 `;
@@ -238,6 +289,7 @@ export class F1ModuleView extends LitElement {
     });
   }
   get language() { return this.settings?.language ?? 'en'; }
+  get minimalTiming() { return this.module?.type === 'timing' && this.module.options?.presentation === 'minimal'; }
   w(source, replacements = {}) { return words(this.language, source, replacements); }
   willUpdate() {
     if (this.seekDraft && this.seekDraft.context !== this.model?.controlContext) this.seekDraft = null;
@@ -251,8 +303,9 @@ export class F1ModuleView extends LitElement {
         this.timingExpanded = [];
       }
       const visible = new Set((this.model?.rows ?? []).map(row => row.id));
-      if (this.module.options?.show_driver_details === false || this.timingExpanded.some(id => !visible.has(id))) {
-        const kept = this.module.options?.show_driver_details === false ? [] : this.timingExpanded.filter(id => visible.has(id));
+      const detailsDisabled = this.module.options?.show_driver_details === false && !this.module.options?.narrow_layout;
+      if (detailsDisabled || this.timingExpanded.some(id => !visible.has(id))) {
+        const kept = detailsDisabled ? [] : this.timingExpanded.filter(id => visible.has(id));
         selectionCleared ||= kept.length !== this.timingExpanded.length;
         this.timingExpanded = kept;
       }
@@ -266,6 +319,8 @@ export class F1ModuleView extends LitElement {
     }
     this.syncRaceControlMessage();
     this.setAttribute('density', this.settings?.appearance?.density ?? 'comfortable');
+    this.setAttribute('data-presentation', this.minimalTiming ? 'minimal' : 'current');
+    this.setAttribute('data-mode', this.settings?.mode ?? 'dark');
     const focused = this.shadowRoot?.activeElement;
     this.focusKey = focused?.dataset?.focus ?? null;
   }
@@ -521,7 +576,7 @@ export class F1ModuleView extends LitElement {
   timingHeader(fields, laps) {
     const hidden = this.module.show_table_header === false;
     return html`<thead part="table-header" class=${hidden ? 'labels-hidden' : ''}><tr part="table-row">
-      ${repeat(fields, id => id, id => html`<th part="table-cell" scope="col"><span class=${hidden ? 'sr' : ''}>${label(this.field(id), this.language)}</span></th>`)}
+      ${repeat(fields, id => id, id => html`<th part="table-cell" data-field=${id} scope="col"><span class=${hidden ? 'sr' : ''}>${id === 'timing_gap' ? this.timingGapHeader() : this.timingFieldLabel(id)}</span></th>`)}
       ${repeat(laps, lap => lap, (lap, index) => html`<th part="table-cell" scope="col" class=${`recent-lap ${index === 0 ? 'lap-start' : ''}`}><span class=${hidden ? 'sr' : ''}>${this.w('modular.lap')} ${lap}</span></th>`)}
     </tr></thead>`;
   }
@@ -763,10 +818,57 @@ export class F1ModuleView extends LitElement {
       <span class="provenance">${this.w('modular.start_time_not_published')}</span>`}${row.estimated ? html`<span class="provenance">${this.w('modular.provisional_start_time')}</span>` : ''}</div>
     </li>`)}</ol>`;
   }
+  qualifyingFocusPart() {
+    if (!['qualifying', 'sprint_qualifying'].includes(this.model?.sessionKind)) return null;
+    const focus = this.module.options.qualifying_focus;
+    return /^q[123]$/.test(focus) ? Number(focus.at(-1)) : focus === 'current' ? this.model.qualifying_part ?? this.model.currentPart ?? null : null;
+  }
+  timingFieldLabel(id) {
+    const part = id === 'qualifying_gap' ? this.qualifyingFocusPart() : null;
+    return part ? this.w('modular.timing_part_gap', { part: `${this.model.sessionKind === 'sprint_qualifying' ? 'SQ' : 'Q'}${part}` }) : label(this.field(id), this.language);
+  }
+  timingGapOrder() { return this.module.options.gap_primary === 'gap' ? ['gap', 'interval'] : ['interval', 'gap']; }
+  timingGapHeader() {
+    const [primary, secondary] = this.timingGapOrder();
+    return html`<span class="gap-stack"><span>${this.w(primary === 'interval' ? 'modular.timing_int_short' : 'modular.timing_gap_short')}</span><span class="secondary">${this.w(secondary === 'interval' ? 'modular.timing_int_short' : 'modular.timing_gap_short')}</span></span>`;
+  }
+  combinedGapCell(row) {
+    const [primary, secondary] = this.timingGapOrder();
+    const name = id => label(this.field(id), this.language);
+    const value = id => row[id] === null || row[id] === undefined || row[id] === '' ? '—' : formatTimingGap(row[id], this.w('modular.lap'));
+    return html`<span class="gap-stack" part="timing-gap"><span data-gap=${primary}><span class="sr">${name(primary)}: </span>${value(primary)}</span><span class="secondary" data-gap=${secondary}><span class="sr">${name(secondary)}: </span>${value(secondary)}</span></span>`;
+  }
+  timingPosition(row) {
+    if (this.module.options.position_change !== 'grid') return row.position ?? '—';
+    const change = row.position_change;
+    const description = change ? `${this.w('modular.timing_position_reference')} · ${Math.abs(change.value)} ${this.w(({ gain: 'places gained', loss: 'places lost', equal: 'unchanged' })[change.status])}` : this.w('modular.timing_position_unknown');
+    return html`<span class="timing-position"><span>${row.position ?? '—'}</span><span class="position-change ${change?.status ?? 'unknown'}" title=${description}><span aria-hidden="true">${change?.value ? `${change.symbol}${Math.abs(change.value)}` : '—'}</span><span class="sr">${description}</span></span></span>`;
+  }
+  timingBadge(badge) {
+    const codes = { penalty: 'penalty', drive_through: 'drive_through', stop_go: 'stop_go', under_investigation: 'investigation', noted: 'noted', in_pit: 'pit', pit_out: 'pit_out', retired: 'retired', stopped: 'stopped' };
+    const names = { drive_through: 'Drive-through penalty', stop_go: 'Stop-and-go penalty', under_investigation: 'Under investigation', noted: 'Noted', in_pit: 'In pit', pit_out: 'Pit out', retired: 'Retired', stopped: 'Stopped', penalty: 'Penalty' };
+    const text = badge.type === 'time_penalty' && badge.seconds > 0 ? this.w('modular.timing_penalty_seconds', { seconds: badge.seconds }) : this.w(`modular.timing_badge_${codes[badge.type] ?? 'penalty'}`);
+    const description = [badge.service_status === 'unknown' ? this.w('modular.timing_penalty_unknown') : badge.type === 'time_penalty' ? this.w('modular.timing_penalty_time', { seconds: badge.seconds }) : this.w(names[badge.type] ?? 'Penalty'), badge.after_race ? this.w('modular.timing_investigation_after_session') : ''].filter(Boolean).join(' · ');
+    return { text, description, detail: [badge.penalty, badge.reason].filter(Boolean).join(' · ') };
+  }
+  driverBadges(row) {
+    if (this.module.type !== 'timing' || !this.module.options.driver_badges || !row.badges?.length) return '';
+    return html`<span class="driver-badges" part="driver-status">${row.badges.map(badge => {
+      const value = this.timingBadge(badge);
+      return html`<span class="driver-badge" data-kind=${badge.type} title=${[value.description, value.detail].filter(Boolean).join(' · ')}><span aria-hidden="true">${value.text}</span><span class="sr">${value.description}${value.detail ? ` · ${value.detail}` : ''}</span></span>`;
+    })}</span>`;
+  }
+  driverDecisions(row) {
+    if (!this.module.options.driver_badges || !row.badges?.length) return '';
+    return html`<div class="timing-status-details"><h3>${this.w('modular.timing_status_details')}</h3><ul class="timing-decisions">${row.badges.map(badge => {
+      const value = this.timingBadge(badge);
+      return html`<li><strong>${value.description}</strong>${value.detail ? html`<div>${value.detail}</div>` : ''}${badge.event_time ? html`<small><time datetime=${badge.event_time}>${dateTime(badge.event_time, this.settings, { hour: '2-digit', minute: '2-digit' })}</time>${badge.lap ? html` · ${this.w('modular.lap')} ${badge.lap}` : ''}</small>` : ''}</li>`;
+    })}</ul></div>`;
+  }
   timeCell(value) {
     const status = timingStatus(value), signal = SIGNALS[status], colors = statusColors(status, this.settings.mode, this.settings.appearance.palette);
     const signals = this.settings.accessibility.signals, contextClass = this.module.options.show_time_context !== false ? 'provenance' : 'sr';
-    return html`<div class="cell-stack"><span class="signal ${status}" style=${`background:${colors.background};color:${colors.color}`}>
+    return html`<div class="cell-stack"><span class="signal ${status}" style=${this.minimalTiming ? `background:transparent;color:${colors.background}` : `background:${colors.background};color:${colors.color}`}>
       ${this.module.options.show_time_status_icon !== false && signals !== 'text' && status !== 'unknown' ? html`<span aria-hidden="true">${signal.symbol}</span>` : ''}
       <span class="time">${formatTime(value?.time)}</span>
       <span class=${signals === 'shape' ? 'sr' : ''}>${label(signal, this.language)}</span>
@@ -774,14 +876,14 @@ export class F1ModuleView extends LitElement {
   }
   driverCell(row) {
     const appearance = this.settings.appearance;
-    const dimensions = logoDimensions(appearance.logo_size);
+    const dimensions = this.minimalTiming ? { frame: 22, image: 18 } : logoDimensions(appearance.logo_size);
     const color = appearance.team_colors && /^#[0-9a-f]{6}$/i.test(row.team_color) ? row.team_color : 'transparent';
     const headshot = appearance.logos && !this.model.teams && this.module.options?.driver_image_type === 'headshot' ? safeImageUrl(row.headshot) : null;
     const interactive = this.module.type !== 'timing' || this.timingDetailRows?.has(row.id);
     const open = this.module.type === 'timing' ? this.timingExpanded.includes(row.id) : this.expanded === row.id;
     const content = html`
       ${headshot ? html`<img class="driver-headshot" src=${headshot} alt="" width=${dimensions.frame} height=${dimensions.frame} @error=${event => { event.target.hidden = true; event.target.nextElementSibling.hidden = false; }}><f1-team-logo hidden aria-hidden="true" .team=${row.team} .variant=${appearance.logo_style} .mode=${this.settings.mode} .size=${appearance.logo_size}></f1-team-logo>` : appearance.logos ? html`<f1-team-logo aria-hidden="true" .team=${row.team} .variant=${appearance.logo_style} .mode=${this.settings.mode} .size=${appearance.logo_size}></f1-team-logo>` : ''}
-      <span>${appearance.full_names ? row.name : row.driver}<span class="sr"> · ${row.name} · ${row.team ?? ''}${interactive ? ` · ${this.w('modular.details')}` : ''}</span>${this.pushLapMarker(row)}</span>`;
+      <span>${appearance.full_names ? row.name : row.driver}<span class="sr"> · ${row.name} · ${row.team ?? ''}${interactive ? ` · ${this.w('modular.details')}` : ''}</span>${this.pushLapMarker(row)}</span>${this.driverBadges(row)}${interactive && this.module.type === 'timing' && this.module.options.narrow_layout ? html`<ha-icon class="driver-disclosure" aria-hidden="true" icon=${open ? 'mdi:chevron-up' : 'mdi:chevron-down'}></ha-icon>` : ''}`;
     const style = `--team-color:${color};--f1-logo-frame:${dimensions.frame}px;--f1-logo-image:${dimensions.image}px`;
     if (!interactive) return html`<span class="driver" style=${style}>${content}</span>`;
     return html`<button class="driver" data-focus=${`driver-${row.id}`} style=${style} aria-expanded=${open ? 'true' : 'false'} aria-controls=${this.module.type === 'timing' && open ? `driver-detail-${row.id}` : ''} @click=${() => { if (this.module.type === 'timing') this.toggleTimingDriver(row.id); else this.expanded = open ? '' : row.id; }}>${content}</button>`;
@@ -810,10 +912,11 @@ export class F1ModuleView extends LitElement {
   }
   timingDetailPanel(row, fields, detailLaps, tableLapNumbers) {
     const color = this.settings.appearance.team_colors && /^#[0-9a-f]{6}$/i.test(row.team_color) ? row.team_color : 'var(--f1-border)';
-    const history = row.history.slice(0, detailLaps).filter(lap => !tableLapNumbers.includes(lap.lap));
+    const history = (row.history ?? []).slice(0, detailLaps).filter(lap => !tableLapNumbers.includes(lap.lap));
     return html`<section class="timing-detail" part="driver-detail" id=${`driver-detail-${row.id}`} style=${`--team-color:${color}`} aria-label=${`${row.name} · ${this.w('modular.details')}`}>
       <div class="timing-detail-heading"><h3>${row.name} · ${row.team ?? '—'}</h3><button data-focus=${`driver-${row.id}`} @click=${() => this.toggleTimingDriver(row.id)} aria-label=${`${this.w('modular.close_driver_details')} · ${row.name}`}>×</button></div>
-      ${fields.length ? html`<dl>${fields.map(id => html`<div><dt>${label(this.field(id), this.language)}</dt><dd>${this.cell(row, id)}</dd></div>`)}</dl>` : ''}
+      ${fields.length ? html`<dl>${fields.map(id => html`<div><dt>${this.timingFieldLabel(id)}</dt><dd>${this.cell(row, id)}</dd></div>`)}</dl>` : ''}
+      ${this.driverDecisions(row)}
       ${history.length ? html`<h3 style="margin-top:12px">${this.w('modular.completed_laps')}</h3><ol>${history.map(lap => html`<li>${this.w('modular.lap')} ${lap.lap}: ${formatTime(lap.time)}</li>`)}</ol>` : ''}
     </section>`;
   }
@@ -854,9 +957,18 @@ export class F1ModuleView extends LitElement {
   }
   cell(row, id) {
     if (id === 'driver') return this.driverCell(row);
+    if (id === 'position' && this.module.type === 'timing') return this.timingPosition(row);
+    if (id === 'timing_gap') return this.combinedGapCell(row);
     if (id === 'gap' || id === 'interval') return formatTimingGap(row[id], this.w('modular.lap'));
-    if (this.field(id)?.type === 'seconds_delta') return row[id] == null ? '—' : html`<span class="time">${formatDelta(row[id])}</span>`;
-    if (this.field(id)?.type === 'qualifying_duration') return html`<span class="time">${formatTime(row[id]?.time)}</span><span class=${this.module.options.show_time_context !== false ? 'provenance' : 'sr'}>${row[id]?.sprint ? 'SQ' : 'Q'}${row[id]?.part}${row[id]?.eliminated ? this.w('modular.eliminated') : ''}</span>`;
+    if (this.field(id)?.type === 'seconds_delta') {
+      const part = id === 'qualifying_gap' ? this.qualifyingFocusPart() : null, value = part ? row[`q${part}_gap`] : row[id];
+      return value == null ? '—' : html`<span class="time">${formatDelta(value)}</span>`;
+    }
+    if (this.field(id)?.type === 'qualifying_duration') {
+      const value = row[id], best = this.minimalTiming && value?.overall_fastest === true;
+      const colors = best ? statusColors('overall', this.settings.mode, this.settings.appearance.palette) : null;
+      return html`<span class="time ${best ? 'qualifying-best' : ''}" style=${best ? `color:${colors.background}` : ''}>${best && this.settings.accessibility.signals !== 'text' ? html`<span aria-hidden="true">◆ </span>` : ''}${formatTime(value?.time)}${best ? html`<span class=${this.settings.accessibility.signals === 'shape' ? 'sr' : ''}> ${label(SIGNALS.overall, this.language)}</span>` : ''}</span><span class=${this.module.options.show_time_context !== false ? 'provenance' : 'sr'}>${value?.sprint ? 'SQ' : 'Q'}${value?.part ?? id[1]}${value?.eliminated ? this.w('modular.eliminated') : ''}</span>`;
+    }
     if (id === 'theoretical_lap') return html`<span class="time">${formatTime(row[id])}</span><span class=${this.module.options.show_time_context !== false ? 'provenance' : 'sr'}>${this.w('modular.sum_of_personal_best_sectors_may_span_laps')}</span>`;
     if (/^minisector_[123]$/.test(id)) return this.minisectorStrip(row[id], Number(id.at(-1)));
     if (/^sector_[123]_with_minisectors$/.test(id)) {
@@ -869,18 +981,34 @@ export class F1ModuleView extends LitElement {
       const delta = row[id];
       return delta ? html`<span class="time">${delta.symbol} ${formatDelta(delta.value)}<span class="sr"> ${this.w(({ faster: 'faster', slower: 'slower', equal: 'unchanged' })[delta.status] ?? delta.status)}</span></span><span class=${this.module.options.show_time_context !== false ? 'provenance' : 'sr'}>${this.w('modular.vs_lap')} ${delta.reference_lap}</span>` : '—';
     }
-    if (id === 'tyre') return this.tyreCell(row.tyre, this.module.type !== 'tyres' || !this.model.statistics || this.module.options.show_compound_name);
+    if (id === 'tyre') return this.module.type === 'timing' && this.module.options.tyre_age_inline ? html`<span class="tyre-inline">${this.tyreCell(row.tyre)}<span title=${label(this.field('tyre_age'), this.language)}><span class="sr">${label(this.field('tyre_age'), this.language)}: </span>${row.tyre_age ?? '—'}</span></span>` : this.tyreCell(row.tyre, this.module.type !== 'tyres' || !this.model.statistics || this.module.options.show_compound_name);
     if (id === 'status') return this.w(({ in_pit: 'In pit', pit_out: 'Pit out', retired: 'Retired', stopped: 'Stopped', on_track: 'On track' })[row.status] ?? row.status ?? '—');
     return row[id] ?? '—';
   }
   timing() {
-    const rows = this.model.rows ?? [], configuredFields = this.module.fields.filter(id => FIELDS[id]);
-    const firstGap = configuredFields.findIndex(id => ['gap', 'interval'].includes(id));
-    const showGapToggle = this.module.options.show_gap_toggle === true && firstGap >= 0;
-    const fields = showGapToggle ? configuredFields.filter(id => !['gap', 'interval'].includes(id)) : configuredFields;
-    if (showGapToggle) {
-      const insertion = configuredFields.slice(0, firstGap).filter(id => !['gap', 'interval'].includes(id)).length;
-      fields.splice(insertion, 0, this.timingGapMode === 'leader' ? 'gap' : 'interval');
+    const rows = this.model.rows ?? [], options = this.module.options;
+    const configuredFields = this.module.fields.filter(id => FIELDS[id]);
+    const narrow = this.module.type === 'timing' && options.narrow_layout === true;
+    const part = this.qualifyingFocusPart();
+    let fields = [...configuredFields];
+    if (part && fields.some(id => /^q[123]_time$/.test(id))) {
+      const first = fields.findIndex(id => /^q[123]_time$/.test(id));
+      fields = fields.filter(id => !/^q[123]_time$/.test(id));
+      fields.splice(first, 0, `q${part}_time`);
+    }
+    const firstGap = fields.findIndex(id => ['gap', 'interval'].includes(id));
+    const combined = firstGap >= 0 && (options.gap_display === 'combined' || narrow);
+    const showGapToggle = options.show_gap_toggle === true && firstGap >= 0 && !combined && !narrow;
+    if (combined || showGapToggle) {
+      const insertion = fields.slice(0, firstGap).filter(id => !['gap', 'interval'].includes(id)).length;
+      fields = fields.filter(id => !['gap', 'interval'].includes(id));
+      fields.splice(insertion, 0, combined ? 'timing_gap' : this.timingGapMode === 'leader' ? 'gap' : 'interval');
+    }
+    if (options.tyre_age_inline && fields.includes('tyre')) fields = fields.filter(id => id !== 'tyre_age');
+    if (narrow) {
+      // Summary is an explicit layout choice. Keep all saved timing columns in
+      // the expandable driver details rather than changing the saved fields.
+      fields = ['position', 'driver', ...fields.filter(id => ['timing_gap', 'qualifying_gap', 'best_lap_gap', 'tyre'].includes(id))];
     }
     if (!rows.length) {
       if (this.model.pushMode === 'only') {
@@ -891,28 +1019,31 @@ export class F1ModuleView extends LitElement {
       return this.empty(this.model.filtered ? this.w('modular.no_drivers_match_this_selection') : this.w('modular.timing_will_appear_when_session_data_is_available'));
     }
     if (!fields.length) return this.empty(this.w('modular.choose_columns_in_the_editor'));
-    const historyLimit = this.module.options.history;
-    const detailFields = this.module.type === 'timing' && this.module.options.show_driver_details !== false
-      ? (this.module.detail_fields ?? []).filter(id => FIELDS[id] && id !== 'driver' && !fields.includes(id)) : [];
-    const detailLaps = this.module.type === 'timing' && this.module.options.show_driver_details !== false ? this.module.options.detail_laps ?? 0 : 0;
-    const lapNumbers = historyLimit ? [...new Set(rows.flatMap(row => row.history.map(lap => lap.lap)).filter(Number.isInteger))].sort((a, b) => a - b).slice(-historyLimit) : [];
-    this.timingDetailRows = new Set(rows.filter(row => detailFields.length > 0 || row.history.slice(0, detailLaps).some(lap => !lapNumbers.includes(lap.lap))).map(row => row.id));
+    const historyLimit = options.history;
+    const detailsEnabled = this.module.type === 'timing' && (narrow || options.show_driver_details !== false);
+    const represented = id => fields.includes(id) || combined && ['gap', 'interval'].includes(id) || options.tyre_age_inline && fields.includes('tyre') && id === 'tyre_age';
+    const detailFields = detailsEnabled ? [...new Set([...(narrow || part ? configuredFields : []), ...(this.module.detail_fields ?? [])])]
+      .filter(id => FIELDS[id] && id !== 'driver' && !represented(id)) : [];
+    const detailLaps = detailsEnabled ? Math.max(options.detail_laps ?? 0, narrow ? historyLimit ?? 0 : 0) : 0;
+    const lapNumbers = historyLimit && !narrow ? [...new Set(rows.flatMap(row => (row.history ?? []).map(lap => lap.lap)).filter(Number.isInteger))].sort((a, b) => a - b).slice(-historyLimit) : [];
+    this.timingDetailRows = new Set(rows.filter(row => detailsEnabled && (detailFields.length > 0 || options.driver_badges && row.badges?.length || (row.history ?? []).slice(0, detailLaps).some(lap => !lapNumbers.includes(lap.lap)))).map(row => row.id));
     const gapToggle = showGapToggle ? html`<div class="timing-gap-toggle" part="controls" role="group" aria-label=${this.w('modular.gap_mode')}>
       <button data-focus="timing-gap-ahead" aria-pressed=${String(this.timingGapMode === 'ahead')} @click=${() => { this.timingGapMode = 'ahead'; }}>${this.w('modular.ahead')}</button>
       <button data-focus="timing-gap-leader" aria-pressed=${String(this.timingGapMode === 'leader')} @click=${() => { this.timingGapMode = 'leader'; }}>${this.w('modular.leader')}</button>
     </div>` : '';
     const closeAll = this.module.type === 'timing' && this.timingExpanded.length ? html`<div class="timing-detail-actions" part="controls"><button data-focus="timing-close-all" @click=${() => this.clearTimingDrivers()}>${this.w('modular.close_all_driver_details')}</button></div>` : '';
-    return html`${gapToggle}${closeAll}<div class="table-scroll" part="table-container" tabindex="0" role="region" aria-label=${this.w('modular.timing_table_scroll_horizontally_for_more_columns')}><table part="table">
+    const focusContext = part ? html`<p class="module-context">${this.w('modular.timing_qualifying_focus_context', { part: `${this.model.sessionKind === 'sprint_qualifying' ? 'SQ' : 'Q'}${part}` })}</p>` : '';
+    return html`${focusContext}${gapToggle}${closeAll}<div class=${`table-scroll ${narrow ? 'timing-summary' : ''}`} part="table-container" tabindex="0" role="region" aria-label=${this.w(narrow ? 'modular.timing_summary_label' : 'modular.timing_table_scroll_horizontally_for_more_columns')}><table part="table">
       <caption class="sr">${this.module.title || this.model.title}</caption>
       ${this.timingHeader(fields, lapNumbers)}
-      <tbody>${repeat(rows, row => row.id, (row, index) => html`${this.model.pushMode !== 'off' && row.push_group && (index === 0 || row.push_group !== rows[index - 1].push_group) ? html`<tr class="push-group" data-group=${row.push_group}><th colspan=${fields.length + lapNumbers.length} scope="colgroup">${this.w(({ active: 'modular.push_laps', completed: 'modular.completed_attempts', other: 'modular.other_drivers' })[row.push_group])}${row.push_group === 'active' ? html`<span class="provenance">${this.w(this.model.pushOrderUnknown ? 'modular.push_laps_order_incomplete' : 'modular.push_laps_order')}</span>` : ''}</th></tr>` : ''}<tr part="table-row" data-driver=${row.id} data-push-group=${row.push_group ?? ''}>${repeat(fields, id => id, id => html`<td part="table-cell">${this.cell(row, id)}${!fields.includes('driver') && id === fields[0] ? this.pushLapMarker(row) : ''}</td>`)}${repeat(lapNumbers, lap => lap, (lap, index) => {
-        const value = row.history.find(item => item.lap === lap);
+      <tbody>${repeat(rows, row => row.id, (row, index) => html`${this.model.pushMode !== 'off' && row.push_group && (index === 0 || row.push_group !== rows[index - 1].push_group) ? html`<tr class="push-group" data-group=${row.push_group}><th colspan=${fields.length + lapNumbers.length} scope="colgroup">${this.w(({ active: 'modular.push_laps', completed: 'modular.completed_attempts', other: 'modular.other_drivers' })[row.push_group])}${row.push_group === 'active' ? html`<span class="provenance">${this.w(this.model.pushOrderUnknown ? 'modular.push_laps_order_incomplete' : 'modular.push_laps_order')}</span>` : ''}</th></tr>` : ''}<tr part="table-row" data-driver=${row.id} data-push-group=${row.push_group ?? ''} data-retired=${String(options.dim_retired === true && row.retired === true)}>${repeat(fields, id => id, id => html`<td part="table-cell" data-field=${id}>${this.cell(row, id)}${!fields.includes('driver') && id === fields[0] ? this.pushLapMarker(row) : ''}</td>`)}${repeat(lapNumbers, lap => lap, (lap, index) => {
+        const value = (row.history ?? []).find(item => item.lap === lap);
         return html`<td part="table-cell" class=${`recent-lap ${index === 0 ? 'lap-start' : ''}`}>${this.timeCell(value ? { ...value, source: 'completed_lap', previous_lap: true } : { time: null, lap })}</td>`;
       })}</tr>
         ${this.module.type === 'timing' && this.timingExpanded.includes(row.id) && this.timingDetailRows.has(row.id) ? html`<tr class="timing-detail-row" part="table-row driver-detail-row"><td part="table-cell" colspan=${fields.length + lapNumbers.length}>${this.timingDetailPanel(row, detailFields, detailLaps, lapNumbers)}</td></tr>` : ''}
         ${this.module.type !== 'timing' && this.expanded === row.id ? html`<tr part="table-row"><td part="table-cell" class="details" colspan=${fields.length + lapNumbers.length}>
           <h3>${row.name} · ${row.team ?? '—'}</h3><dl>${fields.filter(id => id !== 'driver').map(id => html`<div><dt class="muted">${label(this.field(id), this.language)}</dt><dd>${this.cell(row, id)}</dd></div>`)}</dl>
-          ${row.history.length ? html`<h3 style="margin-top:16px">${this.w('modular.completed_laps')}</h3><ol>${row.history.map(lap => html`<li>${this.w('modular.lap')} ${lap.lap}: ${formatTime(lap.time)}</li>`)}</ol>` : ''}
+          ${row.history?.length ? html`<h3 style="margin-top:16px">${this.w('modular.completed_laps')}</h3><ol>${row.history.map(lap => html`<li>${this.w('modular.lap')} ${lap.lap}: ${formatTime(lap.time)}</li>`)}</ol>` : ''}
         </td></tr>` : ''}`)}</tbody>
     </table></div>${this.timingLegend([...fields, ...detailFields])}`;
   }

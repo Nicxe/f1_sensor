@@ -1,5 +1,5 @@
 const version = new URL(import.meta.url).searchParams.get('v');
-const { seconds, number, positiveInteger, lapChange, safeImageUrl, readSectors, publishedDate, publishedStart, circuitDay, dateHasPassed } = await import(`./semantics.js${version ? `?v=${encodeURIComponent(version)}` : ''}`);
+const { seconds, number, positiveInteger, lapChange, positionChange, safeImageUrl, readSectors, publishedDate, publishedStart, eventTimestamp, circuitDay, dateHasPassed } = await import(`./semantics.js${version ? `?v=${encodeURIComponent(version)}` : ''}`);
 
 const { sessionKind, timingFields, moduleFields, fieldDefinition } = await import(`./catalog.js${version ? `?v=${encodeURIComponent(version)}` : ''}`);
 const { segmentStrip } = await import(`./minisector-data.js${version ? `?v=${encodeURIComponent(version)}` : ''}`);
@@ -281,6 +281,82 @@ function currentPushStrip(strip, sector, progress) {
   return strip.map((segment, index) => index < observed ? segment : { ...segment, raw: 0 });
 }
 
+const timingKey = value => ['string', 'number'].includes(typeof value) ? String(value).trim() : '';
+const timingRecords = value => array(value).filter(item => item && typeof item === 'object' && !Array.isArray(item));
+const timingFlag = value => typeof value === 'boolean' ? value : null;
+function sameTimingSession(selected, session) {
+  const attrs = selected.attributes, current = session.source?.attributes ?? {};
+  const key = timingKey(current.session_key);
+  return session.source?.status === 'available' && session.source.data_status !== 'stale'
+    && selected.status === 'available' && selected.data_status !== 'stale' && Boolean(key) && timingKey(attrs.session_key) === key
+    && (!current.meeting_key || !attrs.meeting_key || timingKey(current.meeting_key) === timingKey(attrs.meeting_key));
+}
+
+function timingGrid(hass, entry, session, kind, requested) {
+  const selected = source(hass, entry, 'starting_grid'), attrs = selected.attributes;
+  if (!requested || !['race', 'sprint'].includes(kind) || !sameTimingSession(selected, session)
+    || attrs.status !== 'confirmed' || attrs.grid_context !== kind) return new Map();
+  const rows = timingRecords(attrs.grid), positions = new Set(), numbers = new Set(), grid = new Map();
+  for (const row of rows) {
+    const rn = timingKey(row.racing_number), position = positiveInteger(row.grid_position);
+    // A duplicate driver or slot makes the reference ambiguous. Pit-lane/unknown
+    // starts have no positive grid position and cannot establish a gain.
+    if (!rn) continue;
+    if (numbers.has(rn)) return new Map();
+    numbers.add(rn);
+    if (position === null) continue;
+    if (positions.has(position)) return new Map();
+    positions.add(position); grid.set(rn, position);
+  }
+  return grid;
+}
+
+function penaltyType(value) {
+  const text = nonempty(value), time = /^(\d+)\s+SECONDS?\s+TIME\s+PENALTY$/i.exec(text ?? '');
+  const duration = positiveInteger(time?.[1]);
+  if (duration !== null) return { type: 'time_penalty', seconds: duration };
+  if (/^DRIVE[ -]?THROUGH(?:\s+PENALTY)?$/i.test(text ?? '')) return { type: 'drive_through', seconds: null };
+  const stopGo = /^(?:(\d+)\s+SECONDS?\s+)?STOP(?:\s*\/\s*|[ -]+AND[ -]+)GO(?:\s+PENALTY)?$/i.exec(text ?? '');
+  if (stopGo) return { type: 'stop_go', seconds: positiveInteger(stopGo[1]) };
+  return { type: 'penalty', seconds: null };
+}
+
+function driverTimingBadges(driver, id, code, selected, session, enabled) {
+  if (!enabled) return [];
+  const status = driver.retired === true ? 'retired' : driver.in_pit === true ? 'in_pit'
+    : driver.pit_out === true ? 'pit_out' : driver.stopped === true ? 'stopped' : null;
+  const badges = status ? [{ type: status, seconds: null }] : [];
+  if (!sameTimingSession(selected, session)) return badges;
+  const matches = (numbers, codes) => {
+    const rns = array(numbers).map(timingKey).filter(Boolean);
+    return rns.length ? rns.includes(id) : array(codes).some(item => timingKey(item).toUpperCase() === timingKey(code).toUpperCase());
+  };
+  const penalties = timingRecords(selected.attributes.penalties).filter(item => item.service_status !== 'served'
+    && matches([item.racing_number], [item.driver]));
+  // A generic served message cannot establish which of several penalties is
+  // still pending. Do not advertise exact pending seconds for that driver.
+  const uncertain = penalties.some(item => item.service_status !== undefined && item.service_status !== 'pending');
+  const events = [
+    ...penalties.map(item => ({ ...item, ...(uncertain ? { type: 'penalty', seconds: null, service_status: 'unknown' } : penaltyType(item.penalty)) })),
+    ...['under_investigation', 'noted'].flatMap(type => timingRecords(selected.attributes[type])
+      .filter(item => matches(item.racing_numbers, item.drivers)).map(item => ({ ...item, type, seconds: null }))),
+  ];
+  const seen = new Set();
+  for (const item of events) {
+    // This value comes from the feed's Utc field. Its explicit provenance lets
+    // us supply a missing Z, while generic timestamps never receive that trust.
+    const rawTime = eventTimestamp({ occurred_at: item.utc, focus_observation: { event_time_basis: 'utc_field' } });
+    const eventTime = rawTime ? new Date(rawTime).toISOString() : null;
+    const lap = number(item.lap), badge = { type: item.type, seconds: item.seconds, penalty: nonempty(item.penalty),
+      reason: nonempty(item.reason), location: nonempty(item.location), event_time: eventTime,
+      lap: Number.isInteger(lap) && lap >= 0 ? lap : null, after_race: item.after_race === true,
+      service_status: item.service_status === 'unknown' ? 'unknown' : item.type.endsWith('penalty') || ['drive_through', 'stop_go'].includes(item.type) ? 'pending' : null };
+    const signature = JSON.stringify(badge);
+    if (!seen.has(signature)) { seen.add(signature); badges.push(badge); }
+  }
+  return badges;
+}
+
 export function timingRows(hass, entry, context, sectors, module, focus = {}, minisectors = null, pushOrders = null) {
   const positions = source(hass, entry, 'driver_positions');
   const tyres = source(hass, entry, 'current_tyres');
@@ -290,7 +366,11 @@ export function timingRows(hass, entry, context, sectors, module, focus = {}, mi
   const chosenDriver = module.driver || focus.driver, chosenTeam = module.team || focus.team;
   const historyDepth = Math.max(module.options.history ?? 0, module.options.show_driver_details === false ? 0 : module.options.detail_laps ?? 0);
   const kind = sessionKind(context.name), qualifying = ['qualifying', 'sprint_qualifying'].includes(kind);
-  const part = positiveInteger(positions.attributes.current_qualifying_part);
+  const reportedPart = positiveInteger(positions.attributes.current_qualifying_part);
+  const part = qualifying && [1, 2, 3].includes(reportedPart) ? reportedPart : null;
+  const session = context.source ? context : sessionContext(hass, entry);
+  const grid = timingGrid(hass, entry, session, kind, module.options.position_change === 'grid');
+  const investigations = source(hass, entry, 'investigations');
   const rawDrivers = Array.isArray(positions.attributes.drivers) ? positions.attributes.drivers
     : Object.entries(positions.attributes.drivers ?? {}).map(([rn, driver]) => ({ racing_number: rn, ...driver }));
   // Qualifying does not publish the race-only LapCount stream, so the
@@ -312,6 +392,11 @@ export function timingRows(hass, entry, context, sectors, module, focus = {}, mi
     .filter(driver => driver && typeof driver === 'object' && driver.best_lap_time_source === 'official')
     .map(driver => seconds(driver.best_lap_time)).filter(time => time !== null) : [];
   const fastestPracticeTime = practiceTimes.length ? Math.min(...practiceTimes) : null;
+  const qualifyingBest = Object.fromEntries([1, 2, 3].map(n => {
+    const times = qualifying ? rawDrivers.filter(driver => driver && typeof driver === 'object')
+      .map(driver => seconds(driver[`q${n}_time`])).filter(time => time !== null) : [];
+    return [n, times.length ? Math.min(...times) : null];
+  }));
   const rows = rawDrivers.filter(driver => driver && typeof driver === 'object').map(driver => {
     const id = String(driver.racing_number ?? driver.tla ?? '');
     const person = identity.get(id) ?? {};
@@ -349,11 +434,16 @@ export function timingRows(hass, entry, context, sectors, module, focus = {}, mi
     const qualifyingTimes = Object.fromEntries([1, 2, 3].flatMap(n => [[`q${n}_time`, {
       time: qualifying ? seconds(driver[`q${n}_time`]) : null, part: n, sprint: kind === 'sprint_qualifying',
       eliminated: qualifying && driver[`q${n}_knocked_out`] === true,
-    }], [`q${n}_position`, qualifying ? positiveInteger(driver[`q${n}_position`]) : null]]));
+      overall_fastest: qualifying && seconds(driver[`q${n}_time`]) !== null && positiveInteger(driver[`q${n}_position`]) === 1,
+      source: 'qualifying_best',
+    }], [`q${n}_position`, qualifying ? positiveInteger(driver[`q${n}_position`]) : null],
+    [`q${n}_gap`, qualifying && qualifyingBest[n] !== null && seconds(driver[`q${n}_time`]) !== null
+      ? Math.round((seconds(driver[`q${n}_time`]) - qualifyingBest[n]) * 1000) / 1000 : null]]));
     return {
       id, driver: person.tla ?? driver.tla ?? id, name: person.full_name ?? person.name ?? driver.full_name ?? driver.name ?? driver.tla ?? id,
       team: person.team ?? driver.team ?? tyre.team ?? null, team_color: person.team_color ?? driver.team_color ?? tyre.team_color ?? null,
       position: positiveInteger(driver.current_position), gap: nonempty(driver.gap_to_leader), interval: nonempty(driver.interval_to_position_ahead),
+      grid_position: grid.get(id) ?? null, position_change: positionChange(driver.current_position, grid.get(id)),
       last_lap: last ? { ...last, source: 'completed_lap', previous_lap: !lastLapOverall && !lastLapPersonal,
         overall_fastest: lastLapOverall, personal_fastest: lastLapPersonal } : { time: null },
       best_lap: { time: best?.time ?? null, lap: best?.lap ?? null, personal_fastest: best?.time !== null && best?.time !== undefined, overall_fastest: driver.fastest_lap === true },
@@ -370,17 +460,16 @@ export function timingRows(hass, entry, context, sectors, module, focus = {}, mi
       laps: number(driver.completed_laps), history: historyDepth ? laps.slice(-historyDepth).reverse() : [],
       tyre: nonempty(tyre.compound_short ?? tyre.compound), tyre_age: number(tyre.stint_laps),
       status: driver.retired === true ? 'retired' : driver.in_pit === true ? 'in_pit' : driver.pit_out === true ? 'pit_out' : driver.stopped === true ? 'stopped' : nonempty(driver.status),
+      retired: timingFlag(driver.retired), stopped: timingFlag(driver.stopped), in_pit: timingFlag(driver.in_pit), pit_out: timingFlag(driver.pit_out),
+      badges: driverTimingBadges(driver, id, person.tla ?? driver.tla, investigations, session, module.options.driver_badges === true),
       updated_at: positions.updated_at,
       push_lap: pushLap,
       push_lap_delta: pushLapDelta(driver.push_lap_delta, pushLap, part, pushDeltas, identity, rawDrivers),
     };
   }).filter(row => row.id && (!chosenDriver || row.id === chosenDriver || row.driver === chosenDriver)
     && (!chosenTeam || row.team === chosenTeam));
-  const partTimes = qualifying && part ? rows.map(row => row[`q${part}_time`]?.time).filter(value => value !== null && value !== undefined) : [];
-  const fastestPartTime = partTimes.length ? Math.min(...partTimes) : null;
   for (const row of rows) {
-    const currentPartTime = part ? row[`q${part}_time`]?.time : null;
-    row.qualifying_gap = fastestPartTime !== null && currentPartTime !== null && currentPartTime !== undefined ? currentPartTime - fastestPartTime : null;
+    row.qualifying_gap = qualifying && part ? row[`q${part}_gap`] : null;
   }
   const sort = module.options.sort;
   rows.sort((a, b) => {
@@ -392,7 +481,7 @@ export function timingRows(hass, entry, context, sectors, module, focus = {}, mi
     return order * (module.options.direction === 'desc' ? -1 : 1) || a.id.localeCompare(b.id, undefined, { numeric: true });
   });
   const ordered = pushLapRows(rows, pushMode, pushStatus, `${entry?.entry_id}:${context.key}:${part}:${module.id}`, pushOrders);
-  return { rows: ordered.slice(0, module.options.rows), total: ordered.length, source: timingSource, filtered: Boolean(chosenDriver || chosenTeam), fields: timingFields(module, context.name), sessionKind: kind, currentPart: part,
+  return { rows: ordered.slice(0, module.options.rows), total: ordered.length, source: timingSource, filtered: Boolean(chosenDriver || chosenTeam), fields: timingFields(module, context.name), sessionKind: kind, currentPart: part, qualifying_part: part,
     pushMode, pushStatus, pushDeltas, pushCount: rows.filter(row => row.push_lap.active).length,
     pushOrderUnknown: rows.some(row => row.push_lap.active && row.push_lap.progress === null) };
 }
@@ -857,7 +946,7 @@ export class RetainedSources {
       if (this.barriers.has(selected.entity_id) && this.barriers.get(selected.entity_id) === primaryState) return { hass, retained: false };
       this.barriers.delete(selected.entity_id);
       const keys = new Set([primary, 'driver_list', 'current_session', 'session_status', 'replay_status',
-        ...(module.type === 'timing' ? ['current_tyres'] : []),
+        ...(module.type === 'timing' ? ['current_tyres', 'starting_grid', 'investigations'] : []),
         ...(module.type === 'pit_stops' ? ['driver_positions', 'f1tv_token_status'] : []),
         ...(module.type === 'standings' ? [module.options.competitors === 'teams' ? 'championship_prediction_teams' : 'championship_prediction_drivers'] : [])]);
       const references = [...keys].map(key => entry.entities?.[key]).filter(Boolean).map(id => [id, hass.states?.[id]]);

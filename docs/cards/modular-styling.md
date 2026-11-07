@@ -22,6 +22,26 @@ Use the normal appearance controls before adding CSS:
 The preview uses the same CSS as the saved card. Save the dashboard only after
 checking the narrow and wide layouts you use.
 
+## Choose a minimal Timing presentation
+
+Select a **Timing** module and open **Module options**. These choices work with the existing styles and density settings under **Appearance**. You can use minimal timing in a comfortable layout, or compact spacing with the current timing presentation.
+
+| Setting | Default | What it changes |
+| --- | --- | --- |
+| **Timing presentation** | Current presentation | Minimal uses colored timing text, smaller tyre marks and lighter decoration. It keeps timing symbols or text and the meaning of each color. |
+| **Use overview rows on narrow cards** | Off | Shows the main values together on a narrow card. Open a driver to read the remaining selected fields. |
+| **GAP and INT columns** | Separate columns | Combined shows INT to the car ahead and GAP to the leader in one column. |
+| **Primary value in combined GAP / INT** | INT | Choose which value appears first. This is an editor setting; combined and narrow views add no GAP/INT switch to the card. |
+| **Position change** | Off | Shows places gained or lost from the confirmed starting grid for the same race or sprint. |
+| **Show driver status badges** | Off | Adds recorded penalty, investigation and pit or retirement status beside the driver. |
+| **Dim retired drivers** | Off | Reduces emphasis on drivers marked as retired. Pit out and stopped remain distinct statuses. |
+| **Show tyre age beside the compound** | Off | Combines the compound and its recorded tyre age in one cell. |
+| **Qualifying times to show** | All selected qualifying parts | Follow the current Q/SQ part or choose one part. Saved Q1–Q3/SQ1–SQ3 column choices remain available. |
+
+Existing saved cards keep their current presentation. The separate-column **Show live gap toggle** remains available for those layouts. Minimal presentation does not remove selected columns; the narrow overview and qualifying focus are separate choices.
+
+A position-change dash means a matching confirmed grid is unavailable. A penalty badge shows received decisions and keeps the decision context in the driver details. A pit visit alone does not confirm service; an unconfirmed penalty status must not be read as proof that the penalty remains unserved. A stopped car is not automatically retired. Unknown data stays unknown.
+
 ## Add custom CSS
 
 1. Open **Appearance** and then **Custom CSS (advanced)**.

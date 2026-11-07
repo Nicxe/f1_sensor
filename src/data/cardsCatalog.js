@@ -72,7 +72,9 @@ export const cardsCatalog = [
       "driver_list",
       "current_tyres",
       "current_session",
-      "session_status"
+      "session_status",
+      "starting_grid",
+      "investigations"
     ]
   },
   {

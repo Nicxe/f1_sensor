@@ -458,7 +458,7 @@ Declared sources: `analysis`.
 
 ## Timing (`timing`)
 
-Declared sources: `current_session`, `current_tyres`, `driver_list`, `driver_positions`, `session_status`.
+Declared sources: `current_session`, `current_tyres`, `driver_list`, `driver_positions`, `investigations`, `session_status`, `starting_grid`.
 
 | Field | Source and path | Coverage | Identity and time | Presentation |
 | --- | --- | --- | --- | --- |

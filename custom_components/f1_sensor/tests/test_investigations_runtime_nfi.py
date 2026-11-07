@@ -120,3 +120,35 @@ def test_non_nfi_chronology_already_works_before_the_resolution(hass, race_messa
     assert snapshot.attributes["noted"]
     assert snapshot.attributes["under_investigation"]
     assert snapshot.attributes["penalties"]
+
+
+def test_runtime_ambiguous_served_notice_publishes_uncertainty(hass):
+    model = build_model(
+        hass,
+        [
+            {
+                "Utc": "2026-11-07T12:00:00",
+                "Message": "FIA STEWARDS: 5 SECOND TIME PENALTY FOR CAR 63 (RUS)",
+            },
+            {
+                "Utc": "2026-11-07T12:01:00",
+                "Message": "FIA STEWARDS: DRIVE THROUGH PENALTY FOR CAR 63 (RUS)",
+            },
+        ],
+    )
+    before = model.snapshot()
+    assert before.value == 2
+    model.coordinator.data_list.append(
+        {
+            "Utc": "2026-11-07T12:05:00",
+            "Message": "FIA STEWARDS: PENALTY SERVED FOR CAR 63 (RUS)",
+        }
+    )
+    after = model.snapshot()
+    assert after.value == 2
+    assert all(
+        item.get("service_status") is None for item in before.attributes["penalties"]
+    )
+    assert all(
+        item["service_status"] == "unknown" for item in after.attributes["penalties"]
+    )

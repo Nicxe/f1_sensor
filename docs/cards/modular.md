@@ -62,6 +62,14 @@ Data availability depends on the source and session. Adding a module does not cr
 
 Use the focused module guides below for options, examples, waiting states and data interpretation. Shared card settings have their own [configuration reference](/cards/shared-options).
 
+### Choose a minimal Timing view
+
+In **Timing → Module options**, choose **Minimal presentation** for colored timing text, smaller tyre marks and lighter table decoration. Turn on **Use overview rows on narrow cards** for a concise view with the remaining selected fields available when you open a driver. Existing cards keep their current presentation and columns.
+
+Choose **Combined column** to show INT and GAP together. Set the primary value in the editor when building the layout; the combined and narrow views do not add a GAP/INT switch to the card. **Qualifying times to show** can follow the current Q/SQ part or show a chosen part while keeping your saved column choices.
+
+Position changes, driver status badges, dimmed retired rows and tyre age beside the compound are separate choices. Position arrows need a confirmed starting grid for the same session. Penalty badges follow recorded decisions; a pit visit alone does not prove that a penalty was served. See [minimal Timing options](/cards/modular-styling#choose-a-minimal-timing-presentation) for the settings and defaults.
+
 ### Follow push laps
 
 [Follow push laps](/cards/timing#follow-push-laps) to group or filter likely attempts during practice and qualifying.

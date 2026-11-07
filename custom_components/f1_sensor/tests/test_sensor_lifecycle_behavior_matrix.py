@@ -157,7 +157,7 @@ def test_investigations_full_lifecycle_and_expiry() -> None:
     assert sensor._session_time is None
 
 
-def test_investigations_after_race_direct_and_penalty_served() -> None:
+def test_investigations_after_race_and_served_preserve_a_reprimand() -> None:
     sensor = F1InvestigationsSensor(
         _coordinator(data_list=[]), "investigations", "entry", "F1"
     )
@@ -178,7 +178,7 @@ def test_investigations_after_race_direct_and_penalty_served() -> None:
         "Message": "FIA STEWARDS: PENALTY SERVED FOR CAR 44 (HAM)",
     }
     assert sensor._process_message(served) is True
-    assert sensor._penalties == []
+    assert [item["penalty"] for item in sensor._penalties] == ["REPRIMAND (DRIVING)"]
 
 
 def test_lap_count_extract_apply_stale_and_clear(monkeypatch) -> None:

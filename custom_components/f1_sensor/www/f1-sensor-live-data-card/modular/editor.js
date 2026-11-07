@@ -422,6 +422,26 @@ export class F1SensorCardEditor extends LitElement {
         if (module.type === 'incidents' && (key === 'summary_sort' && module.options.content !== 'track_limits_summary' || ['order', 'presentation'].includes(key) && module.options.content === 'track_limits_summary')) return '';
         if (module.type === 'telemetry' && key === 'session_id') return '';
         if (module.type === 'timing' && ['show_driver_details', 'detail_laps'].includes(key)) return '';
+        if (module.type === 'timing') {
+          const combined = module.options.gap_display === 'combined' || module.options.narrow_layout;
+          if (key === 'show_gap_toggle' && combined || key === 'gap_primary' && !combined) return '';
+          const choices = {
+            presentation: [['current', 'modular.timing_presentation_current'], ['minimal', 'modular.timing_presentation_minimal']],
+            gap_display: [['separate', 'modular.timing_gap_separate'], ['combined', 'modular.timing_gap_combined']],
+            gap_primary: [['interval', 'modular.timing_gap_primary_interval'], ['gap', 'modular.timing_gap_primary_gap']],
+            position_change: [['off', 'modular.timing_position_change_off'], ['grid', 'modular.timing_position_change_grid']],
+            qualifying_focus: [['all', 'modular.timing_qualifying_all'], ['current', 'modular.timing_qualifying_current'], ['q1', 'modular.timing_qualifying_q1'], ['q2', 'modular.timing_qualifying_q2'], ['q3', 'modular.timing_qualifying_q3']],
+          };
+          const help = {
+            presentation: 'modular.timing_presentation_help', narrow_layout: 'modular.timing_narrow_layout_help',
+            gap_display: 'modular.timing_gap_display_help', position_change: 'modular.timing_position_change_help',
+            driver_badges: 'modular.timing_driver_badges_help', dim_retired: 'modular.timing_dim_retired_help',
+            tyre_age_inline: 'modular.timing_tyre_age_inline_help', qualifying_focus: 'modular.timing_qualifying_focus_help',
+          };
+          if (choices[key] || help[key]) return html`${choices[key]
+            ? this.select(title, value, choices[key].map(([id, key]) => [id, this.w(key)]), value => this.setOption(key, value))
+            : this.check(title, value, value => this.setOption(key, value))}${help[key] ? html`<p class="muted">${this.w(help[key])}</p>` : ''}`;
+        }
         if (module.type === 'telemetry' && key === 'selected') return this.telemetryPicker(module);
         if (module.type === 'race_control' && ['limit', 'order'].includes(key) && module.options.presentation === 'latest_message') return '';
         if (module.type === 'team_radio' && key === 'messages_to_show' && module.options.presentation === 'latest_message') return '';

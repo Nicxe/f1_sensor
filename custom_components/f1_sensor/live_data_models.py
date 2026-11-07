@@ -99,6 +99,13 @@ _REASON_PATTERN = re.compile(
 )
 
 
+def _penalty_service_key(value: object) -> str:
+    """Compare the stated sanction without conflating time and stop/go."""
+    text = str(value or "").upper()
+    text = re.sub(r"STOP(?:[-\s]+AND[-\s]+|/)GO", "STOP GO", text)
+    return " ".join(text.split())
+
+
 class LiveProjectionModel(StreamStateMixin, ProjectionModel):
     """Runtime-owned incremental calculation, independent of any entity."""
 
@@ -1601,12 +1608,39 @@ class InvestigationsModel(LiveProjectionModel):
         reason = self._extract_reason(message_text)
         driver_tlas = [d[1] for d in drivers]
         racing_numbers = [d[0] for d in drivers]
-        if _PENALTY_SERVED.search(message_text):
-            if drivers:
-                tlas_set = set(driver_tlas)
-                self._penalties = [
-                    p for p in self._penalties if p.get("driver") not in tlas_set
+        if served := _PENALTY_SERVED.search(message_text):
+            # A served notice identifies one sanction, not every penalty held
+            # by that driver. Keep ambiguous candidates, but stop presenting
+            # their remaining time as known until a specific notice resolves it.
+            tail = message_text[served.end() :].strip().removeprefix("-").strip()
+            detail = _PENALTY_ISSUED.match(f"FIA STEWARDS: {tail}")
+            generic = re.fullmatch(r"FOR CAR \d+ \([A-Z]{2,3}\)", tail, re.IGNORECASE)
+            remove = set()
+            uncertain = set()
+            served_drivers = [(detail.group(2), detail.group(3))] if detail else drivers
+            for racing_number, _tla in served_drivers:
+                candidates = [
+                    index
+                    for index, penalty in enumerate(self._penalties)
+                    if str(penalty.get("racing_number")) == racing_number
+                    and not str(penalty.get("penalty", "")).startswith("REPRIMAND")
+                    and (
+                        detail is None
+                        or _penalty_service_key(penalty.get("penalty"))
+                        == _penalty_service_key(detail.group(1))
+                    )
                 ]
+                if len(candidates) == 1 and (detail is not None or generic):
+                    remove.update(candidates)
+                else:
+                    uncertain.update(candidates)
+            self._penalties = [
+                {**penalty, "service_status": "unknown"}
+                if index in uncertain
+                else penalty
+                for index, penalty in enumerate(self._penalties)
+                if index not in remove
+            ]
             return True
         match = _PENALTY_ISSUED.search(message_text)
         if match:
