@@ -118,6 +118,34 @@ def _utc_text(payload: Mapping[str, Any]) -> str | None:
     return None
 
 
+def _event_timestamp(payload: Mapping[str, Any]) -> str | None:
+    """Expose a verified event instant without changing raw identity material."""
+    for key in ("Utc", "utc", "Timestamp", "timestamp", "Date"):
+        value = _text(payload.get(key))
+        if not value:
+            continue
+        match = re.fullmatch(
+            r"[0-9]{4}-[0-9]{2}-[0-9]{2}T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]"
+            r"(?:\.[0-9]+)?(?P<zone>[Zz]|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])?",
+            value,
+        )
+        if match is None:
+            return None
+        if match["zone"] is None:
+            if key not in {"Utc", "utc"}:
+                return None
+            value += "Z"
+        elif match["zone"] == "z":
+            value = value[:-1] + "Z"
+        try:
+            datetime.fromisoformat(value)
+        except ValueError:
+            return None
+        # Validation must not reserialize and truncate the provider's fractions.
+        return value
+    return None
+
+
 def _stable_id(*parts: object) -> str:
     value = "|".join(str(part or "") for part in parts)
     return hashlib.sha1(value.encode(), usedforsecurity=False).hexdigest()[:20]
@@ -1086,7 +1114,7 @@ class Phase4AnalysisStore:
                 sequence=0,
                 provider=self._provider(),
                 session_id=self._session_id,
-                occurred_at=_utc_text(source),
+                occurred_at=_event_timestamp(source),
                 offset_ms=_as_int(source.get("offset_ms")),
                 category=category,
                 kind=kind,

@@ -5,6 +5,7 @@ test('an observed event can be inspected without seeking and is cleared by prote
   await mountRaceTrace(page, { cards: 0 });
   await page.evaluate(() => {
     const h = window.raceTrace, id = h.entries[0].entry_id, analysis = h.analyses.get(id);
+    h.hass.locale.time_format = '24';
     const obs = structuredClone(h.snapshot().payload.attributes.race_trace_observation);
     obs.timing_as_of.sequence = 90; obs.timing_as_of.source_time_ms -= 10000;
     Object.assign(analysis, { session_id: 'race-1', session_name: 'Race', drivers: [{ driver_number: 18, tla: 'STR' }], timeline: { events: [{
@@ -15,7 +16,10 @@ test('an observed event can be inspected without seeking and is cleared by prote
   await page.getByRole('button', { name: 'Inspect event' }).click();
   await expect(page.getByText('Selected event', { exact: true })).toBeVisible();
   await expect(page.getByText('CAR 18 LAP 14 DELETED').last()).toBeVisible();
-  await expect(page.getByText('STR · 14 · 2027', { exact: false })).toBeVisible();
+  const detail = page.getByRole('region', { name: 'Selected event', exact: true });
+  await expect(detail).toContainText('STR · 14');
+  await expect(detail.locator('time')).toHaveText('08:01:29');
+  await expect(detail).not.toContainText('2027-01-15T');
   await expect(page.getByText('Revision 1', { exact: false })).toBeVisible();
   expect(await page.evaluate(() => window.raceTrace.calls.filter(call => Array.isArray(call)).length)).toBe(0);
   await page.evaluate(() => window.raceTrace.send('session_context', message => { message.payload.attributes.no_spoiler = true; }));

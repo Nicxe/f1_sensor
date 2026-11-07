@@ -29,6 +29,14 @@ export function publishedStart(value) {
     && /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})$/.test(value)
     && publishedDate(value.slice(0, 10)) && Number.isFinite(Date.parse(value)) ? value : null;
 }
+export function eventTimestamp(event) {
+  const value = typeof event?.occurred_at === 'string' ? event.occurred_at.trim() : '';
+  const match = /^((?!0000)\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?)(Z|[+-]\d{2}:\d{2})?$/i.exec(value);
+  if (!match || !match[2] && event?.focus_observation?.event_time_basis !== 'utc_field') return null;
+  // Older snapshots may retain a raw Utc field. Only its explicit provenance
+  // permits supplying a zone; never borrow a frame time or replay position.
+  return publishedStart(`${match[1]}${match[2]?.toUpperCase() || 'Z'}`);
+}
 export function circuitDay(timezone, now) {
   if (timezone) try {
     const parts = Object.fromEntries(new Intl.DateTimeFormat('en', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(now).map(part => [part.type, part.value]));
