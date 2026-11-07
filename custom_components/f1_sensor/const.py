@@ -98,6 +98,7 @@ SUPPORTED_SENSOR_KEYS = frozenset(
         "constructor_standings",
         "weather",
         "track_weather",
+        "session_rain_risk",
         "race_lap_count",
         "driver_list",
         "current_tyres",

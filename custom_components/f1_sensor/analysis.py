@@ -10,6 +10,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 import hashlib
 import math
+import re
 from statistics import median, quantiles
 from typing import Any
 
@@ -117,9 +118,75 @@ def _utc_text(payload: Mapping[str, Any]) -> str | None:
     return None
 
 
+def _event_timestamp(payload: Mapping[str, Any]) -> str | None:
+    """Expose a verified event instant without changing raw identity material."""
+    for key in ("Utc", "utc", "Timestamp", "timestamp", "Date"):
+        value = _text(payload.get(key))
+        if not value:
+            continue
+        match = re.fullmatch(
+            r"[0-9]{4}-[0-9]{2}-[0-9]{2}T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]"
+            r"(?:\.[0-9]+)?(?P<zone>[Zz]|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])?",
+            value,
+        )
+        if match is None:
+            return None
+        if match["zone"] is None:
+            if key not in {"Utc", "utc"}:
+                return None
+            value += "Z"
+        elif match["zone"] == "z":
+            value = value[:-1] + "Z"
+        try:
+            datetime.fromisoformat(value)
+        except ValueError:
+            return None
+        # Validation must not reserialize and truncate the provider's fractions.
+        return value
+    return None
+
+
 def _stable_id(*parts: object) -> str:
     value = "|".join(str(part or "") for part in parts)
     return hashlib.sha1(value.encode(), usedforsecurity=False).hexdigest()[:20]
+
+
+def _race_control_fingerprint(
+    item: Mapping[str, Any], message: str, source_key: str
+) -> tuple[str | None, ...]:
+    """Identify an incident, not its transport row or mutable lap metadata."""
+    timestamp = _event_timestamp(item)
+    cars = sorted(
+        {
+            value
+            for field in ("RacingNumber", "CarNumber")
+            if (value := _text(item.get(field))) is not None
+        }
+    )
+    return (
+        timestamp,
+        # Without a verified instant, equal text is not evidence that two
+        # different source rows describe the same incident.
+        source_key if timestamp is None else None,
+        _utc_text(item) if timestamp is None else None,
+        message,
+        _text(item.get("Category") or item.get("CategoryType")),
+        _text(item.get("Flag")),
+        _text(item.get("Scope")),
+        _text(item.get("Sector")),
+        ",".join(cars),
+        _text(item.get("Status")),
+        _text(item.get("Mode")),
+    )
+
+
+@dataclass(slots=True)
+class _RaceControlIdentity:
+    """Retain the first timeline identity and the row allowed to revise it."""
+
+    identity: str
+    event_id: str
+    source_key: str | None
 
 
 def _deep_merge(target: dict[str, Any], delta: Mapping[str, Any]) -> None:
@@ -153,6 +220,7 @@ class TimelineEvent:
     final: bool = False
     supporting_signals: tuple[str, ...] = ()
     race_trace_marker: dict[str, Any] | None = None
+    focus_observation: dict[str, Any] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         """Return the stable WebSocket event contract."""
@@ -174,6 +242,7 @@ class TimelineEvent:
             "confidence": round(max(0.0, min(1.0, self.confidence)), 2),
             "final": self.final,
             "supporting_signals": list(self.supporting_signals),
+            "focus_observation": deepcopy(self.focus_observation),
         }
 
 
@@ -185,6 +254,10 @@ class UnifiedTimelineStore:
         self._events: OrderedDict[str, TimelineEvent] = OrderedDict()
         self._sequence = 0
 
+    def get(self, event_id: str) -> TimelineEvent | None:
+        """Return a retained event without advancing its sequence or revision."""
+        return self._events.get(event_id)
+
     def upsert(self, event: TimelineEvent) -> TimelineEvent:
         """Insert an event or revise its existing contract."""
         current = self._events.get(event.event_id)
@@ -194,6 +267,15 @@ class UnifiedTimelineStore:
                 revision=current.revision,
                 sequence=current.sequence,
             )
+            if candidate.focus_observation and current.focus_observation:
+                if candidate.focus_observation.get(
+                    "context"
+                ) == current.focus_observation.get("context"):
+                    retained = replace(
+                        candidate, focus_observation=current.focus_observation
+                    )
+                    if retained == current:
+                        return current
             if candidate.race_trace_marker and current.race_trace_marker:
                 # Receiving an unchanged pit row again is not a new event or
                 # revision. Keep its original observation and frozen anchor.
@@ -934,6 +1016,9 @@ class Phase4AnalysisStore:
         self._lap_analysis = lap_analysis
         self._source_provider = source_provider
         self._timeline = UnifiedTimelineStore()
+        self._race_control_identities: dict[
+            tuple[str | None, ...], _RaceControlIdentity
+        ] = {}
         self._session_id: str | None = None
         self._session_name: str | None = None
         self._session_info: dict[str, Any] = {}
@@ -972,7 +1057,7 @@ class Phase4AnalysisStore:
         self._attach()
         listen = getattr(bus, "add_observation_reset_listener", None)
         if callable(listen):
-            self._unsubs.append(listen(self._invalidate_race_trace))
+            self._unsubs.append(listen(self._invalidate_analysis_observations))
 
     def _attach(self) -> None:
         callbacks = {
@@ -1007,7 +1092,10 @@ class Phase4AnalysisStore:
         if self.closed:
             return
         self._observed_streams.add(stream)
-        if stream in OBSERVATION_STREAMS and stream != "SessionInfo":
+        if stream in OBSERVATION_STREAMS and stream not in {
+            "SessionInfo",
+            "RaceControlMessages",
+        }:
             self._observe_race_trace_context(payload)
         handler(payload)
         if stream == "SessionInfo":
@@ -1061,6 +1149,7 @@ class Phase4AnalysisStore:
         signals: tuple[str, ...] = (),
         final: bool = False,
         race_trace_marker: dict[str, Any] | None = None,
+        focus_observation: dict[str, Any] | None = None,
     ) -> TimelineEvent:
         source = payload or {}
         return self._timeline.upsert(
@@ -1070,7 +1159,7 @@ class Phase4AnalysisStore:
                 sequence=0,
                 provider=self._provider(),
                 session_id=self._session_id,
-                occurred_at=_utc_text(source),
+                occurred_at=_event_timestamp(source),
                 offset_ms=_as_int(source.get("offset_ms")),
                 category=category,
                 kind=kind,
@@ -1083,12 +1172,14 @@ class Phase4AnalysisStore:
                 final=final,
                 supporting_signals=signals,
                 race_trace_marker=race_trace_marker,
+                focus_observation=focus_observation,
             )
         )
 
     def _reset_session(self) -> None:
         self._invalidate_race_trace(notify=False)
         self._timeline.clear()
+        self._race_control_identities.clear()
         self._session_status = None
         self._track_status = None
         self._drivers.clear()
@@ -1111,6 +1202,14 @@ class Phase4AnalysisStore:
         self._pit_context.clear()
         self._penalty_context.clear()
         self._observed_streams.clear()
+
+    def _invalidate_analysis_observations(self) -> None:
+        """Retire RC focus even when No Spoiler resumes the same source epoch."""
+        for retained in self._race_control_identities.values():
+            event = self._timeline.get(retained.event_id)
+            if event is not None and event.focus_observation is not None:
+                self._timeline.upsert(replace(event, focus_observation=None))
+        self._invalidate_race_trace()
 
     def _invalidate_race_trace(self, *, notify: bool = True) -> None:
         self._race_trace_observation = pending_observation("context_changed")
@@ -1332,6 +1431,12 @@ class Phase4AnalysisStore:
             payload=payload,
             severity="warning" if disrupted else "success",
             race_trace_marker=marker,
+            focus_observation={
+                **deepcopy(self._race_trace_observation),
+                "event_time_basis": "single_frame",
+            }
+            if marker
+            else None,
         )
 
     def _on_driver_list(self, payload: Any) -> None:
@@ -1593,6 +1698,14 @@ class Phase4AnalysisStore:
                     lap = None
                 if lap is not None:
                     self._pit_context.setdefault(driver, set()).add(lap)
+                item_focus = None
+                if self._race_trace_observation.get("status") == "ready" and _text(
+                    item.get("Utc") or item.get("utc")
+                ):
+                    item_focus = {
+                        **deepcopy(self._race_trace_observation),
+                        "event_time_basis": "utc_field",
+                    }
                 self._event(
                     identity=f"pit:{driver}:{item_key}",
                     category="pit",
@@ -1612,6 +1725,7 @@ class Phase4AnalysisStore:
                         anchor_type="driver_lap",
                         source="PitStopSeries",
                     ),
+                    focus_observation=item_focus,
                 )
 
     def _on_race_control(self, payload: Any) -> None:
@@ -1619,27 +1733,51 @@ class Phase4AnalysisStore:
             return
         messages = payload.get("Messages")
         entries = _items(messages) if messages is not None else [("0", payload)]
+        observe = getattr(self._bus, "consumed_observation", None)
+        observation = observe(payload) if callable(observe) else pending_observation()
+        focus_observation = (
+            observation if observation.get("status") == "ready" else None
+        )
+        snapshot = payload.get("_f1_snapshot") is True
         for key, item in entries:
             message = _text(item.get("Message") or item.get("message"))
             if not message:
                 continue
+            source_key = _text(item.get("Id")) or _text(item.get("id")) or key
+            fingerprint = _race_control_fingerprint(item, message, source_key)
+            retained = self._race_control_identities.get(fingerprint)
+            current = self._timeline.get(retained.event_id) if retained else None
+            if current is not None and retained is not None:
+                # A snapshot or republished row has no evidence that its lap
+                # metadata is newer. Only the owning live row may revise it.
+                if snapshot or retained.source_key not in {None, source_key}:
+                    continue
+                identity = retained.identity
+            else:
+                identity = f"rc:{source_key}:{_utc_text(item)}:{message}"
             upper = message.upper()
-            drivers = tuple(
-                sorted(
-                    {
-                        parsed
-                        for token in upper.replace("-", " ").split()
-                        if token.isdecimal()
-                        and (parsed := _as_int(token)) is not None
-                        and 0 < parsed < 100
-                    }
+            numbers = set()
+            for match in re.finditer(
+                r"\bCARS?\s+(\d{1,2}(?:\s*(?:,|AND|&)\s*\d{1,2})*)\b",
+                upper,
+            ):
+                numbers.update(
+                    int(value)
+                    for value in re.findall(r"\d+", match.group(1))
+                    if 0 < int(value) < 100
                 )
-            )[:4]
-            if any(word in upper for word in ("PENALTY", "INVESTIGATION", "NOTED")):
-                lap = _as_int(item.get("Lap"))
-                if lap is not None:
-                    for driver in drivers:
-                        self._penalty_context.setdefault(driver, set()).add(lap)
+            structured = set()
+            for field in ("RacingNumber", "CarNumber"):
+                value = _as_int(item.get(field))
+                if value is not None and 0 < value < 100:
+                    structured.add(value)
+            if len(structured) > 1 or (
+                structured and numbers and not structured <= numbers
+            ):
+                drivers = ()
+            else:
+                numbers = numbers or structured
+                drivers = tuple(sorted(numbers)) if len(numbers) <= 4 else ()
             if "DELETED" in upper:
                 kind = "lap_deleted"
                 category = "lap_control"
@@ -1656,17 +1794,66 @@ class Phase4AnalysisStore:
                 kind = "race_control_message"
                 category = "race_control"
                 severity = "info"
-            self._event(
-                identity=f"rc:{item.get('Id') or item.get('id') or key}:{_utc_text(item)}:{message}",
+            if (
+                current is None
+                and self._timeline.get(_stable_id(self._session_id, category, identity))
+                is not None
+            ):
+                # The provider can reuse a row for a different structured
+                # incident at the same instant. Do not overwrite that event.
+                identity += f":{_stable_id(repr(fingerprint))}"
+            mentioned = {int(value) for value in re.findall(r"\bLAP\s+(\d+)\b", upper)}
+            lap = next(iter(mentioned)) if len(mentioned) == 1 else None
+            if not mentioned and kind not in {"lap_deleted", "lap_reinstated"}:
+                lap = _as_int(item.get("Lap"))
+            if (
+                current is not None
+                and retained is not None
+                and retained.source_key is None
+                and lap != current.lap_number
+            ):
+                # A timestamp-keyed checkpoint has no original row owner.
+                # Establish one only from matching metadata, not a potentially
+                # older republished row that would undo the checkpoint's lap.
+                continue
+            if any(word in upper for word in ("PENALTY", "INVESTIGATION", "NOTED")):
+                penalty_lap = _as_int(item.get("Lap"))
+                if penalty_lap is not None:
+                    for driver in drivers:
+                        self._penalty_context.setdefault(driver, set()).add(penalty_lap)
+            # A late copy cannot acquire a new observation anchor, including
+            # after a delay/source change or an unverified initial snapshot.
+            item_focus = deepcopy(
+                current.focus_observation if current is not None else focus_observation
+            )
+            if item_focus is not None and _text(item.get("Utc") or item.get("utc")):
+                item_focus["event_time_basis"] = "utc_field"
+            event = self._event(
+                identity=identity,
                 category=category,
                 kind=kind,
                 title=message,
                 payload=item,
                 drivers=drivers,
-                lap_number=_as_int(item.get("Lap")),
+                lap_number=lap,
                 severity=severity,
-                signals=("RaceControlMessages",),
+                signals=("RaceControlMessages", "explicit_lap_text")
+                if len(mentioned) == 1
+                else ("RaceControlMessages",),
+                focus_observation=item_focus,
             )
+            self._race_control_identities[fingerprint] = _RaceControlIdentity(
+                identity,
+                event.event_id,
+                None if snapshot and source_key == _utc_text(item) else source_key,
+            )
+        # Share the timeline's bounded retention; no separate history of
+        # transport aliases survives eviction or a session/replay reset.
+        self._race_control_identities = {
+            fingerprint: retained
+            for fingerprint, retained in self._race_control_identities.items()
+            if self._timeline.get(retained.event_id) is not None
+        }
         self._capture_strategy_laps()
 
     def _on_weather(self, payload: Any) -> None:

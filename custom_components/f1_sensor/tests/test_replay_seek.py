@@ -39,6 +39,7 @@ from custom_components.f1_sensor.incident_detection import (
 )
 from custom_components.f1_sensor.live_window import LiveAvailabilityTracker
 from custom_components.f1_sensor.replay_mode import (
+    ARCHIVE_IDENTITY_VERSION,
     CACHE_VERSION,
     NORMALIZATION_VERSION,
     ReplayController,
@@ -684,7 +685,7 @@ async def test_replay_absolute_forward_seek_uses_state_checkpoint(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("cache_version", [11, 15, 16])
+@pytest.mark.parametrize("cache_version", [11, 15, 16, 17])
 async def test_replay_cached_index_upgrades_seek_checkpoints(
     hass, tmp_path: Path, cache_version: int
 ) -> None:
@@ -736,6 +737,11 @@ async def test_replay_cached_index_upgrades_seek_checkpoints(
                 "cache_version": cache_version,
                 "normalization_version": NORMALIZATION_VERSION,
                 "session_id": session.unique_id,
+                "identity_version": ARCHIVE_IDENTITY_VERSION,
+                "archive_identity": {
+                    "status": "missing",
+                    "session_id": session.unique_id,
+                },
                 "total_frames": 4,
                 "duration_ms": 30_000,
                 "session_started_at_ms": 0,

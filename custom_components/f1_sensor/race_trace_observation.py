@@ -11,7 +11,14 @@ from .history import merge_analysis_session_info
 
 RACE_TRACE_OBSERVATION_VERSION = 1
 OBSERVATION_STREAMS = frozenset(
-    {"SessionInfo", "TimingData", "TimingAppData", "TrackStatus", "PitStopSeries"}
+    {
+        "SessionInfo",
+        "TimingData",
+        "TimingAppData",
+        "TrackStatus",
+        "PitStopSeries",
+        "RaceControlMessages",
+    }
 )
 
 

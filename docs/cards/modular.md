@@ -62,6 +62,14 @@ Data availability depends on the source and session. Adding a module does not cr
 
 Use the focused module guides below for options, examples, waiting states and data interpretation. Shared card settings have their own [configuration reference](/cards/shared-options).
 
+### Choose a minimal Timing view
+
+In **Timing → Module options**, choose **Minimal presentation** for colored timing text, smaller tyre marks and lighter table decoration. Turn on **Use overview rows on narrow cards** for a concise view with the remaining selected fields available when you open a driver. Existing cards keep their current presentation and columns.
+
+Choose **Combined column** to show INT and GAP together. Set the primary value in the editor when building the layout; the combined and narrow views do not add a GAP/INT switch to the card. **Qualifying times to show** can follow the current Q/SQ part or show a chosen part while keeping your saved column choices.
+
+Position changes, driver status badges, dimmed retired rows and tyre age beside the compound are separate choices. Position arrows need a confirmed starting grid for the same session. Penalty badges follow recorded decisions; a pit visit alone does not prove that a penalty was served. See [minimal Timing options](/cards/modular-styling#choose-a-minimal-timing-presentation) for the settings and defaults.
+
 ### Follow push laps
 
 [Follow push laps](/cards/timing#follow-push-laps) to group or filter likely attempts during practice and qualifying.
@@ -74,6 +82,32 @@ Use the focused module guides below for options, examples, waiting states and da
 
 [Configure Pit stops](/cards/pit-stops) and keep reported visits separate from timed stop records.
 
+### Show tyre history
+
+Add **Tyres**, open **Module options** and choose **History** under **Tyre content**. Each driver gets a horizontal timeline with one segment per known stint. Completed segments remain visible after a tyre change. All drivers share the same session-lap scale; each driver's bar grows with their own completed laps.
+
+Select a driver to expand all their known stints directly below the row. Select the same driver again to close the details. The table shows the compound, race-lap range, laps driven in that stint, tyre age before fitting and total tyre age. For a completed stint, the total is the age at removal; for the current stint, it is the latest reported age.
+
+A used tyre can start with earlier mileage. For example, **14** laps in this stint plus **3** before fitting means **17** total. Those earlier three laps do not lengthen the segment on the session-lap timeline. Compound letters accompany the colours, and used tyres have a pattern as well.
+
+**Show compound legend** controls the explanation below the timeline and is on by default. Turn it off to remove the complete legend row. In YAML, configure the module as follows:
+
+```yaml
+type: custom:f1-sensor-card
+modules:
+  - id: tyre-history
+    type: tyres
+    options:
+      content: history
+      show_legend: true
+```
+
+:::info
+The view shows known history for the selected session. Connecting late, restarting the integration or receiving an incomplete source snapshot can leave earlier stints or lap boundaries unavailable. Unknown values appear as **—**, not zero. **0** before fitting means a known starting age of zero laps. See [Current Tyres](/entities/current-tyres) for the underlying fields.
+:::
+
+During replay, seeking restores the recorded history up to the selected position. Seeking backwards removes later stints from the view. When an older replay cache is loaded, the integration rebuilds its history index from the cached recording; it can only restore observations present in that recording. If **Freeze view** is active, choose **Resume** after seeking to display the history for the new position.
+
 ### Compare practice lap times
 
 [Compare practice best laps](/cards/timing#compare-practice-lap-times) against the fastest valid session best.
@@ -85,6 +119,12 @@ Use the focused module guides below for options, examples, waiting states and da
 ### Show minisectors
 
 [Add minisector status](/cards/minisectors) beside sector times or in a separate module. The source does not provide a time for each minisector.
+
+### Show session rain risk
+
+Select **Session rain risk** in an **Overview** or **Weather** module's fields. The value shows Race Control's published percentage for the identified session, such as **30 % · Practice 3**. It remains hidden when no matching assessment is available and shows a published **0 %**.
+
+This field is separate from the weather provider's forecast probability and the track's rain-detection indicator. Open its details for the original message and timestamp. See [Session Rain Risk](/entities/session-rain-risk) for availability and session behavior.
 
 ### Compare driver details
 

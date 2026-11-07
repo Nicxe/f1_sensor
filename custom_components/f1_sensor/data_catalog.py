@@ -86,6 +86,7 @@ NON_SPOILER_PRODUCTS = frozenset(
 
 LIVE_PRODUCTS = {
     "track_weather": ("weather_data_coordinator", live.TrackWeatherModel),
+    "session_rain_risk": ("session_rain_risk_coordinator", live.SessionRainRiskModel),
     "track_status": ("track_status_coordinator", live.TrackStatusModel),
     "session_status": ("session_status_coordinator", live.SessionStatusModel),
     "current_session": ("session_info_coordinator", live.CurrentSessionModel),

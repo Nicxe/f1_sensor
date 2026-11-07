@@ -44,6 +44,7 @@ from .static_data_models import ProjectionModel
 from .stream_state import StreamStateMixin
 from .team_radio_common import team_radio_clip_id
 from .team_radio_media import team_radio_media_url
+from .tyre_history import tyre_strategy_history
 
 _TRACK_LIMITS_DELETED = re.compile(
     "CAR (\\d+) \\(([A-Z]{2,3})\\) (?:TIME [0-9:.]+|LAP) DELETED - TRACK LIMITS AT TURN (\\d+) LAP (\\d+)",
@@ -96,6 +97,13 @@ _REASON_PATTERN = re.compile(
     "(?:NOTED|UNDER INVESTIGATION|NO FURTHER (?:INVESTIGATION|ACTION))\\s*-\\s*(.+?)$",
     re.IGNORECASE,
 )
+
+
+def _penalty_service_key(value: object) -> str:
+    """Compare the stated sanction without conflating time and stop/go."""
+    text = str(value or "").upper()
+    text = re.sub(r"STOP(?:[-\s]+AND[-\s]+|/)GO", "STOP GO", text)
+    return " ".join(text.split())
 
 
 class LiveProjectionModel(StreamStateMixin, ProjectionModel):
@@ -271,6 +279,17 @@ class PredictionProjection(LiveProjectionModel):
     def _clear_state(self) -> None:
         self._attr_native_value = None
         self._attr_extra_state_attributes = {}
+
+
+class SessionRainRiskModel(LiveProjectionModel):
+    """Expose the shared session assessment without maintaining another cache."""
+
+    def refresh_data(self) -> None:
+        from .session_rain_risk import empty_session_rain_risk
+
+        attributes = self.coordinator.data or empty_session_rain_risk()
+        self._attr_native_value = attributes.get("percentage")
+        self._attr_extra_state_attributes = deepcopy(attributes)
 
 
 class TrackWeatherModel(LiveProjectionModel):
@@ -1600,12 +1619,39 @@ class InvestigationsModel(LiveProjectionModel):
         reason = self._extract_reason(message_text)
         driver_tlas = [d[1] for d in drivers]
         racing_numbers = [d[0] for d in drivers]
-        if _PENALTY_SERVED.search(message_text):
-            if drivers:
-                tlas_set = set(driver_tlas)
-                self._penalties = [
-                    p for p in self._penalties if p.get("driver") not in tlas_set
+        if served := _PENALTY_SERVED.search(message_text):
+            # A served notice identifies one sanction, not every penalty held
+            # by that driver. Keep ambiguous candidates, but stop presenting
+            # their remaining time as known until a specific notice resolves it.
+            tail = message_text[served.end() :].strip().removeprefix("-").strip()
+            detail = _PENALTY_ISSUED.match(f"FIA STEWARDS: {tail}")
+            generic = re.fullmatch(r"FOR CAR \d+ \([A-Z]{2,3}\)", tail, re.IGNORECASE)
+            remove = set()
+            uncertain = set()
+            served_drivers = [(detail.group(2), detail.group(3))] if detail else drivers
+            for racing_number, _tla in served_drivers:
+                candidates = [
+                    index
+                    for index, penalty in enumerate(self._penalties)
+                    if str(penalty.get("racing_number")) == racing_number
+                    and not str(penalty.get("penalty", "")).startswith("REPRIMAND")
+                    and (
+                        detail is None
+                        or _penalty_service_key(penalty.get("penalty"))
+                        == _penalty_service_key(detail.group(1))
+                    )
                 ]
+                if len(candidates) == 1 and (detail is not None or generic):
+                    remove.update(candidates)
+                else:
+                    uncertain.update(candidates)
+            self._penalties = [
+                {**penalty, "service_status": "unknown"}
+                if index in uncertain
+                else penalty
+                for index, penalty in enumerate(self._penalties)
+                if index not in remove
+            ]
             return True
         match = _PENALTY_ISSUED.search(message_text)
         if match:
@@ -2440,14 +2486,18 @@ class CurrentTyresModel(CoordinatorStreamProjection):
     def __init__(self, coordinator, unique_id, entry_id, device_name):
         super().__init__(coordinator, unique_id, entry_id, device_name)
         self._attr_native_value = None
-        self._attr_extra_state_attributes = {"drivers": []}
+        self._attr_extra_state_attributes = {
+            "drivers": [],
+            "lap_current": None,
+            "lap_total": None,
+        }
 
     def _update_from_coordinator(self) -> bool:
         data = self.coordinator.data or {}
         if not isinstance(data, dict):
             return False
-        drivers = data.get("drivers") or {}
-        if not isinstance(drivers, dict) or not drivers:
+        drivers = data.get("drivers")
+        if not isinstance(drivers, dict):
             return False
         items: list[dict] = []
         for rn, info in drivers.items():
@@ -2458,6 +2508,8 @@ class CurrentTyresModel(CoordinatorStreamProjection):
             compound = tyres.get("compound")
             stint_laps = tyres.get("stint_laps")
             is_new = tyres.get("new")
+            stints, history_complete, completed_laps = tyre_strategy_history(info)
+            timing = info.get("timing") or {}
             position = _extract_driver_position(info)
             tla = ident.get("tla")
             team_color = ident.get("team_color")
@@ -2490,6 +2542,15 @@ class CurrentTyresModel(CoordinatorStreamProjection):
                     "compound_color_rgb": _hex_to_rgb(compound_color),
                     "new": is_new,
                     "stint_laps": stint_laps,
+                    "stints": stints,
+                    "stint_history_complete": history_complete,
+                    "completed_laps": completed_laps,
+                    "retired": timing.get("retired")
+                    if isinstance(timing.get("retired"), bool)
+                    else None,
+                    "in_pit": timing.get("in_pit")
+                    if isinstance(timing.get("in_pit"), bool)
+                    else None,
                 }
             )
 
@@ -2499,12 +2560,20 @@ class CurrentTyresModel(CoordinatorStreamProjection):
 
         items.sort(key=_rn_key)
         self._attr_native_value = len(items)
-        self._attr_extra_state_attributes = {"drivers": items}
+        self._attr_extra_state_attributes = {
+            "drivers": items,
+            "lap_current": data.get("lap_current"),
+            "lap_total": data.get("lap_total"),
+        }
         return True
 
     def _clear_state(self) -> None:
         self._attr_native_value = None
-        self._attr_extra_state_attributes = {"drivers": []}
+        self._attr_extra_state_attributes = {
+            "drivers": [],
+            "lap_current": None,
+            "lap_total": None,
+        }
 
     @property
     def state(self):

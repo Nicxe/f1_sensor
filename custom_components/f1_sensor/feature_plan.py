@@ -51,6 +51,13 @@ _INCIDENT_STREAMS = (
 FEATURE_DEPENDENCIES: dict[str, FeatureDependency] = {
     "current_session": _dependency("SessionInfo", coordinators=("session_info",)),
     "track_weather": _dependency("WeatherData", coordinators=("weather_data",)),
+    "session_rain_risk": _dependency(
+        "RaceControlMessages",
+        "SessionInfo",
+        "SessionStatus",
+        "SessionData",
+        coordinators=("session_rain_risk", "session_info", "session_status"),
+    ),
     "race_lap_count": _dependency(
         "LapCount", "SessionInfo", coordinators=("lap_count",)
     ),

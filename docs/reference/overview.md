@@ -54,6 +54,9 @@ If you are setting up F1 Sensor for the first time, start with [Installation](/g
 | Native Home Assistant conditions and hourly, daily or twice-daily forecasts | [Next Race Weather](/entities/next-race-weather) (`weather.f1_weather`) |
 | Compact current/race-start forecast attributes for templates or existing dashboards | [Weather Summary](/entities/weather-summary) (`sensor.f1_weather`) |
 | Measurements published during the session, including track temperature | [Track Weather](/entities/track-weather) (`sensor.f1_track_weather`) |
+| The rain-risk percentage published by Race Control for a specific session | [Session Rain Risk](/entities/session-rain-risk) (`sensor.f1_session_rain_risk`) |
+
+Session rain risk, detected rain and the weather provider's forecast are different observations. A missing rain-risk message does not imply `0 %`.
 
 ## Which session clock?
 

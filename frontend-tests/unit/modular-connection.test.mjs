@@ -257,3 +257,17 @@ test('automatic Race Control data uses its advertised entry channel without enab
   stop();
   assert.equal(h.active(), 0);
 });
+
+test('event focus group shares only bounded versioned selection and clears independently', () => {
+  const connection = {}, address = { entry: 'one', dashboard: 'racing', view: 'live', name: 'focus' };
+  let peer, other;
+  const first = watchGroup(connection, address, () => {});
+  const second = watchGroup(connection, address, value => { peer = value; });
+  const isolated = watchGroup(connection, { ...address, view: 'other' }, value => { other = value; });
+  const event_focus = { version: 1, contextKey: 'safe-context', eventId: 'event' };
+  first.publish({ event_focus, replay: 'seek' });
+  assert.deepEqual(peer.event_focus, event_focus); assert.deepEqual(other, {}); assert.equal(peer.replay, undefined);
+  first.publish({ event_focus: { ...event_focus, replay: 'seek' } }); assert.deepEqual(peer.event_focus, event_focus);
+  first.publish({ event_focus: null }); assert.equal(peer.event_focus, null);
+  first.close(); second.close(); isolated.close(); assert.equal(connectionDiagnostics(connection).groups, 0);
+});

@@ -66,7 +66,7 @@ test('session changes and unknown spoiler state discard snapshots instead of rev
 });
 
 test('retain, explain and hide keep independent behavior for the same source', async ({ page }) => {
-  await mount(page, ['retain', 'explain', 'hide'].map(unavailable => ({ id: unavailable, type: 'weather', unavailable })));
+  await mount(page, ['retain', 'explain', 'hide'].map(unavailable => ({ id: unavailable, type: 'weather', fields: ['temperature', 'humidity', 'wind', 'rain_probability'], unavailable })));
   await expect(page.locator('#module-retain .weather-item').first()).toBeVisible();
   const before = await page.locator('#module-retain .weather-item').first().innerText();
   await page.evaluate(() => window.pushRetained('weather', 'unavailable'));
@@ -74,6 +74,33 @@ test('retain, explain and hide keep independent behavior for the same source', a
   await expect(page.locator('#module-explain .weather-item')).toHaveCount(0);
   await expect(page.locator('#module-hide')).toHaveCount(0);
   await expect(page.locator('#module-retain')).toContainText('Saved data');
+});
+
+test('a valid independent session assessment remains visible across weather availability policies', async ({ page }) => {
+  await mount(page, ['retain', 'explain', 'hide'].map(unavailable => ({
+    id: unavailable, type: 'weather', fields: ['temperature', 'session_rain_risk'], unavailable,
+  })));
+  const retained = page.locator('#module-retain');
+  const originalTemperature = await retained.locator('.weather-item').first().innerText();
+  await page.evaluate(() => window.pushRetained('weather', 'unavailable'));
+  for (const policy of ['retain', 'explain', 'hide']) {
+    const module = page.locator(`#module-${policy}`);
+    await expect(module).toBeVisible();
+    await expect(module).toContainText('30 %');
+    await expect(module.locator('.rain-risk-details')).toHaveCount(1);
+  }
+  await expect(retained.locator('.weather-item').first()).toHaveText(originalTemperature, { useInnerText: true });
+  await expect(page.locator('#module-explain')).toContainText('Circuit weather is currently unavailable.');
+  await expect(page.locator('#module-hide')).toContainText('Circuit weather is currently unavailable.');
+
+  // If the independent source also disappears, the original policies still
+  // decide how the missing weather source is presented; stale risk stays hidden.
+  await page.evaluate(() => window.pushRetained('session_rain_risk', 'unavailable'));
+  await expect(retained.locator('.rain-risk-details')).toHaveCount(0);
+  await expect(retained.locator('.weather-item').first()).toHaveText(originalTemperature, { useInnerText: true });
+  await expect(retained).toContainText('Saved data');
+  await expect(page.locator('#module-explain .weather-item')).toHaveCount(0);
+  await expect(page.locator('#module-hide')).toHaveCount(0);
 });
 
 test('changing Live Delay clears saved live timing and never writes a service from rendering', async ({ page }) => {

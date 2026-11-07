@@ -1,0 +1,71 @@
+{
+  "source": "2026 Sao Paulo Practice 3, RaceControlMessages.jsonStream rows 3-6; unchanged source payloads",
+  "session": {
+    "Meeting": {
+      "Key": 1299,
+      "Name": "S\u00e3o Paulo Grand Prix",
+      "OfficialName": "FORMULA 1 MSC CRUISES GRANDE PR\u00caMIO DE S\u00c3O PAULO 2026",
+      "Location": "S\u00e3o Paulo",
+      "Number": 20,
+      "Country": {
+        "Key": 10,
+        "Code": "BRA",
+        "Name": "Brazil"
+      },
+      "Circuit": {
+        "Key": 14,
+        "ShortName": "Interlagos"
+      }
+    },
+    "SessionStatus": "Inactive",
+    "ArchiveStatus": {
+      "Status": "Generating"
+    },
+    "Key": 11407,
+    "Type": "Practice",
+    "Number": 3,
+    "Name": "Practice 3",
+    "StartDate": "2026-11-07T11:30:00",
+    "EndDate": "2026-11-07T12:30:00",
+    "GmtOffset": "-03:00:00",
+    "Path": "2026/2026-11-08_S\u00e3o_Paulo_Grand_Prix/2026-11-07_Practice_3/"
+  },
+  "frames": [
+    {
+      "Messages": [
+        {
+          "Utc": "2026-11-07T14:15:06",
+          "Category": "Other",
+          "Message": "BLUE HEAD PADDING MATERIAL MUST BE USED"
+        }
+      ]
+    },
+    {
+      "Messages": {
+        "1": {
+          "Utc": "2026-11-07T14:15:20",
+          "Category": "Other",
+          "Message": "RISK OF RAIN FOR F1 FREE PRACTICE 3 IS 30%"
+        }
+      }
+    },
+    {
+      "Messages": {
+        "2": {
+          "Utc": "2026-11-07T14:15:06",
+          "Category": "Other",
+          "Message": "BLUE HEAD PADDING MATERIAL MUST BE USED"
+        }
+      }
+    },
+    {
+      "Messages": {
+        "3": {
+          "Utc": "2026-11-07T14:15:20",
+          "Category": "Other",
+          "Message": "RISK OF RAIN FOR F1 FREE PRACTICE 3 IS 30%"
+        }
+      }
+    }
+  ]
+}

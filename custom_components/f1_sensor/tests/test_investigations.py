@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 from custom_components.f1_sensor.sensor import F1InvestigationsSensor
 
 
@@ -133,3 +135,165 @@ def test_after_session_investigation_replaces_noted_incident() -> None:
             "after_race": True,
         }
     ]
+
+
+@pytest.mark.parametrize(
+    ("issued", "served", "remaining", "uncertain"),
+    [
+        (
+            ["5 SECOND TIME PENALTY", "10 SECOND TIME PENALTY"],
+            "5 SECOND TIME PENALTY",
+            ["10 SECOND TIME PENALTY"],
+            False,
+        ),
+        (
+            ["5 SECOND TIME PENALTY", "DRIVE THROUGH PENALTY"],
+            "5 SECOND TIME PENALTY",
+            ["DRIVE THROUGH PENALTY"],
+            False,
+        ),
+        (
+            ["10 SECOND STOP AND GO PENALTY", "10 SECOND TIME PENALTY"],
+            "10 SECOND STOP/GO PENALTY",
+            ["10 SECOND TIME PENALTY"],
+            False,
+        ),
+        (
+            ["5 SECOND TIME PENALTY", "5 SECOND TIME PENALTY"],
+            "5 SECOND TIME PENALTY",
+            ["5 SECOND TIME PENALTY"] * 2,
+            True,
+        ),
+        (
+            ["5 SECOND TIME PENALTY", "DRIVE THROUGH PENALTY"],
+            None,
+            ["5 SECOND TIME PENALTY", "DRIVE THROUGH PENALTY"],
+            True,
+        ),
+        (
+            ["5 SECOND TIME PENALTY", "REPRIMAND (DRIVING)"],
+            None,
+            ["REPRIMAND (DRIVING)"],
+            False,
+        ),
+        (["5 SECOND TIME PENALTY"], None, [], False),
+        (["REPRIMAND (DRIVING)"], None, ["REPRIMAND (DRIVING)"], False),
+        (
+            ["5 SECOND TIME PENALTY"],
+            "5 SECONDS TIME PENALTY",
+            ["5 SECOND TIME PENALTY"],
+            True,
+        ),
+        (
+            ["5 SECOND TIME PENALTY"],
+            "10 SECOND TIME PENALTY",
+            ["5 SECOND TIME PENALTY"],
+            False,
+        ),
+    ],
+)
+def test_served_message_resolves_only_an_unambiguous_matching_penalty(
+    issued, served, remaining, uncertain
+) -> None:
+    """A served notice must not silently erase other outstanding sanctions."""
+    sensor = _build_sensor()
+    messages = [
+        {
+            "Utc": f"2026-11-07T12:{index:02d}:00",
+            "Lap": index + 1,
+            "Message": f"FIA STEWARDS: {penalty} FOR CAR 63 (RUS) - INCIDENT {index}",
+        }
+        for index, penalty in enumerate(issued)
+    ]
+    messages.append(
+        {
+            "Utc": "2026-11-07T12:10:00",
+            "Message": "FIA STEWARDS: 5 SECOND TIME PENALTY FOR CAR 1 (VER) - TRACK LIMITS",
+        }
+    )
+    _process_messages(sensor, messages)
+    other_driver = dict(sensor.extra_state_attributes["penalties"][-1])
+    typed = f" - {served}" if served else ""
+    _process_messages(
+        sensor,
+        [
+            {
+                "Utc": "2026-11-07T12:20:00",
+                "Message": f"FIA STEWARDS: PENALTY SERVED{typed} FOR CAR 63 (RUS)",
+            }
+        ],
+    )
+
+    russell = [
+        item
+        for item in sensor.extra_state_attributes["penalties"]
+        if item["racing_number"] == "63"
+    ]
+    assert [item["penalty"] for item in russell] == remaining
+    assert all(
+        (item.get("service_status") == "unknown") == uncertain for item in russell
+    )
+    assert sensor.extra_state_attributes["penalties"][-1] == other_driver
+
+
+def test_ambiguous_served_status_persists_until_a_specific_notice() -> None:
+    sensor = _build_sensor()
+    _process_messages(
+        sensor,
+        [
+            {
+                "Utc": "2026-11-07T12:00:00",
+                "Message": "FIA STEWARDS: 5 SECOND TIME PENALTY FOR CAR 63 (RUS)",
+            },
+            {
+                "Utc": "2026-11-07T12:01:00",
+                "Message": "FIA STEWARDS: DRIVE THROUGH PENALTY FOR CAR 63 (RUS)",
+            },
+            {
+                "Utc": "2026-11-07T12:05:00",
+                "Message": "FIA STEWARDS: PENALTY SERVED FOR CAR 63 (RUS)",
+            },
+        ],
+    )
+    assert all(
+        item["service_status"] == "unknown"
+        for item in sensor.extra_state_attributes["penalties"]
+    )
+    _process_messages(
+        sensor,
+        [
+            {
+                "Utc": "2026-11-07T12:06:00",
+                "Message": "FIA STEWARDS: PENALTY SERVED - DRIVE THROUGH PENALTY FOR CAR 63 (RUS)",
+            }
+        ],
+    )
+    assert [
+        (item["penalty"], item["service_status"])
+        for item in sensor.extra_state_attributes["penalties"]
+    ] == [("5 SECOND TIME PENALTY", "unknown")]
+
+
+def test_served_reason_does_not_clear_a_mentioned_second_drivers_penalty() -> None:
+    sensor = _build_sensor()
+    _process_messages(
+        sensor,
+        [
+            {
+                "Utc": "2026-11-07T12:00:00",
+                "Message": "FIA STEWARDS: 5 SECOND TIME PENALTY FOR CAR 63 (RUS)",
+            },
+            {
+                "Utc": "2026-11-07T12:01:00",
+                "Message": "FIA STEWARDS: 5 SECOND TIME PENALTY FOR CAR 1 (VER)",
+            },
+            {
+                "Utc": "2026-11-07T12:05:00",
+                "Message": "FIA STEWARDS: PENALTY SERVED - 5 SECOND TIME PENALTY FOR CAR 63 (RUS) - COLLISION WITH CAR 1 (VER)",
+            },
+        ],
+    )
+    assert [
+        (item["racing_number"], item.get("service_status"))
+        for item in sensor.extra_state_attributes["penalties"]
+    ] == [("1", None)]

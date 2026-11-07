@@ -1,6 +1,6 @@
 const version = new URL(import.meta.url).searchParams.get('v');
 const load = path => import(`${path}${version ? `?v=${encodeURIComponent(version)}` : ''}`);
-const [{ array }, { number, positiveInteger, seconds, compoundMeta }, { selectRows }] = await Promise.all([load('./data.js'), load('./semantics.js'), load('./season-data.js')]);
+const [{ array }, { number, positiveInteger, seconds, compoundMeta, eventTimestamp }, { selectRows }] = await Promise.all([load('./data.js'), load('./semantics.js'), load('./season-data.js')]);
 const records = value => array(value).filter(item => item && typeof item === 'object' && !Array.isArray(item));
 const text = value => typeof value === 'string' && value.trim() ? value.trim() : null;
 const id = value => ['string', 'number'].includes(typeof value) ? String(value).trim() : '';
@@ -47,10 +47,10 @@ export function timelineModel(snapshot, module, focus = {}) {
     const drivers = numbers.map(rn => people.find(person => id(person.driver_number) === rn) ?? { driver_number: rn });
     const signals = array(raw.supporting_signals).map(text).filter(Boolean);
     const derived = ['position', 'battle'].includes(raw.category) || raw.provider === 'local_estimate';
-    events.set(key, { id: `${snapshot.session_id ?? ''}:${key}`, revision, sequence: number(raw.sequence), numbers,
+    events.set(key, { id: `${snapshot.session_id ?? ''}:${key}`, eventId: key, revision, sequence: number(raw.sequence), numbers,
       codes: drivers.map(person => text(person.tla)).filter(Boolean), teams: drivers.map(person => text(person.team)).filter(Boolean),
       incident_drivers: drivers.map(person => text(person.tla) ?? text(person.name) ?? id(person.driver_number)).join(' / ') || null,
-      incident_lap: positiveInteger(raw.lap_number), event_time: text(raw.occurred_at),
+      incident_lap: positiveInteger(raw.lap_number), event_time: eventTimestamp(raw),
       analysis_title: text(raw.title), analysis_description: text(raw.description), analysis_category: text(raw.category),
       analysis_source: [text(raw.provider), ...signals].filter(Boolean).join(' · ') || null, source_signals: signals, source_provider: text(raw.provider),
       analysis_quality: score(raw.confidence), derived, final: typeof raw.final === 'boolean' ? raw.final : null,
