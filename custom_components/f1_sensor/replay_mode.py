@@ -47,6 +47,7 @@ from .track_map import (
     parse_position_z_line,
     track_map_positions_to_payload,
 )
+from .tyre_history import accumulate_tyre_boundaries, export_tyre_boundaries
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -95,7 +96,7 @@ INDEX_STATUS_NO_DATA = "no_data"
 INDEX_STATUS_ERROR = "error"
 # Index upgrades may rescan compatible frames. A normalization change must
 # instead download the original streams; rescanning cannot recover lost precision.
-CACHE_VERSION = 17
+CACHE_VERSION = 18
 NORMALIZATION_VERSION = 1
 ARCHIVE_IDENTITY_VERSION = 1
 FORMATION_SEARCH_WINDOW = timedelta(seconds=90)
@@ -1974,6 +1975,7 @@ class ReplaySessionManager:
         timingdata_state: dict[str, Any] = {}
         lap_history_state: dict[str, Any] = {}
         last_lap_times: dict[str, str] = {}
+        tyre_boundary_state: dict[str, Any] = {}
         session_start_index = 0
 
         for frame_index, frame in enumerate(frames):
@@ -1992,6 +1994,7 @@ class ReplaySessionManager:
                     timingdata_state.clear()
                     lap_history_state.clear()
                     last_lap_times.clear()
+                    tyre_boundary_state.clear()
                     session_start_index = frame_index
                 initial_state["SessionInfo"] = info
             elif frame.stream == "TopThree" and isinstance(frame.payload, dict):
@@ -2015,7 +2018,16 @@ class ReplaySessionManager:
                 self._extract_grid_from_driverlist(lap_history_state, frame.payload)
                 initial_state[frame.stream] = frame.payload
             else:
-                initial_state[frame.stream] = frame.payload
+                if frame.stream == "LapCount":
+                    initial_state.setdefault("LapCount", {}).update(frame.payload)
+                else:
+                    initial_state[frame.stream] = frame.payload
+            accumulate_tyre_boundaries(
+                tyre_boundary_state,
+                frame.stream,
+                frame.payload,
+                session_lap=initial_state.get("LapCount", {}).get("CurrentLap"),
+            )
 
         if topthree_state["lines"] != [None, None, None]:
             initial_state["TopThree"] = {
@@ -2026,6 +2038,7 @@ class ReplaySessionManager:
             initial_state["TimingAppData"] = timingapp_state
         if self._has_timingdata_state(timingdata_state):
             initial_state["TimingData"] = timingdata_state
+        export_tyre_boundaries(tyre_boundary_state, lap_history_state)
         if self._has_lap_history_state(lap_history_state):
             initial_state["LapHistory"] = lap_history_state
 
@@ -2085,6 +2098,7 @@ class ReplaySessionManager:
             "timingdata_state": {},
             "lap_history_state": {},
             "last_lap_times": {},
+            "tyre_boundary_state": {},
         }
 
     @staticmethod
@@ -2233,8 +2247,16 @@ class ReplaySessionManager:
                 self._deep_merge_replay_state(current, frame.payload)
             else:
                 state[frame.stream] = deepcopy(frame.payload)
+        elif frame.stream == "LapCount":
+            state.setdefault("LapCount", {}).update(frame.payload)
         else:
             state[frame.stream] = deepcopy(frame.payload)
+        accumulate_tyre_boundaries(
+            accumulator["tyre_boundary_state"],
+            frame.stream,
+            frame.payload,
+            session_lap=state.get("LapCount", {}).get("CurrentLap"),
+        )
 
     def _seek_checkpoint_state(
         self,
@@ -2256,7 +2278,8 @@ class ReplaySessionManager:
         if self._has_timingdata_state(timingdata_state):
             state["TimingData"] = deepcopy(timingdata_state)
 
-        lap_history_state = accumulator["lap_history_state"]
+        lap_history_state = deepcopy(accumulator["lap_history_state"])
+        export_tyre_boundaries(accumulator["tyre_boundary_state"], lap_history_state)
         if self._has_lap_history_state(lap_history_state):
             state["LapHistory"] = deepcopy(lap_history_state)
 

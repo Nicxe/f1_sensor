@@ -511,6 +511,14 @@ Declared sources: `current_tyres`, `driver_list`, `tyre_statistics`.
 | `tyre_age` — Tyre age | `current_tyres` → `drivers[].stint_laps` | Capability: public_timing; modes: live, replay; sessions: practice, qualifying, sprint_qualifying, sprint, race; freshness: session; spoiler-protected | Identity: entry, session, driver; generation: session; time: source: not_provided; received: not_provided; updated: entity.last_updated; displayed: snapshot | Type: integer; unit: laps; table, detail |
 | `tyre_new` — New set | `current_tyres` → `drivers[].new` | Capability: public_timing; modes: live, replay; sessions: practice, qualifying, sprint_qualifying, sprint, race; freshness: session; spoiler-protected | Identity: entry, session, driver; generation: session; time: source: not_provided; received: not_provided; updated: entity.last_updated; displayed: snapshot | Type: boolean; table, detail |
 
+### content=history
+
+| Field | Source and path | Coverage | Identity and time | Presentation |
+| --- | --- | --- | --- | --- |
+| `position` — Pos | `current_tyres` → `drivers[].position` | Capability: public_timing; modes: live, replay; sessions: practice, qualifying, sprint_qualifying, sprint, race; freshness: session; spoiler-protected | Identity: entry, session, driver; generation: session; time: source: not_provided; received: not_provided; updated: entity.last_updated; displayed: snapshot | Type: integer; table, detail |
+| `driver` — Driver | `current_tyres` → `drivers[].racing_number` | Capability: public_timing; modes: live, replay; sessions: practice, qualifying, sprint_qualifying, sprint, race; freshness: session; spoiler-protected | Identity: entry, session, driver; generation: session; time: source: not_provided; received: not_provided; updated: entity.last_updated; displayed: snapshot | Type: driver; table, detail |
+| `tyre_age` — Tyre age | `current_tyres` → `drivers[].stints[].total_laps (current stint)` | Capability: public_timing; modes: live, replay; sessions: practice, qualifying, sprint_qualifying, sprint, race; freshness: session; spoiler-protected | Identity: entry, session, driver; generation: session; time: source: not_provided; received: not_provided; updated: entity.last_updated; displayed: snapshot | Type: integer; unit: laps; table, detail |
+
 ### content=statistics
 
 | Field | Source and path | Coverage | Identity and time | Presentation |

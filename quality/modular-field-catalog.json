@@ -10979,6 +10979,137 @@
           ]
         },
         {
+          "id": "content=history",
+          "options": {
+            "content": "history"
+          },
+          "fields": [
+            {
+              "capability": "public_timing",
+              "filterable": false,
+              "freshness": "session",
+              "generation": "session",
+              "id": "position",
+              "identity": [
+                "entry",
+                "session",
+                "driver"
+              ],
+              "label": "Pos",
+              "mobile": 0,
+              "modes": [
+                "live",
+                "replay"
+              ],
+              "path": "drivers[].position",
+              "presentations": [
+                "table",
+                "detail"
+              ],
+              "sessions": [
+                "practice",
+                "qualifying",
+                "sprint_qualifying",
+                "sprint",
+                "race"
+              ],
+              "sortable": true,
+              "source": "current_tyres",
+              "spoiler": true,
+              "timestamps": {
+                "source": "not_provided",
+                "received": "not_provided",
+                "updated": "entity.last_updated",
+                "displayed": "snapshot"
+              },
+              "type": "integer",
+              "unit": null
+            },
+            {
+              "capability": "public_timing",
+              "filterable": true,
+              "freshness": "session",
+              "generation": "session",
+              "id": "driver",
+              "identity": [
+                "entry",
+                "session",
+                "driver"
+              ],
+              "label": "Driver",
+              "mobile": 0,
+              "modes": [
+                "live",
+                "replay"
+              ],
+              "path": "drivers[].racing_number",
+              "presentations": [
+                "table",
+                "detail"
+              ],
+              "sessions": [
+                "practice",
+                "qualifying",
+                "sprint_qualifying",
+                "sprint",
+                "race"
+              ],
+              "sortable": true,
+              "source": "current_tyres",
+              "spoiler": true,
+              "timestamps": {
+                "source": "not_provided",
+                "received": "not_provided",
+                "updated": "entity.last_updated",
+                "displayed": "snapshot"
+              },
+              "type": "driver",
+              "unit": null
+            },
+            {
+              "capability": "public_timing",
+              "filterable": false,
+              "freshness": "session",
+              "generation": "session",
+              "id": "tyre_age",
+              "identity": [
+                "entry",
+                "session",
+                "driver"
+              ],
+              "label": "Tyre age",
+              "mobile": 2,
+              "modes": [
+                "live",
+                "replay"
+              ],
+              "path": "drivers[].stints[].total_laps (current stint)",
+              "presentations": [
+                "table",
+                "detail"
+              ],
+              "sessions": [
+                "practice",
+                "qualifying",
+                "sprint_qualifying",
+                "sprint",
+                "race"
+              ],
+              "sortable": true,
+              "source": "current_tyres",
+              "spoiler": true,
+              "timestamps": {
+                "source": "not_provided",
+                "received": "not_provided",
+                "updated": "entity.last_updated",
+                "displayed": "snapshot"
+              },
+              "type": "integer",
+              "unit": "laps"
+            }
+          ]
+        },
+        {
           "id": "content=statistics",
           "options": {
             "content": "statistics"

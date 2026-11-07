@@ -686,6 +686,22 @@ export class F1SensorCard extends LitElement {
     if (model.invalidRange) model.blocked = this.w('modular.the_first_lap_is_after_the_last_lap_adjust_the_lap_range_in_the');
     return model;
   }
+  tyreHistoryGeneration() {
+    const entry = this.entry;
+    return JSON.stringify([entry?.entry_id, data.sessionContext(this.sourceHass, entry).key, this.savedSources.viewGeneration,
+      entry?.card_data?.session_context?.data?.generation ?? null, entry?.card_data?.current_tyres?.data?.generation ?? null]);
+  }
+  guardFrozenTyreHistory(models) {
+    const generation = this.tyreHistoryGeneration();
+    for (const module of this.config.modules) {
+      if (module.type !== 'tyres' || module.options.content !== 'history') continue;
+      const previous = models.get(module.id);
+      if (previous && previous.selectionGeneration !== generation) {
+        models.set(module.id, { title: moduleTitle(module, this.language), history: true, rows: [], selectionGeneration: generation,
+          blocked: this.w('modular.tyre_history_snapshot_expired') });
+      }
+    }
+  }
   guardFrozenRaceTrace(models) {
     // A local reading snapshot must never retain future laps across a rewind,
     // another session/delay generation or an unknown protection state.
@@ -865,6 +881,7 @@ export class F1SensorCard extends LitElement {
       }
       if (module.type === 'tyres') {
         Object.assign(model, sessionData.tyresModel(viewHass, viewEntry, effective, focus));
+        if (model.history) model.selectionGeneration = this.tyreHistoryGeneration();
         if (model.waiting) model.notice = this.w('modular.waiting_for_compound_information_from_timingappdata_lap_counts_alone_do_not_identify_a_tyre');
         if (model.statistics && !model.waiting) model.notice = this.w('modular.recorded_laps_across_all_drivers_and_stints_differences_include_fuel_track_conditions_and_traffic');
       }
@@ -1013,7 +1030,7 @@ export class F1SensorCard extends LitElement {
     if (!this.entry) return html`<ha-card part="card" data-style=${settings.appearance.style} data-font=${settings.appearance.font} data-surface=${settings.appearance.surface} data-accent=${String(accent.visible)} role="group" aria-label=${this.config.title} style=${style}>${this.previewControls()}${settings.appearance.show_header ? html`<header class="heading" part="header">${this.actionHeading()}</header>` : ''}<div class="empty" part="empty-state">${this.discovery?.status === 'error' ? this.discovery.error : (this.modelPreview?.entries ?? this.entries).length > 1 ? this.w('modular.choose_an_f1_sensor_installation_in_the_editor') : this.w('modular.waiting_for_f1_sensor')}</div>${this.actionAlternatives()}</ha-card>`;
     if (this.entry?.data_api?.configuration_required) return html`<ha-card part="card" style=${style}><div class="empty" role="status"><p>${this.w('modular.data_configuration_required')}</p><a href="/config/integrations/integration/f1_sensor">${this.w('modular.open_integration_settings')}</a></div></ha-card>`;
     const models = this.frozen ? this.frozenModels : this.buildModels();
-    if (this.frozen) this.guardFrozenRaceTrace(models);
+    if (this.frozen) { this.guardFrozenRaceTrace(models); this.guardFrozenTyreHistory(models); }
     const protection = data.spoilerState(this.sourceHass, this.entry, this.config.context.spoilers);
     const modules = this.config.modules.filter(module => module.enabled && this.moduleVisible(module) && !models.get(module.id)?.hidden);
     const active = modules.some(module => module.id === this.tab) ? this.tab : modules[0]?.id;

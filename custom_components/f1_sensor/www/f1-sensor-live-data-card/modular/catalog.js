@@ -457,12 +457,13 @@ export const MODULES = {
     incident_lap: { ...FIELDS.incident_lap, source: 'analysis', path: 'timeline.events[].lap_number' },
   } }),
   tyres: module('tyres', 'Tyres', ['position', 'driver', 'team', 'tyre', 'tyre_age', 'tyre_new', 'compound_best', 'compound_gap', 'compound_laps', 'new_sets', 'total_stints', 'best_runs'], {
-    content: { type: 'enum', values: ['current', 'statistics'], default: 'current', label: 'Tyre content' },
+    content: { type: 'enum', values: ['current', 'history', 'statistics'], default: 'current', label: 'Tyre content' },
     compounds: { type: 'list', values: ['SOFT', 'MEDIUM', 'HARD', 'INTERMEDIATE', 'WET', 'UNKNOWN'], default: [], label: 'Compounds (empty = all)' },
     sort: { type: 'enum', values: ['position', 'driver', 'tyre_age', 'compound_best', 'compound_laps'], default: 'position', label: 'Sort by' },
     direction: { type: 'enum', values: ['asc', 'desc'], default: 'asc', label: 'Direction' },
     rows: { type: 'integer', min: 1, max: 100, default: 30, label: 'Maximum rows' },
     show_compound_name: { type: 'boolean', default: true, label: 'Show compound name' },
+    show_legend: { type: 'boolean', default: true, label: 'modular.tyre_history_legend' },
     best_times_limit: { type: 'integer', min: 1, max: 500, default: 3, label: 'Fastest stints per compound' },
   }, ['current_tyres', 'tyre_statistics', 'driver_list'], { spoiler: true, focus: ['driver', 'team'] }),
   pit_stops: module('pit_stops', 'Pit stops', ['driver', 'team', 'status', 'pit_count', 'stop_lap', 'stop_time', 'lane_time', 'pit_delta', 'event_time'], {
@@ -528,6 +529,7 @@ export function timingFields(module, session) {
 }
 export const TYRE_PROFILES = {
   current: ['position', 'driver', 'tyre', 'tyre_age', 'tyre_new'],
+  history: ['position', 'driver', 'tyre_age'],
   statistics: ['tyre', 'compound_best', 'compound_gap', 'compound_laps', 'new_sets'],
 };
 export const INCIDENT_PROFILES = {
@@ -574,6 +576,7 @@ export function moduleFields(module) {
     if (content === 'stints') return ['driver', 'team', 'tyre', 'stint_number', 'stint_first_lap', 'stint_last_lap', 'stint_start_age', 'clean_pace', 'raw_pace', 'degradation', 'clean_samples', 'raw_samples', 'excluded_samples', 'exclusion_reasons', 'strategy_pit_loss', 'analysis_quality'];
     return [...(STRATEGY_PROFILES[content] ?? []), ...(content === 'pit_outcomes' ? ['analysis_source'] : [])];
   }
+  if (module.type === 'tyres' && module.options?.content === 'history') return ['position', 'driver', 'tyre_age'];
   if (module.type === 'tyres') return module.options?.content === 'statistics'
     ? ['tyre', 'compound_best', 'compound_gap', 'compound_laps', 'new_sets', 'total_stints', 'best_runs']
     : ['position', 'driver', 'team', 'tyre', 'tyre_age', 'tyre_new'];
@@ -619,7 +622,7 @@ export function fieldDefinition(module, id) {
   if (module.type === 'standings' && id === 'result_position') field = { ...field, label: 'Position' };
   if (module.type === 'tyres' && ['position', 'driver', 'team', 'tyre', 'tyre_age'].includes(id)) {
     const stats = module.options?.content === 'statistics';
-    field = { ...field, source: stats ? 'tyre_statistics' : 'current_tyres', path: stats ? 'compounds.key' : ({ position: 'drivers[].position', driver: 'drivers[].racing_number', team: 'driver_list.drivers[].team', tyre: 'drivers[].compound', tyre_age: 'drivers[].stint_laps' })[id] };
+    field = { ...field, source: stats ? 'tyre_statistics' : 'current_tyres', path: stats ? 'compounds.key' : ({ position: 'drivers[].position', driver: 'drivers[].racing_number', team: 'driver_list.drivers[].team', tyre: 'drivers[].compound', tyre_age: module.options?.content === 'history' ? 'drivers[].stints[].total_laps (current stint)' : 'drivers[].stint_laps' })[id] };
   }
   return field;
 }
@@ -640,7 +643,7 @@ export const PRESETS = {
   custom: { label: 'Build your own', modules: [] },
 };
 
-const CONTENT_TITLES = { incidents: { investigations: 'Incidents', track_limits: 'Track limits events', track_limits_summary: 'Track limits by driver' }, weather: { automatic_conditions: 'Automatic current weather', weather_overview: 'Weather overview', current_conditions: 'Current circuit weather', race_forecast: 'Race-start forecast', track_conditions: 'Track weather observations' }, strategy: { stints: 'Stint pace and quality', compound_comparison: 'Compound pace comparison', teammates: 'Teammate comparison', crossover: 'Compound crossover estimates', pit_outcomes: 'Observed pit-cycle outcomes' }, battles: { active_battles: 'Current battles', battle_history: 'Battle history', position_exchanges: 'Position exchanges' } };
+const CONTENT_TITLES = { tyres: { history: 'modular.tyre_history' }, incidents: { investigations: 'Incidents', track_limits: 'Track limits events', track_limits_summary: 'Track limits by driver' }, weather: { automatic_conditions: 'Automatic current weather', weather_overview: 'Weather overview', current_conditions: 'Current circuit weather', race_forecast: 'Race-start forecast', track_conditions: 'Track weather observations' }, strategy: { stints: 'Stint pace and quality', compound_comparison: 'Compound pace comparison', teammates: 'Teammate comparison', crossover: 'Compound crossover estimates', pit_outcomes: 'Observed pit-cycle outcomes' }, battles: { active_battles: 'Current battles', battle_history: 'Battle history', position_exchanges: 'Position exchanges' } };
 export function moduleTitle(module, language = 'en') {
   if (module.title) return module.title;
   const content = module.options?.content ?? MODULES[module.type]?.options?.content?.default;

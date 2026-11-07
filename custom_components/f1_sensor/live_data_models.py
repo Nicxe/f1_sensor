@@ -44,6 +44,7 @@ from .static_data_models import ProjectionModel
 from .stream_state import StreamStateMixin
 from .team_radio_common import team_radio_clip_id
 from .team_radio_media import team_radio_media_url
+from .tyre_history import tyre_strategy_history
 
 _TRACK_LIMITS_DELETED = re.compile(
     "CAR (\\d+) \\(([A-Z]{2,3})\\) (?:TIME [0-9:.]+|LAP) DELETED - TRACK LIMITS AT TURN (\\d+) LAP (\\d+)",
@@ -2440,14 +2441,18 @@ class CurrentTyresModel(CoordinatorStreamProjection):
     def __init__(self, coordinator, unique_id, entry_id, device_name):
         super().__init__(coordinator, unique_id, entry_id, device_name)
         self._attr_native_value = None
-        self._attr_extra_state_attributes = {"drivers": []}
+        self._attr_extra_state_attributes = {
+            "drivers": [],
+            "lap_current": None,
+            "lap_total": None,
+        }
 
     def _update_from_coordinator(self) -> bool:
         data = self.coordinator.data or {}
         if not isinstance(data, dict):
             return False
-        drivers = data.get("drivers") or {}
-        if not isinstance(drivers, dict) or not drivers:
+        drivers = data.get("drivers")
+        if not isinstance(drivers, dict):
             return False
         items: list[dict] = []
         for rn, info in drivers.items():
@@ -2458,6 +2463,8 @@ class CurrentTyresModel(CoordinatorStreamProjection):
             compound = tyres.get("compound")
             stint_laps = tyres.get("stint_laps")
             is_new = tyres.get("new")
+            stints, history_complete, completed_laps = tyre_strategy_history(info)
+            timing = info.get("timing") or {}
             position = _extract_driver_position(info)
             tla = ident.get("tla")
             team_color = ident.get("team_color")
@@ -2490,6 +2497,15 @@ class CurrentTyresModel(CoordinatorStreamProjection):
                     "compound_color_rgb": _hex_to_rgb(compound_color),
                     "new": is_new,
                     "stint_laps": stint_laps,
+                    "stints": stints,
+                    "stint_history_complete": history_complete,
+                    "completed_laps": completed_laps,
+                    "retired": timing.get("retired")
+                    if isinstance(timing.get("retired"), bool)
+                    else None,
+                    "in_pit": timing.get("in_pit")
+                    if isinstance(timing.get("in_pit"), bool)
+                    else None,
                 }
             )
 
@@ -2499,12 +2515,20 @@ class CurrentTyresModel(CoordinatorStreamProjection):
 
         items.sort(key=_rn_key)
         self._attr_native_value = len(items)
-        self._attr_extra_state_attributes = {"drivers": items}
+        self._attr_extra_state_attributes = {
+            "drivers": items,
+            "lap_current": data.get("lap_current"),
+            "lap_total": data.get("lap_total"),
+        }
         return True
 
     def _clear_state(self) -> None:
         self._attr_native_value = None
-        self._attr_extra_state_attributes = {"drivers": []}
+        self._attr_extra_state_attributes = {
+            "drivers": [],
+            "lap_current": None,
+            "lap_total": None,
+        }
 
     @property
     def state(self):

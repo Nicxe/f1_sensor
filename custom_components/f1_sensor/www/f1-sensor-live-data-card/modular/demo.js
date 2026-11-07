@@ -37,7 +37,16 @@ export function makeDemo(scene = 'race', language = 'en', entryId = 'demo') {
       sector_2: { time: 30.543 + index * .14, lap: 13, personal_fastest: index === 1 },
     }, personal_best: Object.fromEntries([1, 2, 3].map(n => [`sector_${n}`, { time: [24.321, 30.543, 25.91][n - 1] + index * .1, lap: 10 + n - 1, session_part: qualifying ? 2 : null, personal_fastest: true, overall_fastest: index === 0 }])) },
   })) : [], current_qualifying_part: qualifying ? 2 : null, push_laps_status: ['practice', 'qualifying', 'sprint_qualifying'].includes(scene) ? 'available' : 'unsupported' });
-  put('current_tyres', active ? String(people.length) : 'unavailable', { drivers: people.map((driver, i) => ({ racing_number: driver.racing_number, compound_short: driver.compound, position: i + 1, new: i !== 3, stint_laps: 7 + i })) });
+  put('current_tyres', active ? String(people.length) : 'unavailable', { lap_current: active ? 12 : null, lap_total: active ? 53 : null,
+    drivers: people.map((driver, i) => {
+      const total = 7 + i, before = i === 3 ? 3 : 0, laps = total - before, first = 13 - laps;
+      const compound = { S: 'SOFT', M: 'MEDIUM', H: 'HARD' }[driver.compound];
+      return { racing_number: driver.racing_number, compound_short: driver.compound, position: i + 1, new: i !== 3, stint_laps: total,
+        completed_laps: 12, retired: false, in_pit: i === 3, stint_history_complete: true, stints: [
+          { stint_index: 0, compound: compound === 'MEDIUM' ? 'SOFT' : 'MEDIUM', new: true, first_lap: 1, last_lap: first - 1, stint_laps: first - 1, tyre_age_at_start: 0, total_laps: first - 1, is_current: false, coverage: 'complete' },
+          { stint_index: 1, compound, new: i !== 3, first_lap: first, last_lap: 12, stint_laps: laps, tyre_age_at_start: before, total_laps: total, is_current: true, coverage: 'complete' },
+        ] };
+    }) });
   put('tyre_statistics', active ? 'SOFT' : 'unavailable', { status: 'ready', source_stream: 'TimingAppData', compounds: Object.fromEntries(['SOFT', 'MEDIUM', 'HARD'].map((compound, index) => [compound, { total_laps: 78 + index * 14, sets_used: index + 2, sets_used_total: index + 4, best_times: [{ time_secs: 80.873 + index * .75, racing_number: people[index].racing_number, driver_name: people[index].full_name, driver_tla: people[index].tla, stint_index: 0, new_tyre: true }] }])), deltas: { SOFT: 0, MEDIUM: .75, HARD: 1.5 } });
   put('pitstops', active ? '3' : 'unavailable', { cars: { 16: { count: 2, stops: [{ lap: 5, timestamp: '2026-09-13T13:08:00Z', pit_stop_time: 2.43, pit_lane_time: 23.781, pit_delta: 20.02 }, { lap: 10, timestamp: '2026-09-13T13:20:00Z', pit_stop_time: 2.17, pit_lane_time: 22.9, pit_delta: null }] }, 4: { count: 1, stops: [{ lap: 9, timestamp: '2026-09-13T13:18:00Z', pit_stop_time: 2.5, pit_lane_time: 23.15, pit_delta: 19.521 }] } }, last_update: '2026-09-13T13:20:00Z' });
   put('investigations', active ? '2' : 'unavailable', { noted: [], under_investigation: [{ drivers: ['NOR', 'VER'], racing_numbers: ['4', '1'], utc: '2026-09-13T13:24:00Z', lap: 11, location: 'TURN 1', reason: 'Demo · causing a collision', after_race: true }], penalties: [{ driver: 'VER', racing_number: '1', utc: '2026-09-13T13:26:00Z', lap: 12, penalty: '5 SECOND TIME PENALTY', reason: 'Demo · leaving the track' }], no_further_action: [{ drivers: ['LEC'], racing_numbers: ['16'], utc: '2026-09-13T13:15:00Z', nfi_utc: '2026-09-13T13:28:00Z', lap: 8, location: 'PIT EXIT', reason: 'Demo · impeding' }] });

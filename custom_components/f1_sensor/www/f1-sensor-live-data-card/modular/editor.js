@@ -363,7 +363,8 @@ export class F1SensorCardEditor extends LitElement {
     const archiveState = saved.type === 'archive' ? archiveModel(saved, entry?.entry_id, query => protectedArchive ? { status: 'ready', data: null } : this.archive.read(query)) : null;
     const archiveFields = archiveState?.fields ?? null;
     const module = saved.type === 'timing' ? { ...saved, fields: timingFields(saved, sessionContext(this.hass, entry).name) } : archiveFields ? { ...saved, fields: archiveFields } : saved;
-    const available = moduleFields(module), fields = [...module.fields, ...available.filter(id => !module.fields.includes(id))];
+    const available = moduleFields(module), tyreHistory = module.type === 'tyres' && module.options.content === 'history';
+    const fields = tyreHistory ? ['position', 'tyre_age'] : [...module.fields, ...available.filter(id => !module.fields.includes(id))];
     const index = this.config.modules.findIndex(item => item.id === module.id);
     return html`<section class="selected-module" aria-label=${this.w('modular.selected_module')}><div class="selected-module-heading"><span class="module-number" aria-hidden="true">${index + 1}</span><div><p class="scope-kicker">${this.w('modular.editing_module_value_of_length', { value: index + 1, length: this.config.modules.length })}</p><h4>${moduleTitle(module, this.language)}</h4><p class="scope-description">${this.w('modular.only_this_module_is_affected_by_the_settings_below')}</p></div></div>
       ${this.input(this.w('modular.module_title'), module.title, value => this.setModule('title', value))}
@@ -379,9 +380,9 @@ export class F1SensorCardEditor extends LitElement {
         <p class="muted">${this.w('modular.session_details_and_status_labels_remain_visible_when_the_title_is_hidden')}</p>
       </details>
       ${['timing', 'archive'].includes(module.type) && module.options.profile !== 'custom' && (module.type !== 'archive' || module.options.content === 'classification') ? html`<p class="muted">${this.w('modular.this_profile_chooses_the_columns_changing_a_checkbox_or_order_switches_to_custom_columns')}</p>` : ''}
-      <details open><summary>${this.w('modular.content_and_columns')}</summary>${module.type === 'map' ? html`<p class="muted"><strong>${this.w('modular.track_markings')} · ${this.w('modular.experimental')}.</strong> ${this.w('modular.track_markings_experimental_note')}</p>` : ''}${repeat(fields, id => id, id => html`<div class="field-row">
+      <details open><summary>${this.w('modular.content_and_columns')}</summary>${module.type === 'map' ? html`<p class="muted"><strong>${this.w('modular.track_markings')} · ${this.w('modular.experimental')}.</strong> ${this.w('modular.track_markings_experimental_note')}</p>` : ''}${tyreHistory ? html`<p class="muted">${this.w('modular.tyre_history_fixed_columns')}</p>` : ''}${repeat(fields, id => id, id => html`<div class="field-row">
         ${this.check(label(fieldDefinition(module, id), this.language) || id, module.fields.includes(id), checked => this.setModule('fields', checked ? [...module.fields, id] : module.fields.filter(key => key !== id)))}
-        ${module.fields.includes(id) ? html`<button aria-label=${`${this.w('modular.move_up')} ${label(fieldDefinition(module, id), this.language) || id}`} ?disabled=${module.fields.indexOf(id) === 0} @click=${() => { const fields = [...module.fields], index = fields.indexOf(id); [fields[index - 1], fields[index]] = [fields[index], fields[index - 1]]; this.setModule('fields', fields); }}>↑</button><button aria-label=${`${this.w('modular.move_down')} ${label(fieldDefinition(module, id), this.language) || id}`} ?disabled=${module.fields.indexOf(id) === module.fields.length - 1} @click=${() => { const fields = [...module.fields], index = fields.indexOf(id); [fields[index + 1], fields[index]] = [fields[index], fields[index + 1]]; this.setModule('fields', fields); }}>↓</button>` : ''}
+        ${module.fields.includes(id) && !tyreHistory ? html`<button aria-label=${`${this.w('modular.move_up')} ${label(fieldDefinition(module, id), this.language) || id}`} ?disabled=${module.fields.indexOf(id) === 0} @click=${() => { const fields = [...module.fields], index = fields.indexOf(id); [fields[index - 1], fields[index]] = [fields[index], fields[index - 1]]; this.setModule('fields', fields); }}>↑</button><button aria-label=${`${this.w('modular.move_down')} ${label(fieldDefinition(module, id), this.language) || id}`} ?disabled=${module.fields.indexOf(id) === module.fields.length - 1} @click=${() => { const fields = [...module.fields], index = fields.indexOf(id); [fields[index + 1], fields[index]] = [fields[index], fields[index + 1]]; this.setModule('fields', fields); }}>↓</button>` : ''}
         ${!available.includes(id) ? html`<small class="muted">${this.w('modular.saved_not_used_by_this_view')}</small>` : ''}
       </div>`)}</details>
       ${module.type === 'timing' ? html`<details><summary>${this.w('modular.driver_details')}</summary>
@@ -424,6 +425,8 @@ export class F1SensorCardEditor extends LitElement {
         if (module.type === 'telemetry' && key === 'selected') return this.telemetryPicker(module);
         if (module.type === 'race_control' && ['limit', 'order'].includes(key) && module.options.presentation === 'latest_message') return '';
         if (module.type === 'team_radio' && key === 'messages_to_show' && module.options.presentation === 'latest_message') return '';
+        if (module.type === 'tyres' && (key === 'show_legend' && module.options.content !== 'history' || ['show_compound_name', 'best_times_limit'].includes(key) && module.options.content === 'history')) return '';
+        if (module.type === 'tyres' && module.options.content === 'history' && key === 'sort') return this.select(title, ['position', 'driver', 'tyre_age'].includes(value) ? value : 'position', ['position', 'driver', 'tyre_age'].map(value => [value, this.optionName(value)]), value => this.setOption(key, value));
         if (module.type === 'strategy' && key === 'presentation' && module.options.content !== 'stints') return '';
         if (module.type === 'strategy' && key === 'minimum_clean_laps' && !['stints', 'compound_comparison'].includes(module.options.content)) return '';
         if (module.type === 'strategy' && key === 'compounds' && ['teammates', 'pit_outcomes'].includes(module.options.content)) return '';
@@ -480,6 +483,7 @@ export class F1SensorCardEditor extends LitElement {
   optionName(value) {
     const calendarLabels = { none: ['None'], round: ['Round'], circuit: ['Circuit'], location: ['Location'], show: ['Show'], dim: ['Mark past starts'], label: ['Show label'] };
     if (calendarLabels[value]) return this.w(...calendarLabels[value]);
+    if (value === 'history') return this.w('modular.tyre_history');
     if (value === 'cumulative_lap_delta') return this.w('modular.race_trace_title');
     if (value === 'time_s') return this.w('modular.time_from_lap_start_s');
     if (value === 'distance') return this.w('modular.estimated_distance_m');

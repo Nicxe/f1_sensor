@@ -1,6 +1,6 @@
 const version = new URL(import.meta.url).searchParams.get('v');
 const load = path => import(`${path}${version ? `?v=${encodeURIComponent(version)}` : ''}`);
-let chartLoading, mapLoading, telemetryLoading, teamRadioLoading;
+let chartLoading, mapLoading, telemetryLoading, teamRadioLoading, tyreHistoryLoading;
 const [{ LitElement, html, css, repeat }, { FIELDS, fieldDefinition, moduleFields, moduleFocusKinds, INCIDENT_SIGNALS, label, translatePlural, words }, { formatTime, formatTimingGap, formatDelta, timingStatus, SIGNALS, statusColors, safeImageUrl, compoundMeta, trackSignal, logoDimensions }, { getTeamLogoMeta }] = await Promise.all([
   load('../f1-lit-3.3.2.js'), load('./catalog.js'), load('./semantics.js'), load('../platform/branding.js'),
 ]);
@@ -331,7 +331,8 @@ export class F1ModuleView extends LitElement {
       case 'calendar': return this.calendar();
       case 'timing': return this.timing();
       case 'minisectors': return this.timing();
-      case 'results': case 'standings': case 'tyres': case 'pit_stops': return this.results();
+      case 'tyres': return this.module.options.content === 'history' ? this.tyreHistory() : this.results();
+      case 'results': case 'standings': case 'pit_stops': return this.results();
       case 'strategy': return this.strategy();
       case 'battles': case 'timeline': case 'incidents': return this.model.summary || this.module.options.presentation === 'table' ? this.results() : this.incidents();
       case 'documents': return this.documents();
@@ -344,6 +345,17 @@ export class F1ModuleView extends LitElement {
       case 'race_control': return this.events();
       default: return this.empty(this.w('modular.this_module_needs_a_newer_card_version_its_settings_are_preserved'));
     }
+  }
+  tyreHistory() {
+    if (!this.tyreHistoryNode) {
+      this.tyreHistoryNode = document.createElement('f1-tyre-history-view');
+      this.tyreHistoryNode.setAttribute('part', 'tyre-history');
+      tyreHistoryLoading ??= load('./tyre-history-view.js').catch(error => { tyreHistoryLoading = null; throw error; });
+      tyreHistoryLoading.catch(() => { this.tyreHistoryError = true; this.requestUpdate(); });
+    }
+    if (this.tyreHistoryError) return this.empty(this.w('modular.this_module_needs_a_newer_card_version_its_settings_are_preserved'));
+    this.tyreHistoryNode.module = this.module; this.tyreHistoryNode.model = this.model; this.tyreHistoryNode.settings = this.settings;
+    return this.tyreHistoryNode;
   }
   map() {
     if (!this.mapNode) {

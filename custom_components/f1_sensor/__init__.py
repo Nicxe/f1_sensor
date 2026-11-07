@@ -230,6 +230,14 @@ from .track_map import (
 )
 from .track_map_annotation_contract import load_annotation_catalog
 from .track_map_websocket import TRACK_MAP_WS_MARKER, async_register_track_map_websocket
+from .tyre_history import (
+    current_physical_stint,
+    current_tyre_counter,
+    lap_count,
+    normalize_compound,
+    observe_tyre_boundaries,
+    restore_tyre_boundaries,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -6476,6 +6484,14 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 except (TypeError, ValueError):
                     number_of_laps = None
                 if number_of_laps is not None:
+                    source_laps = lap_count(td.get("NumberOfLaps"))
+                    if (
+                        source_laps is not None
+                        and entry["tyre_history"].get("timing_completed_laps")
+                        != source_laps
+                    ):
+                        entry["tyre_history"]["timing_completed_laps"] = source_laps
+                        changed = True
                     completed = lap_history.get("completed_laps")
                     if not isinstance(completed, int) or number_of_laps > completed:
                         lap_history["completed_laps"] = number_of_laps
@@ -6623,6 +6639,12 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 if value and seg.get("best_time") != value:
                     seg["best_time"] = value
                     changed = True
+            if observe_tyre_boundaries(
+                entry,
+                snapshot=payload.get("_f1_snapshot") is True,
+                session_lap=self._state.get("lap_current"),
+            ):
+                changed = True
         if (
             has_best_lap_update
             and previous_best_reference != self._official_best_lap_reference()
@@ -7185,61 +7207,14 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
     @staticmethod
     def _current_valid_stint_index(tyre_history: dict) -> int | None:
         """Return the highest received stint that represents a tyre change."""
-        stints = tyre_history.get("stints")
-        if not isinstance(stints, list):
-            return None
-        for stint_idx in range(len(stints) - 1, -1, -1):
-            stint = stints[stint_idx]
-            if not isinstance(stint, dict):
-                continue
-            if stint.get("source_seen") is False:
-                continue
-            if stint.get("tyres_not_changed") is True:
-                continue
-            return stint_idx
-        return None
+        return current_physical_stint(tyre_history)
 
     @classmethod
     def _current_tyre_stint_index(
         cls, tyre_history: dict, progressing_stints: set[int]
     ) -> int | None:
         """Follow the counting stint without treating mirrored rows as new sets."""
-        confirmed_index = cls._current_valid_stint_index(tyre_history)
-        if confirmed_index is None:
-            return None
-        stints = tyre_history["stints"]
-        current_index = tyre_history.get("current_tyres_stint_index")
-        initializing = (
-            not isinstance(current_index, int)
-            or current_index < confirmed_index
-            or current_index >= len(stints)
-        )
-        if initializing:
-            current_index = confirmed_index
-
-        compound = cls._normalize_compound(stints[confirmed_index].get("compound"))
-        for stint_index in range(confirmed_index, len(stints)):
-            if stint_index == current_index:
-                continue
-            stint = stints[stint_index]
-            if stint.get("source_seen") is False:
-                continue
-            if not initializing and stint_index not in progressing_stints:
-                continue
-            candidate_compound = cls._normalize_compound(stint.get("compound"))
-            if compound not in (None, "UNKNOWN") and candidate_compound not in (
-                None,
-                "UNKNOWN",
-                compound,
-            ):
-                continue
-            # Same-set rows use cumulative tyre age. Equal counters can be a
-            # mirrored phantom; only independent progress establishes a switch.
-            # Keep an established row through its own downward corrections.
-            total_laps = stint.get("total_laps") or 0
-            if total_laps > (stints[current_index].get("total_laps") or 0):
-                current_index = stint_index
-        return current_index
+        return current_tyre_counter(tyre_history, progressing_stints)
 
     @classmethod
     def _current_tyre_values(cls, tyre_history: dict, stint_index: int) -> dict:
@@ -7405,6 +7380,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
 
             tyres = entry["tyres"]
             tyre_history = entry["tyre_history"]
+            previous_stint_index = tyre_history.get("current_stint_index")
 
             progressing_stints: set[int] = set()
             for stint_idx, stint_data in stint_items:
@@ -7428,6 +7404,10 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 tyre_history["current_stint_index"] = current_stint_index
                 stints_changed = True
 
+            if payload.get("_f1_snapshot") is True and tyre_history.pop(
+                "replay_counter_restored", False
+            ):
+                progressing_stints.clear()
             tyre_stint_index = self._current_tyre_stint_index(
                 tyre_history, progressing_stints
             )
@@ -7441,6 +7421,13 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 if tyres != current_tyres:
                     tyres.update(current_tyres)
                     stints_changed = True
+            if observe_tyre_boundaries(
+                entry,
+                previous_index=previous_stint_index,
+                snapshot=payload.get("_f1_snapshot") is True,
+                session_lap=self._state.get("lap_current"),
+            ):
+                stints_changed = True
 
             # Extract the latest stint entry for lap time updates
             latest = stint_items[-1][1]
@@ -7511,15 +7498,17 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 changed = True
         if "TotalLaps" in stint_data:
             total_laps = stint_data.get("TotalLaps")
+            total_seen = lap_count(total_laps) is not None
+            if stint.get("total_laps_seen") != total_seen:
+                stint["total_laps_seen"] = total_seen
+                changed = True
             total_laps_val = int(total_laps) if str(total_laps or "").isdigit() else 0
             if stint.get("total_laps") != total_laps_val:
                 stint["total_laps"] = total_laps_val
                 changed = True
         if "StartLaps" in stint_data:
             start_laps = stint_data.get("StartLaps")
-            start_laps_val = (
-                int(start_laps) if str(start_laps or "").isdigit() else None
-            )
+            start_laps_val = lap_count(start_laps)
             if stint.get("start_laps") != start_laps_val:
                 stint["start_laps"] = start_laps_val
                 changed = True
@@ -7882,7 +7871,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
     def _merge_lapcount(self, payload: dict) -> None:
         # payload may be either {CurrentLap, TotalLaps} or wrapped
         curr = payload.get("CurrentLap") or payload.get("LapCount")
-        total = payload.get("TotalLaps")
+        total = payload.get("TotalLaps", self._state.get("lap_total"))
         try:
             curr_i = int(curr) if curr is not None else None
         except Exception:
@@ -7897,6 +7886,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         for entry in self._state["drivers"].values():
             entry.setdefault("laps", {})
             entry["laps"].update({"lap_current": curr_i, "lap_total": total_i})
+            observe_tyre_boundaries(entry, session_lap=curr_i)
         # Recompute leader as lap and position updates can interact
         self._recompute_leader_from_state()
 
@@ -7918,16 +7908,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
 
     @staticmethod
     def _normalize_compound(value: Any) -> str | None:
-        if not isinstance(value, str):
-            return value if value is None else str(value)
-        comp = value.strip().upper()
-        if not comp:
-            return None
-        if comp in {"INTER", "INTERS", "INTERMEDIATES"}:
-            return "INTERMEDIATE"
-        if comp in {"WETS", "FULLWET", "FULL WET", "FULL_WET"}:
-            return "WET"
-        return comp
+        return normalize_compound(value)
 
     @staticmethod
     def _sort_compounds(compounds: set[str]) -> list[str]:
@@ -8166,6 +8147,8 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             entry.setdefault(
                 "tyre_history", {"stints": [], "current_stint_index": None}
             )
+            if restore_tyre_boundaries(entry, history_data.get("tyre_boundaries")):
+                changed = True
             lap_history = entry.setdefault(
                 "lap_history",
                 {

@@ -72,6 +72,7 @@ LIVE_DATA_CARD_ASSET_FILENAMES = (
     "modular/telemetry-data.js",
     "modular/telemetry-view.js",
     "modular/team-radio-view.js",
+    "modular/tyre-history-view.js",
     "modular/connection.js",
     "modular/view.js",
     "modular/card.js",

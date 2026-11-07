@@ -74,6 +74,32 @@ Use the focused module guides below for options, examples, waiting states and da
 
 [Configure Pit stops](/cards/pit-stops) and keep reported visits separate from timed stop records.
 
+### Show tyre history
+
+Add **Tyres**, open **Module options** and choose **History** under **Tyre content**. Each driver gets a horizontal timeline with one segment per known stint. Completed segments remain visible after a tyre change. All drivers share the same session-lap scale; each driver's bar grows with their own completed laps.
+
+Select a driver to expand all their known stints directly below the row. Select the same driver again to close the details. The table shows the compound, race-lap range, laps driven in that stint, tyre age before fitting and total tyre age. For a completed stint, the total is the age at removal; for the current stint, it is the latest reported age.
+
+A used tyre can start with earlier mileage. For example, **14** laps in this stint plus **3** before fitting means **17** total. Those earlier three laps do not lengthen the segment on the session-lap timeline. Compound letters accompany the colours, and used tyres have a pattern as well.
+
+**Show compound legend** controls the explanation below the timeline and is on by default. Turn it off to remove the complete legend row. In YAML, configure the module as follows:
+
+```yaml
+type: custom:f1-sensor-card
+modules:
+  - id: tyre-history
+    type: tyres
+    options:
+      content: history
+      show_legend: true
+```
+
+:::info
+The view shows known history for the selected session. Connecting late, restarting the integration or receiving an incomplete source snapshot can leave earlier stints or lap boundaries unavailable. Unknown values appear as **—**, not zero. **0** before fitting means a known starting age of zero laps. See [Current Tyres](/entities/current-tyres) for the underlying fields.
+:::
+
+During replay, seeking restores the recorded history up to the selected position. Seeking backwards removes later stints from the view. When an older replay cache is loaded, the integration rebuilds its history index from the cached recording; it can only restore observations present in that recording. If **Freeze view** is active, choose **Resume** after seeking to display the history for the new position.
+
 ### Compare practice lap times
 
 [Compare practice best laps](/cards/timing#compare-practice-lap-times) against the fastest valid session best.
