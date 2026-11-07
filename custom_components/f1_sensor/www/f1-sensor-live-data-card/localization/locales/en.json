@@ -1842,5 +1842,17 @@
   "modular.race_trace_unsupported_contract": "Race Trace needs the current F1 Sensor lap-history data contract. Update the integration; existing lap-time charts remain available.",
   "modular.race_trace_waiting_for_context": "Waiting for a consistent session context.",
   "modular.race_trace_waiting_for_session": "Waiting for the session type.",
-  "modular.race_trace_waiting_for_timing": "Waiting for lap history from this session."
+  "modular.race_trace_waiting_for_timing": "Waiting for lap history from this session.",
+  "modular.share_event_focus": "Share event focus with this group",
+  "modular.event_focus_select": "Inspect event",
+  "modular.event_focus_clear": "Clear selected event",
+  "modular.event_focus_unavailable": "Event focus is unavailable until this event has a verified data context.",
+  "modular.event_focus_selected": "Selected event",
+  "modular.event_focus_revision": "Revision {revision}",
+  "modular.event_focus_no_lap": "Lap not verified",
+  "modular.event_focus_no_driver": "Driver not verified",
+  "modular.event_focus_no_time": "Event time not available",
+  "modular.event_focus_no_source": "Source not available",
+  "modular.event_focus_seek_unavailable": "Replay navigation is unavailable without a verified position.",
+  "modular.enable_event_focus": "Enable event focus"
 }

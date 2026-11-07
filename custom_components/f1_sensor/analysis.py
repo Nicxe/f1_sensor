@@ -10,6 +10,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 import hashlib
 import math
+import re
 from statistics import median, quantiles
 from typing import Any
 
@@ -117,6 +118,34 @@ def _utc_text(payload: Mapping[str, Any]) -> str | None:
     return None
 
 
+def _event_timestamp(payload: Mapping[str, Any]) -> str | None:
+    """Expose a verified event instant without changing raw identity material."""
+    for key in ("Utc", "utc", "Timestamp", "timestamp", "Date"):
+        value = _text(payload.get(key))
+        if not value:
+            continue
+        match = re.fullmatch(
+            r"[0-9]{4}-[0-9]{2}-[0-9]{2}T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]"
+            r"(?:\.[0-9]+)?(?P<zone>[Zz]|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])?",
+            value,
+        )
+        if match is None:
+            return None
+        if match["zone"] is None:
+            if key not in {"Utc", "utc"}:
+                return None
+            value += "Z"
+        elif match["zone"] == "z":
+            value = value[:-1] + "Z"
+        try:
+            datetime.fromisoformat(value)
+        except ValueError:
+            return None
+        # Validation must not reserialize and truncate the provider's fractions.
+        return value
+    return None
+
+
 def _stable_id(*parts: object) -> str:
     value = "|".join(str(part or "") for part in parts)
     return hashlib.sha1(value.encode(), usedforsecurity=False).hexdigest()[:20]
@@ -153,6 +182,7 @@ class TimelineEvent:
     final: bool = False
     supporting_signals: tuple[str, ...] = ()
     race_trace_marker: dict[str, Any] | None = None
+    focus_observation: dict[str, Any] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         """Return the stable WebSocket event contract."""
@@ -174,6 +204,7 @@ class TimelineEvent:
             "confidence": round(max(0.0, min(1.0, self.confidence)), 2),
             "final": self.final,
             "supporting_signals": list(self.supporting_signals),
+            "focus_observation": deepcopy(self.focus_observation),
         }
 
 
@@ -194,6 +225,15 @@ class UnifiedTimelineStore:
                 revision=current.revision,
                 sequence=current.sequence,
             )
+            if candidate.focus_observation and current.focus_observation:
+                if candidate.focus_observation.get(
+                    "context"
+                ) == current.focus_observation.get("context"):
+                    retained = replace(
+                        candidate, focus_observation=current.focus_observation
+                    )
+                    if retained == current:
+                        return current
             if candidate.race_trace_marker and current.race_trace_marker:
                 # Receiving an unchanged pit row again is not a new event or
                 # revision. Keep its original observation and frozen anchor.
@@ -1007,7 +1047,10 @@ class Phase4AnalysisStore:
         if self.closed:
             return
         self._observed_streams.add(stream)
-        if stream in OBSERVATION_STREAMS and stream != "SessionInfo":
+        if stream in OBSERVATION_STREAMS and stream not in {
+            "SessionInfo",
+            "RaceControlMessages",
+        }:
             self._observe_race_trace_context(payload)
         handler(payload)
         if stream == "SessionInfo":
@@ -1061,6 +1104,7 @@ class Phase4AnalysisStore:
         signals: tuple[str, ...] = (),
         final: bool = False,
         race_trace_marker: dict[str, Any] | None = None,
+        focus_observation: dict[str, Any] | None = None,
     ) -> TimelineEvent:
         source = payload or {}
         return self._timeline.upsert(
@@ -1070,7 +1114,7 @@ class Phase4AnalysisStore:
                 sequence=0,
                 provider=self._provider(),
                 session_id=self._session_id,
-                occurred_at=_utc_text(source),
+                occurred_at=_event_timestamp(source),
                 offset_ms=_as_int(source.get("offset_ms")),
                 category=category,
                 kind=kind,
@@ -1083,6 +1127,7 @@ class Phase4AnalysisStore:
                 final=final,
                 supporting_signals=signals,
                 race_trace_marker=race_trace_marker,
+                focus_observation=focus_observation,
             )
         )
 
@@ -1332,6 +1377,12 @@ class Phase4AnalysisStore:
             payload=payload,
             severity="warning" if disrupted else "success",
             race_trace_marker=marker,
+            focus_observation={
+                **deepcopy(self._race_trace_observation),
+                "event_time_basis": "single_frame",
+            }
+            if marker
+            else None,
         )
 
     def _on_driver_list(self, payload: Any) -> None:
@@ -1593,6 +1644,14 @@ class Phase4AnalysisStore:
                     lap = None
                 if lap is not None:
                     self._pit_context.setdefault(driver, set()).add(lap)
+                item_focus = None
+                if self._race_trace_observation.get("status") == "ready" and _text(
+                    item.get("Utc") or item.get("utc")
+                ):
+                    item_focus = {
+                        **deepcopy(self._race_trace_observation),
+                        "event_time_basis": "utc_field",
+                    }
                 self._event(
                     identity=f"pit:{driver}:{item_key}",
                     category="pit",
@@ -1612,6 +1671,7 @@ class Phase4AnalysisStore:
                         anchor_type="driver_lap",
                         source="PitStopSeries",
                     ),
+                    focus_observation=item_focus,
                 )
 
     def _on_race_control(self, payload: Any) -> None:
@@ -1619,22 +1679,38 @@ class Phase4AnalysisStore:
             return
         messages = payload.get("Messages")
         entries = _items(messages) if messages is not None else [("0", payload)]
+        observe = getattr(self._bus, "consumed_observation", None)
+        observation = observe(payload) if callable(observe) else pending_observation()
+        focus_observation = (
+            observation if observation.get("status") == "ready" else None
+        )
         for key, item in entries:
             message = _text(item.get("Message") or item.get("message"))
             if not message:
                 continue
             upper = message.upper()
-            drivers = tuple(
-                sorted(
-                    {
-                        parsed
-                        for token in upper.replace("-", " ").split()
-                        if token.isdecimal()
-                        and (parsed := _as_int(token)) is not None
-                        and 0 < parsed < 100
-                    }
+            numbers = set()
+            for match in re.finditer(
+                r"\bCARS?\s+(\d{1,2}(?:\s*(?:,|AND|&)\s*\d{1,2})*)\b",
+                upper,
+            ):
+                numbers.update(
+                    int(value)
+                    for value in re.findall(r"\d+", match.group(1))
+                    if 0 < int(value) < 100
                 )
-            )[:4]
+            structured = set()
+            for field in ("RacingNumber", "CarNumber"):
+                value = _as_int(item.get(field))
+                if value is not None and 0 < value < 100:
+                    structured.add(value)
+            if len(structured) > 1 or (
+                structured and numbers and not structured <= numbers
+            ):
+                drivers = ()
+            else:
+                numbers = numbers or structured
+                drivers = tuple(sorted(numbers)) if len(numbers) <= 4 else ()
             if any(word in upper for word in ("PENALTY", "INVESTIGATION", "NOTED")):
                 lap = _as_int(item.get("Lap"))
                 if lap is not None:
@@ -1656,6 +1732,13 @@ class Phase4AnalysisStore:
                 kind = "race_control_message"
                 category = "race_control"
                 severity = "info"
+            mentioned = {int(value) for value in re.findall(r"\bLAP\s+(\d+)\b", upper)}
+            lap = next(iter(mentioned)) if len(mentioned) == 1 else None
+            if not mentioned and kind not in {"lap_deleted", "lap_reinstated"}:
+                lap = _as_int(item.get("Lap"))
+            item_focus = deepcopy(focus_observation)
+            if item_focus is not None and _text(item.get("Utc") or item.get("utc")):
+                item_focus["event_time_basis"] = "utc_field"
             self._event(
                 identity=f"rc:{item.get('Id') or item.get('id') or key}:{_utc_text(item)}:{message}",
                 category=category,
@@ -1663,9 +1746,12 @@ class Phase4AnalysisStore:
                 title=message,
                 payload=item,
                 drivers=drivers,
-                lap_number=_as_int(item.get("Lap")),
+                lap_number=lap,
                 severity=severity,
-                signals=("RaceControlMessages",),
+                signals=("RaceControlMessages", "explicit_lap_text")
+                if len(mentioned) == 1
+                else ("RaceControlMessages",),
+                focus_observation=item_focus,
             )
         self._capture_strategy_laps()
 

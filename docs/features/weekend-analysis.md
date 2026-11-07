@@ -33,6 +33,10 @@ Public timing supplies session context. Optional [F1TV Auth](/features/f1tv-auth
 
 **Session timeline** combines observed session, track-status, Race Control, investigation, lap, pit, weather, radio, position, battle and classification events. Filter categories, search text, choose order and limit the number of events.
 
+Event times follow the time zone and 12/24-hour format in your Home Assistant profile. The timeline and selected-event detail show the same local time as **Race Control** for the same message. Sorting uses the underlying event time, so changing the display time zone does not change the order.
+
+An event without a verified time shows no clock value. This also applies to older data whose time zone cannot be established. Events without a time appear after timed events; use category filters or **Show all** to find them when the row limit hides them.
+
 An analysis event is an interpretation of observed timing. Its evidence score is not the same as an official Race Control decision. Missing radio, pit or weather data means those events may be absent.
 
 ## Understand strategy estimates

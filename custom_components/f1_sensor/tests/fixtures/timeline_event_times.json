@@ -1,0 +1,37 @@
+{
+  "source": "São Paulo Practice 2, 2026-11-06: SessionInfo, TeamRadio line 7 and RaceControlMessages line 11",
+  "session": {
+    "Meeting": {"Key": 1299, "Name": "São Paulo Grand Prix"},
+    "Key": 11406,
+    "Type": "Practice",
+    "Name": "Practice 2"
+  },
+  "radio": {
+    "Captures": {
+      "4": {
+        "Utc": "2026-11-06T19:29:53.53Z",
+        "RacingNumber": "30",
+        "Path": "TeamRadio/LAW_30_20261106_162929.mp3"
+      },
+      "5": {
+        "Utc": "2026-11-06T19:29:53.762Z",
+        "RacingNumber": "23",
+        "Path": "TeamRadio/ALB_23_20261106_162937.mp3"
+      }
+    }
+  },
+  "race_control": {
+    "Messages": {
+      "8": {
+        "Utc": "2026-11-06T19:30:19",
+        "Category": "Other",
+        "Message": "CAR 18 (STR) TIME 1:24.540 DELETED - TRACK LIMITS AT TURN 1 LAP 14 16:28:55"
+      }
+    }
+  },
+  "existing_event_ids": {
+    "radio_30": "19cf6907cde932e9eb18",
+    "radio_23": "74e6c30e3cffed80c3b2",
+    "race_control": "35b7969eaf1b96786a03"
+  }
+}

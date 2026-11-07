@@ -239,6 +239,14 @@ export function watchGroup(connection, { entry, dashboard, view, name }, listene
       // Only local display focus is allowed here; integration controls cannot
       // accidentally be routed through a group message.
       const allowed = Object.fromEntries(['driver', 'team'].filter(key => typeof patch?.[key] === 'string').map(key => [key, patch[key]]));
+      const eventFocus = patch?.event_focus;
+      if (eventFocus === null) allowed.event_focus = null;
+      else if (eventFocus?.version === 1 && typeof eventFocus.contextKey === 'string'
+        && eventFocus.contextKey.length > 0 && eventFocus.contextKey.length <= 2048
+        && typeof eventFocus.eventId === 'string' && eventFocus.eventId.length > 0 && eventFocus.eventId.length <= 256
+        && Object.keys(eventFocus).every(key => ['version', 'contextKey', 'eventId'].includes(key))) {
+        allowed.event_focus = { version: 1, contextKey: eventFocus.contextKey, eventId: eventFocus.eventId };
+      }
       const selection = patch?.selection;
       const validFollow = selection?.mode === 'follow' && ['auto', 'live', 'replay'].includes(selection.source)
         && Object.keys(selection).every(key => ['mode', 'source'].includes(key));
