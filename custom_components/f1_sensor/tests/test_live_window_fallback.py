@@ -855,7 +855,7 @@ async def test_session_finished_timeout_returns_false(hass) -> None:
 
 
 @pytest.mark.asyncio
-async def test_session_active_returns_true_for_non_terminal_status(hass) -> None:
+async def test_recovery_probe_does_not_require_archive_access(hass) -> None:
     coord = _DummySessionCoordinator({}, status=200)
     supervisor = LiveSessionSupervisor(
         hass,
@@ -863,18 +863,20 @@ async def test_session_active_returns_true_for_non_terminal_status(hass) -> None
         _DummyBus(),
         http_session=object(),  # type: ignore[arg-type]
     )
-    window = _mk_window(path="2026/1304/11465/")
+    window = _mk_window(end=dt_util.utcnow() - dt.timedelta(minutes=30))
 
     async def _active_payload(_url: str) -> dict:
-        return {"Status": "Started"}
+        raise AssertionError("A cold recovery must use the live feed, not the archive")
 
     supervisor._fetch_json = _active_payload  # type: ignore[method-assign]
 
-    assert await supervisor._session_active(window) is True
+    selected = await supervisor._select_window([window], source="index")
+    assert selected is not None and selected.recovery
+    assert not supervisor.availability.is_live
 
 
 @pytest.mark.asyncio
-async def test_session_active_returns_false_for_terminal_status(hass) -> None:
+async def test_known_terminal_session_does_not_probe_again(hass) -> None:
     coord = _DummySessionCoordinator({}, status=200)
     supervisor = LiveSessionSupervisor(
         hass,
@@ -882,18 +884,19 @@ async def test_session_active_returns_false_for_terminal_status(hass) -> None:
         _DummyBus(),
         http_session=object(),  # type: ignore[arg-type]
     )
-    window = _mk_window(path="2026/1304/11465/")
+    window = _mk_window(end=dt_util.utcnow() - dt.timedelta(minutes=30))
 
     async def _terminal_payload(_url: str) -> dict:
         return {"Status": "Finished"}
 
     supervisor._fetch_json = _terminal_payload  # type: ignore[method-assign]
 
-    assert await supervisor._session_active(window) is False
+    supervisor._terminal_sessions.add(live_window._window_identity(window))
+    assert await supervisor._select_window([window], source="index") is None
 
 
 @pytest.mark.asyncio
-async def test_session_active_timeout_inside_slack_returns_true(
+async def test_recovery_is_bounded_when_archive_is_unavailable(
     monkeypatch, hass
 ) -> None:
     coord = _DummySessionCoordinator({}, status=200)
@@ -915,13 +918,15 @@ async def test_session_active_timeout_inside_slack_returns_true(
     supervisor._fetch_json = _timeout  # type: ignore[method-assign]
     monkeypatch.setattr(live_window.dt_util, "utcnow", lambda: now)
 
-    assert await supervisor._session_active(window) is True
+    selected = await supervisor._select_window([window], source="index")
+    assert selected is not None and selected.recovery
+    assert (
+        selected.disconnect_at <= window.end_utc + live_window.SESSION_RECOVERY_HORIZON
+    )
 
 
 @pytest.mark.asyncio
-async def test_session_active_timeout_outside_slack_returns_false(
-    monkeypatch, hass
-) -> None:
+async def test_no_probe_outside_recovery_horizon(monkeypatch, hass) -> None:
     coord = _DummySessionCoordinator({}, status=200)
     supervisor = LiveSessionSupervisor(
         hass,
@@ -941,7 +946,7 @@ async def test_session_active_timeout_outside_slack_returns_false(
     supervisor._fetch_json = _timeout  # type: ignore[method-assign]
     monkeypatch.setattr(live_window.dt_util, "utcnow", lambda: now)
 
-    assert await supervisor._session_active(window) is False
+    assert await supervisor._select_window([window], source="index") is None
 
 
 @pytest.mark.asyncio
@@ -1357,7 +1362,7 @@ def test_race_extension_cap_falls_back_when_actual_start_is_missing(hass) -> Non
     )
 
     assert supervisor._race_extension_cap(window) == (
-        scheduled_end + live_window.PATHLESS_RACE_PROBE_HORIZON
+        scheduled_end + live_window.SESSION_RECOVERY_HORIZON
     )
 
 

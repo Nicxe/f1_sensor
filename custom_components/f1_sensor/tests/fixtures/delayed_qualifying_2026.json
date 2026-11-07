@@ -1,0 +1,37 @@
+{
+  "source": "Formula 1 Index.json and SignalR Core public streams, captured 2026-11-07 at 20:10 UTC; unrelated fields omitted",
+  "index_url": "https://livetiming.formula1.com/static/2026/Index.json",
+  "feed_url": "wss://livetiming.formula1.com/signalrcore",
+  "index": {
+    "Meetings": [{
+      "Key": 1299,
+      "Name": "São Paulo Grand Prix",
+      "Sessions": [
+        {"Key": 11408, "Name": "Qualifying", "StartDate": "2026-11-07T15:00:00", "EndDate": "2026-11-07T16:00:00", "GmtOffset": "-03:00:00"},
+        {"Key": 11412, "Name": "Race", "StartDate": "2026-11-08T14:00:00", "EndDate": "2026-11-08T16:00:00", "GmtOffset": "-03:00:00"}
+      ]
+    }]
+  },
+  "snapshot": {
+    "SessionInfo": {"Key": 11408, "Type": "Qualifying", "Name": "Qualifying", "SessionStatus": "Started", "Meeting": {"Key": 1299}},
+    "SessionStatus": {"Status": "Finished", "Started": "Finished"},
+    "Heartbeat": {"Utc": "2026-11-07T20:10:15.9056371Z"},
+    "SessionData": {
+      "Series": [
+        {"Utc": "2026-11-07T17:46:47.467Z", "QualifyingPart": 1},
+        {"Utc": "2026-11-07T19:47:59.683Z", "QualifyingPart": 2}
+      ],
+      "StatusSeries": [
+        {"Utc": "2026-11-07T18:00:00.145Z", "SessionStatus": "Started"},
+        {"Utc": "2026-11-07T18:02:23.309Z", "SessionStatus": "Aborted"},
+        {"Utc": "2026-11-07T19:23:29.104Z", "SessionStatus": "Inactive"},
+        {"Utc": "2026-11-07T19:26:00.142Z", "SessionStatus": "Started"},
+        {"Utc": "2026-11-07T19:41:37.143Z", "SessionStatus": "Finished"},
+        {"Utc": "2026-11-07T19:48:05.108Z", "SessionStatus": "Inactive"},
+        {"Utc": "2026-11-07T19:49:00.136Z", "SessionStatus": "Started"},
+        {"Utc": "2026-11-07T20:03:17.903Z", "SessionStatus": "Aborted"},
+        {"Utc": "2026-11-07T20:05:47.127Z", "SessionStatus": "Finished"}
+      ]
+    }
+  }
+}
