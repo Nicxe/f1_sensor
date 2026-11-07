@@ -975,10 +975,10 @@ class CurrentSessionModel(LiveProjectionModel):
             if (
                 end_iso
                 and not ended
-                and mapped_status not in ("live", "suspended")
+                and mapped_status not in ("live", "suspended", "break")
                 and not self._is_replay_active()
             ):
-                # A scheduled end cannot terminate a confirmed live interruption.
+                # A scheduled end cannot terminate a live interruption or part break.
                 end_dt = _to_utc(str(end_iso), raw.get("GmtOffset"))
                 now_utc = datetime.datetime.now(datetime.UTC)
                 if end_dt and now_utc >= end_dt + datetime.timedelta(minutes=5):

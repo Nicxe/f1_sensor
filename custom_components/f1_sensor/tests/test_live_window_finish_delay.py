@@ -138,6 +138,9 @@ async def _exercise_session_finish(
             nonlocal event, ends_at, changed_delay_at, interrupted_at, duplicate_sent_at
             clock.value += 20
             assert clock.value <= 1200, "The ended live session did not close"
+            if clock.value == 20:
+                # The opened transport supplies fresh identity after any cached snapshot.
+                bus.inject_message("SessionInfo", info)
             # These heartbeats isolate normal session completion from inactivity.
             bus.inject_message("Heartbeat", {"Utc": origin.isoformat()})
             while event is not None and event["offset"] - first_offset <= clock.value:

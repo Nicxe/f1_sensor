@@ -198,6 +198,7 @@ async def test_current_session_is_inactive_when_status_is_aborted_started(hass) 
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("end_date", ["2099-02-20T19:00:00", "2026-11-07T16:00:00"])
 @pytest.mark.parametrize(
     ("qualifying_part", "session_name", "expected_label"),
     [
@@ -208,10 +209,13 @@ async def test_current_session_is_inactive_when_status_is_aborted_started(hass) 
 )
 async def test_qualifying_finished_maps_to_break_until_final_segment(
     hass,
+    freezer,
+    end_date,
     qualifying_part: int,
     session_name: str,
     expected_label: str,
 ) -> None:
+    freezer.move_to("2026-11-07T20:04:00Z")
     entry_id = f"test_entry_qualifying_break_{qualifying_part}_{session_name.lower().replace(' ', '_')}"
     status_coordinator = _build_coordinator(
         hass,
@@ -228,6 +232,7 @@ async def test_qualifying_finished_maps_to_break_until_final_segment(
             session_type="Qualifying",
             name=session_name,
             number=None,
+            end_date=end_date,
         ),
     )
 
@@ -260,6 +265,11 @@ async def test_qualifying_finished_maps_to_break_until_final_segment(
     assert current_state.state == expected_label
     assert current_state.attributes["live_status"] == "Finished"
     assert current_state.attributes["active"] is False
+
+    for terminal_status in ("Finalised", "Ends"):
+        status_coordinator.async_set_updated_data({"Status": terminal_status})
+        await hass.async_block_till_done()
+        assert hass.states.get(current_sensor.entity_id).state == STATE_UNKNOWN
 
 
 @pytest.mark.asyncio
