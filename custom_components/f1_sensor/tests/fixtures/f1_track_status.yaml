@@ -21,7 +21,7 @@ blueprint:
 
     You can simulate state changes in Developer Tools -> States.
   domain: automation
-  source_url: https://github.com/Nicxe/f1_sensor
+  source_url: https://github.com/Nicxe/f1_sensor/blob/main/blueprints/f1_track_status.yaml
   author: Nicxe
 
   input:
@@ -850,13 +850,47 @@ variables:
     {% else %}
       {{ now_label }}
     {% endif %}
+  current_session_retained_label: >-
+    {% set session_type = state_attr(current_session_entity, 'type') | default('', true) | string | trim %}
+    {% set session_name = state_attr(current_session_entity, 'name') | default('', true) | string | trim %}
+    {% set name_lower = session_name | lower %}
+    {% set sprint_qualifying = name_lower.startswith('sprint qualifying') or name_lower.startswith('sprint shootout') %}
+    {% if session_type == 'Practice' %}
+      {% set session_number = state_attr(current_session_entity, 'number') | int(0) %}
+      {{ 'Practice ' ~ session_number if session_number else session_name or 'Practice' }}
+    {% elif session_type == 'Qualifying' or (session_type == 'Race' and sprint_qualifying) %}
+      {{ 'Sprint Qualifying' if sprint_qualifying else 'Qualifying' }}
+    {% elif session_type == 'Race' %}
+      {{ 'Sprint' if name_lower.startswith('sprint') else session_name or 'Race' }}
+    {% else %}
+      {{ session_name or session_type }}
+    {% endif %}
+  current_session_fallback_ok: >-
+    {% set current_start = state_attr(current_session_entity, 'start') | default('', true) | string | trim %}
+    {% set status_start = state_attr(session_status_entity, 'start') | default('', true) | string | trim %}
+    {% set current_offset = state_attr(current_session_entity, 'gmt_offset') | default('', true) | string | trim %}
+    {% set status_offset = state_attr(session_status_entity, 'gmt_offset') | default('', true) | string | trim %}
+    {{
+      current_session_now | trim == 'unknown'
+      and session_phase in ['suspended', 'break']
+      and current_start | length > 0
+      and current_start == status_start
+      and current_offset | length > 0
+      and current_offset == status_offset
+      and current_session_last | trim | length > 0
+      and current_session_last | trim == current_session_retained_label | trim
+    }}
   session_scope_now_ok: >-
     {% if not current_session_filter_enabled %}
       true
     {% elif current_session_entity | string | length == 0 %}
       false
+    {% elif current_session_now | trim not in ['', 'unknown', 'unavailable', 'none', 'None'] %}
+      {{ (current_session_now | trim) in allowed_current_sessions }}
+    {% elif current_session_fallback_ok | bool %}
+      {{ (current_session_last | trim) in allowed_current_sessions }}
     {% else %}
-      {{ (current_session_effective | trim) in allowed_current_sessions }}
+      false
     {% endif %}
   session_scope_ok: >-
     {% if not current_session_filter_enabled %}

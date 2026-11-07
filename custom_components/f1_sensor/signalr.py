@@ -37,10 +37,12 @@ def timing_source_payload(
     source_time: float | None = None,
     snapshot: bool = False,
 ) -> StreamPayload:
-    """Attach event time to timing inference without changing provider objects."""
-    if stream not in OBSERVATION_STREAMS | {"Heartbeat"} or not isinstance(
-        payload, dict
-    ):
+    """Preserve timing and lifecycle provenance without changing provider objects."""
+    if stream not in OBSERVATION_STREAMS | {
+        "Heartbeat",
+        "SessionStatus",
+        "SessionData",
+    } or not isinstance(payload, dict):
         return payload
     metadata: dict[str, Any] = {}
     if isinstance(source_utc, str):

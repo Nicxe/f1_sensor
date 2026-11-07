@@ -54,6 +54,8 @@ Or go to **Settings > Automations & Scenes > Blueprints** and import manually us
 https://raw.githubusercontent.com/Nicxe/f1_sensor/main/blueprints/f1_track_status.yaml
 ```
 
+To update an existing copy, select **Re-import blueprint** in **Settings > Automations & Scenes > Blueprints**. Updating the F1 Sensor integration does not update blueprints you imported previously.
+
 ---
 
 
@@ -98,6 +100,8 @@ Limit the automation to specific session types, for example only during Race and
 | **Allowed Current Sessions** | Which session types should activate the light. Defaults to all sessions |
 :::info
 When this filter is enabled, the automation checks the [Current Session](/entities/live-data#current-session) sensor to decide whether to run. If the session type is not in the allowed list, light updates are suppressed entirely for that session.
+
+During a suspension or a break, an `unknown` Current Session can use its last session label when the retained session details match Session Status. An unavailable sensor or details from another session keep light updates blocked. Keep `suspended` in **Active Session Phases** to follow red flags during interruptions.
 :::
 
 ---

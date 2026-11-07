@@ -66,6 +66,7 @@ from .entity import (
     set_default_entity_id,
 )
 from .favorite_driver import FavoriteDriverController
+from .live_window import _to_utc
 from .race_weather import weather_icon
 from .replay_entities import F1ReplayStatusSensor
 from .runtime import F1ConfigEntry, entry_value
@@ -2036,23 +2037,26 @@ class F1CurrentSessionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                 attrs = dict(getattr(last, "attributes", {}) or {})
                 self._attr_extra_state_attributes = attrs
                 # If saved payload indicates the session ended long ago, clear state on startup
-                ended_by_attrs = False
-                try:
+                ended_by_attrs = self._mapped_live_status() in (
+                    "finished",
+                    "finalised",
+                    "ended",
+                )
+                with suppress(Exception):
                     end_iso = attrs.get("end") or attrs.get("EndDate")
                     if end_iso and not self._is_replay_active():
-                        end_dt = datetime.datetime.fromisoformat(
-                            str(end_iso).replace("Z", "+00:00")
+                        end_dt = _to_utc(
+                            str(end_iso),
+                            attrs.get("gmt_offset") or attrs.get("GmtOffset"),
                         )
-                        if end_dt.tzinfo is None:
-                            end_dt = end_dt.replace(tzinfo=datetime.UTC)
                         now_utc = datetime.datetime.now(datetime.UTC)
-                        if now_utc >= (end_dt + datetime.timedelta(minutes=5)):
+                        if end_dt and now_utc >= (
+                            end_dt + datetime.timedelta(minutes=5)
+                        ):
                             # Also consider live status if available
                             st = str(self._live_status() or "").strip()
                             if st not in ("Started", "Green", "GreenFlag"):
                                 ended_by_attrs = True
-                except Exception:
-                    ended_by_attrs = False
                 if ended_by_attrs:
                     # Keep last label in attributes, but clear current state
                     if last.state:
@@ -2077,14 +2081,18 @@ class F1CurrentSessionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         else:
             self._clear_state()
 
-        # Initialize from coordinator if available, but avoid clearing state at startup
+        # Fresh terminal status takes precedence over a restored session label.
         init = self._extract_current()
         updated = init is not None
         if init is not None and self._is_stream_active():
-            self._apply_payload(init, allow_clear=False)
+            self._apply_payload(
+                init,
+                allow_clear=self._mapped_live_status()
+                in ("finished", "finalised", "ended"),
+            )
             with suppress(Exception):
                 getLogger(__name__).debug(
-                    "CurrentSession: Initialized from coordinator (no clear on startup): %s",
+                    "CurrentSession: Initialized from coordinator: %s",
                     init,
                 )
         self._handle_stream_state(updated)

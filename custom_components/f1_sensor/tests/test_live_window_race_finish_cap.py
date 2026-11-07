@@ -1,4 +1,4 @@
-"""Late race start data must refine provisional limits through the final laps."""
+"""Late start metadata cannot impose a lifetime on an active race."""
 
 from __future__ import annotations
 
@@ -14,13 +14,13 @@ from custom_components.f1_sensor.signalr import LiveBus
 
 
 @pytest.mark.parametrize("start_data_at", [40, 1880], ids=["before-flag", "after-flag"])
-async def test_actual_race_start_refines_provisional_cap_through_finished(
+async def test_late_actual_race_start_cannot_cut_off_final_laps(
     hass, monkeypatch, start_data_at
 ):
-    """Retain final-lap coverage without freezing a longer provisional cap."""
+    """Receiving actual start history must not close a healthy delayed race."""
     origin = datetime(2026, 10, 30, 19, 0, tzinfo=UTC)
     actual_start = origin - timedelta(hours=2, minutes=15)
-    expected_disconnect = actual_start + timedelta(hours=3, minutes=15)
+    old_race_limit = actual_start + timedelta(hours=3, minutes=15)
     now = origin
     bus = LiveBus(hass, AsyncMock())
     bus.inject_message("SessionInfo", {"Key": 11396, "SessionStatus": "Started"})
@@ -42,13 +42,15 @@ async def test_actual_race_start_refines_provisional_cap_through_finished(
         meeting_key=1297,
         session_key=11396,
     )
-    observed_caps = []
+    delivered = []
+    unsubscribe = bus.subscribe("TimingData", delivered.append)
+    final_lap = {"Lines": {"27": {"NumberOfLaps": 56}}}
 
     async def advance(seconds):
         nonlocal now
         now += timedelta(seconds=seconds)
         elapsed = (now - origin).total_seconds()
-        assert elapsed <= 6500, "The bounded race window did not close"
+        assert elapsed <= 4500, "The ended race did not finish its drain"
         if elapsed == start_data_at:
             bus.inject_message(
                 "SessionData",
@@ -66,8 +68,13 @@ async def test_actual_race_start_refines_provisional_cap_through_finished(
             bus.inject_message(
                 "SessionStatus", {"Status": "Finished", "Started": "Finished"}
             )
-        if elapsed in {20, start_data_at}:
-            observed_caps.append(supervisor._race_extension_cap(window))
+        if elapsed == 4200:
+            assert now > old_race_limit
+            bus.inject_message("TimingData", final_lap)
+        if elapsed == 4380:
+            bus.inject_message("SessionStatus", {"Status": "Finalised"})
+        if elapsed == 4400:
+            bus.inject_message("SessionStatus", {"Status": "Ends"})
 
     monkeypatch.setattr(supervisor, "_interruptible_sleep", advance)
     monkeypatch.setattr(live_window, "dt_util", SimpleNamespace(utcnow=lambda: now))
@@ -76,12 +83,9 @@ async def test_actual_race_start_refines_provisional_cap_through_finished(
     try:
         reason = await supervisor._monitor_window(window, source="index")
     finally:
+        unsubscribe()
         await bus.async_close()
 
-    assert observed_caps == [
-        window.end_utc + timedelta(hours=2),
-        expected_disconnect,
-    ]
-    assert reason == "disconnect-window-expired"
-    assert window.disconnect_at == expected_disconnect
-    assert now == expected_disconnect
+    assert delivered == [final_lap]
+    assert reason == "session-finished"
+    assert now == origin + timedelta(seconds=4460)

@@ -510,6 +510,284 @@ async def test_blueprint_ignores_internal_session_updates_without_track_change(
     assert _last_triggered(hass) == last_triggered
 
 
+@pytest.mark.parametrize(
+    (
+        "current_state",
+        "current_metadata",
+        "status_metadata",
+        "allowed_sessions",
+        "session_phase",
+        "active_phases",
+        "expected_red",
+    ),
+    [
+        ("unknown", {}, {}, ["Qualifying"], "suspended", ["live", "suspended"], True),
+        (
+            "unknown",
+            {"name": "Sprint Qualifying", "last_label": "Sprint Qualifying"},
+            {},
+            ["Sprint Qualifying"],
+            "suspended",
+            ["live", "suspended"],
+            True,
+        ),
+        (
+            "unknown",
+            {
+                "type": "Practice",
+                "name": "Practice 3",
+                "number": 3,
+                "last_label": "Practice 3",
+            },
+            {},
+            ["Practice 3"],
+            "suspended",
+            ["live", "suspended"],
+            True,
+        ),
+        (
+            "unknown",
+            {"type": "Race", "name": "Race", "last_label": "Race"},
+            {},
+            ["Race"],
+            "suspended",
+            ["live", "suspended"],
+            True,
+        ),
+        (
+            "unknown",
+            {"type": "Race", "name": "Sprint", "last_label": "Sprint"},
+            {},
+            ["Sprint"],
+            "suspended",
+            ["live", "suspended"],
+            True,
+        ),
+        (
+            "unknown",
+            {
+                "type": "Race",
+                "name": "Sprint Shootout",
+                "last_label": "Sprint Qualifying",
+            },
+            {},
+            ["Sprint Qualifying"],
+            "suspended",
+            ["live", "suspended"],
+            True,
+        ),
+        (
+            "unknown",
+            {"live_status": "Finished"},
+            {},
+            ["Qualifying"],
+            "break",
+            ["live", "suspended", "break"],
+            True,
+        ),
+        ("unknown", {}, {}, ["Race"], "suspended", ["live", "suspended"], False),
+        (
+            "unknown",
+            {},
+            {"start": "2026-11-08T14:00:00"},
+            ["Qualifying"],
+            "suspended",
+            ["live", "suspended"],
+            False,
+        ),
+        (
+            "unknown",
+            {"start": None},
+            {},
+            ["Qualifying"],
+            "suspended",
+            ["live", "suspended"],
+            False,
+        ),
+        (
+            "unknown",
+            {},
+            {"gmt_offset": "00:00:00"},
+            ["Qualifying"],
+            "suspended",
+            ["live", "suspended"],
+            False,
+        ),
+        (
+            "unknown",
+            {"type": "Practice", "name": "Practice 1", "number": 1},
+            {},
+            ["Qualifying"],
+            "suspended",
+            ["live", "suspended"],
+            False,
+        ),
+        (
+            "unavailable",
+            {},
+            {},
+            ["Qualifying"],
+            "suspended",
+            ["live", "suspended"],
+            False,
+        ),
+        ("unknown", {}, {}, ["Qualifying"], "live", ["live", "suspended"], False),
+        ("unknown", {}, {}, ["Qualifying"], "suspended", ["live"], False),
+        (
+            "Qualifying",
+            {},
+            {},
+            ["Qualifying"],
+            "suspended",
+            ["live", "suspended"],
+            True,
+        ),
+        (
+            "Practice 1",
+            {},
+            {},
+            ["Qualifying"],
+            "suspended",
+            ["live", "suspended"],
+            False,
+        ),
+    ],
+    ids=[
+        "current-qualifying",
+        "current-sprint-qualifying",
+        "current-practice",
+        "current-race",
+        "current-sprint",
+        "legacy-sprint-shootout",
+        "enabled-qualifying-break",
+        "disallowed-session",
+        "different-session-start",
+        "missing-session-identity",
+        "different-timezone",
+        "stale-label-for-different-session-type",
+        "unavailable-current-session",
+        "unknown-outside-interruption",
+        "suspension-not-enabled",
+        "known-allowed-label",
+        "known-disallowed-label",
+    ],
+)
+@pytest.mark.asyncio
+async def test_blueprint_red_after_suspension_requires_current_session_scope(
+    hass: HomeAssistant,
+    current_state: str,
+    current_metadata: dict[str, Any],
+    status_metadata: dict[str, Any],
+    allowed_sessions: list[str],
+    session_phase: str,
+    active_phases: list[str],
+    expected_red: bool,
+) -> None:
+    """Follow the red flag after Aborted without accepting another session's label."""
+    await _install_blueprint(hass)
+    calls = await _register_services(hass)
+    identity = {"start": "2026-11-07T15:00:00", "gmt_offset": "-03:00:00"}
+    metadata = {
+        **identity,
+        "type": "Qualifying",
+        "name": "Qualifying",
+        "number": None,
+        "session_key": 11408,
+        "last_label": "Qualifying",
+        "live_status": "Aborted",
+        "active": False,
+        **current_metadata,
+    }
+    await _set_states(
+        hass,
+        {
+            "sensor.test_track_status": "YELLOW",
+            "sensor.test_session_status": ("live", {**identity, **status_metadata}),
+            "sensor.test_current_session": ("Qualifying", metadata),
+        },
+    )
+    assert await _setup_blueprint_automation(
+        hass,
+        extra_inputs={
+            "enable_current_session_filter": True,
+            "current_session_entity": "sensor.test_current_session",
+            "allowed_current_sessions": allowed_sessions,
+            "active_session_phases": active_phases,
+        },
+    )
+    await _set_states(
+        hass,
+        {
+            "sensor.test_current_session": (current_state, metadata),
+            "sensor.test_session_status": (
+                session_phase,
+                {**identity, **status_metadata},
+            ),
+        },
+    )
+    calls.clear()
+
+    # The recorded Q2 flag arrived 348 ms after the suspension, not before it.
+    await _set_states(hass, {"sensor.test_track_status": "RED"})
+
+    assert calls == (
+        [
+            (
+                "light.turn_on",
+                {
+                    "entity_id": ["light.test_track_status"],
+                    "brightness_pct": 100,
+                    "rgb_color": [255, 0, 0],
+                    "transition": 0,
+                },
+            )
+        ]
+        if expected_red
+        else []
+    )
+
+
+@pytest.mark.asyncio
+async def test_blueprint_filtered_session_exit_keeps_last_label_cleanup(
+    hass: HomeAssistant,
+) -> None:
+    """Restricting flag updates must not suppress the suspended session's end action."""
+    await _install_blueprint(hass)
+    calls = await _register_services(hass)
+    identity = {"start": "2026-11-07T15:00:00", "gmt_offset": "-03:00:00"}
+    await _set_states(
+        hass,
+        {
+            "sensor.test_track_status": "RED",
+            "sensor.test_session_status": ("suspended", identity),
+            "sensor.test_current_session": (
+                "unknown",
+                {
+                    **identity,
+                    "type": "Qualifying",
+                    "name": "Qualifying",
+                    "last_label": "Qualifying",
+                    "live_status": "Aborted",
+                    "active": False,
+                },
+            ),
+        },
+    )
+    assert await _setup_blueprint_automation(
+        hass,
+        extra_inputs={
+            "enable_current_session_filter": True,
+            "current_session_entity": "sensor.test_current_session",
+            "allowed_current_sessions": ["Qualifying"],
+        },
+    )
+    calls.clear()
+
+    await _set_states(hass, {"sensor.test_session_status": ("finished", identity)})
+
+    assert calls == [("light.turn_off", {"entity_id": ["light.test_track_status"]})]
+
+
 @pytest.mark.asyncio
 async def test_blueprint_keeps_end_action_on_session_exit(
     hass: HomeAssistant,

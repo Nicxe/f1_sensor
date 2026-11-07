@@ -717,7 +717,10 @@ async def test_replay_controller_injects_cached_formation_marker(
             "SessionInfo",
             {"Type": "Race", "Name": "Race", "_f1_snapshot": True},
         ),
-        ("SessionStatus", {"Status": "Inactive", "Started": "Inactive"}),
+        (
+            "SessionStatus",
+            {"Status": "Inactive", "Started": "Inactive", "_f1_snapshot": True},
+        ),
     ]
     assert tracker.injected == [formation_start]
     assert not http_session.get.called

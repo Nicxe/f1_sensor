@@ -5,7 +5,7 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 import json
 import re
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -15,6 +15,7 @@ from custom_components.f1_sensor.analysis_websocket import (
     _AnalysisSubscription,
 )
 from custom_components.f1_sensor.const import DOMAIN, SUPPORTED_SENSOR_KEYS
+from custom_components.f1_sensor.live_window import LiveSessionSupervisor
 from custom_components.f1_sensor.replay_mode import (
     ReplayIndex,
     ReplaySession,
@@ -37,6 +38,10 @@ async def test_real_entry_first_play_rewind_and_live_keep_frame_bound_context(
     tmp_path,
     selection_change,
 ):
+    # The test explicitly starts each transport to verify replay handoff ownership.
+    monkeypatch.setattr(
+        LiveSessionSupervisor, "_discover_live_window", AsyncMock(return_value=None)
+    )
     aioclient_mock.get(
         re.compile(r"https://.*"),
         json={"Meetings": [], "MRData": {"RaceTable": {"Races": []}}},

@@ -148,7 +148,10 @@ async def test_new_live_session_discards_previous_race_pit_counts(hass, delay) -
         assert not pitstops._by_car
         assert not pitstops._dedup
         assert set(drivers.data["drivers"]) == set(previous_counts)
-        assert drivers.data["session_status"] == {"Status": "Started"}
+        assert drivers.data["session_status"] == {
+            "Status": "Started",
+            "_f1_snapshot": True,
+        }
         assert drivers.data["drivers"]["1"]["identity"]["tla"] == "NOR"
         assert all(
             "pit_stops" not in car["timing"] for car in drivers.data["drivers"].values()

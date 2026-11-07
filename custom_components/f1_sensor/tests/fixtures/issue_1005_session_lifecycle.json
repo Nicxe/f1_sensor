@@ -1,0 +1,4871 @@
+{
+  "issue": 1005,
+  "related_issue": 1004,
+  "description": "Selected original Sao Paulo 2026 qualifying lifecycle input, including its long Q1 interruption and the Q1 break at the old 19:45 UTC connection limit.",
+  "source_url": "https://livetiming.formula1.com/static/2026/2026-11-08_São_Paulo_Grand_Prix/2026-11-07_Qualifying/",
+  "archive_relative_path": "2026-11-06_S_o_Paulo_Grand_Prix/2026-11-07_Qualifying",
+  "extraction": "SessionInfo, SessionStatus and SessionData payloads are unchanged. Heartbeat retains every third original message, every heartbeat around the 19:45 boundary, and the last message. Its UTC uses payload.Utc because the stream prefix can freeze after session updates stop. TimingData retains selected original messages before/after the boundary and long interruption. Source line numbers refer to preserved txt files including the URL header.",
+  "events": [
+    {
+      "utc": "2026-11-07T17:46:39.409000+00:00",
+      "stream": "SessionInfo",
+      "source_line": 3,
+      "payload": {
+        "Meeting": {
+          "Key": 1299,
+          "Name": "São Paulo Grand Prix",
+          "OfficialName": "FORMULA 1 MSC CRUISES GRANDE PRÊMIO DE SÃO PAULO 2026",
+          "Location": "São Paulo",
+          "Number": 20,
+          "Country": {
+            "Key": 10,
+            "Code": "BRA",
+            "Name": "Brazil"
+          },
+          "Circuit": {
+            "Key": 14,
+            "ShortName": "Interlagos"
+          }
+        },
+        "SessionStatus": "Inactive",
+        "ArchiveStatus": {
+          "Status": "Generating"
+        },
+        "Key": 11408,
+        "Type": "Qualifying",
+        "Name": "Qualifying",
+        "StartDate": "2026-11-07T15:00:00",
+        "EndDate": "2026-11-07T16:00:00",
+        "GmtOffset": "-03:00:00",
+        "Path": "2026/2026-11-08_São_Paulo_Grand_Prix/2026-11-07_Qualifying/"
+      }
+    },
+    {
+      "utc": "2026-11-07T17:46:39.409000+00:00",
+      "stream": "SessionData",
+      "source_line": 3,
+      "payload": {
+        "Series": [],
+        "StatusSeries": [
+          {
+            "Utc": "2026-11-07T17:46:16.547Z",
+            "TrackStatus": "Yellow"
+          }
+        ]
+      }
+    },
+    {
+      "utc": "2026-11-07T17:46:43.601000+00:00",
+      "stream": "SessionStatus",
+      "source_line": 3,
+      "payload": {
+        "Status": "Inactive",
+        "Started": "Inactive"
+      }
+    },
+    {
+      "utc": "2026-11-07T17:46:47.467000+00:00",
+      "stream": "SessionData",
+      "source_line": 4,
+      "payload": {
+        "Series": {
+          "0": {
+            "Utc": "2026-11-07T17:46:47.467Z",
+            "QualifyingPart": 1
+          }
+        }
+      }
+    },
+    {
+      "utc": "2026-11-07T17:46:47.467000+00:00",
+      "stream": "TimingData",
+      "source_line": 3,
+      "payload": {
+        "NoEntries": [
+          22,
+          16,
+          10
+        ],
+        "SessionPart": 1,
+        "CutOffTime": "",
+        "CutOffPercentage": "107",
+        "Lines": {
+          "3": {
+            "KnockedOut": false,
+            "Cutoff": true,
+            "BestLapTimes": [
+              {
+                "Value": ""
+              },
+              {},
+              {}
+            ],
+            "Stats": [
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              },
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              },
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              }
+            ],
+            "Line": 1,
+            "Position": "1",
+            "ShowPosition": false,
+            "RacingNumber": "3",
+            "Retired": false,
+            "InPit": true,
+            "PitOut": false,
+            "Stopped": false,
+            "Status": 272,
+            "Sectors": [
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              }
+            ],
+            "Speeds": {
+              "I1": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "I2": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "FL": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "ST": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              }
+            },
+            "BestLapTime": {
+              "Value": ""
+            },
+            "LastLapTime": {
+              "Value": "",
+              "Status": 0,
+              "OverallFastest": false,
+              "PersonalFastest": false
+            }
+          },
+          "12": {
+            "KnockedOut": false,
+            "Cutoff": true,
+            "BestLapTimes": [
+              {
+                "Value": ""
+              },
+              {},
+              {}
+            ],
+            "Stats": [
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              },
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              },
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              }
+            ],
+            "Line": 2,
+            "Position": "2",
+            "ShowPosition": false,
+            "RacingNumber": "12",
+            "Retired": false,
+            "InPit": true,
+            "PitOut": false,
+            "Stopped": false,
+            "Status": 272,
+            "Sectors": [
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              }
+            ],
+            "Speeds": {
+              "I1": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "I2": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "FL": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "ST": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              }
+            },
+            "BestLapTime": {
+              "Value": ""
+            },
+            "LastLapTime": {
+              "Value": "",
+              "Status": 0,
+              "OverallFastest": false,
+              "PersonalFastest": true
+            }
+          },
+          "1": {
+            "KnockedOut": false,
+            "Cutoff": true,
+            "BestLapTimes": [
+              {
+                "Value": ""
+              },
+              {},
+              {}
+            ],
+            "Stats": [
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              },
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              },
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              }
+            ],
+            "Line": 3,
+            "Position": "3",
+            "ShowPosition": false,
+            "RacingNumber": "1",
+            "Retired": false,
+            "InPit": true,
+            "PitOut": false,
+            "Stopped": false,
+            "Status": 272,
+            "Sectors": [
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              }
+            ],
+            "Speeds": {
+              "I1": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "I2": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "FL": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "ST": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              }
+            },
+            "BestLapTime": {
+              "Value": ""
+            },
+            "LastLapTime": {
+              "Value": "",
+              "Status": 0,
+              "OverallFastest": false,
+              "PersonalFastest": true
+            }
+          },
+          "63": {
+            "KnockedOut": false,
+            "Cutoff": true,
+            "BestLapTimes": [
+              {
+                "Value": ""
+              },
+              {},
+              {}
+            ],
+            "Stats": [
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              },
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              },
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              }
+            ],
+            "Line": 4,
+            "Position": "4",
+            "ShowPosition": false,
+            "RacingNumber": "63",
+            "Retired": false,
+            "InPit": true,
+            "PitOut": false,
+            "Stopped": false,
+            "Status": 272,
+            "Sectors": [
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              }
+            ],
+            "Speeds": {
+              "I1": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "I2": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "FL": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "ST": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              }
+            },
+            "BestLapTime": {
+              "Value": ""
+            },
+            "LastLapTime": {
+              "Value": "",
+              "Status": 0,
+              "OverallFastest": false,
+              "PersonalFastest": true
+            }
+          },
+          "16": {
+            "KnockedOut": false,
+            "Cutoff": true,
+            "BestLapTimes": [
+              {
+                "Value": ""
+              },
+              {},
+              {}
+            ],
+            "Stats": [
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              },
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              },
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              }
+            ],
+            "Line": 5,
+            "Position": "5",
+            "ShowPosition": false,
+            "RacingNumber": "16",
+            "Retired": false,
+            "InPit": true,
+            "PitOut": false,
+            "Stopped": false,
+            "Status": 272,
+            "Sectors": [
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              }
+            ],
+            "Speeds": {
+              "I1": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "I2": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "FL": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "ST": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              }
+            },
+            "BestLapTime": {
+              "Value": ""
+            },
+            "LastLapTime": {
+              "Value": "",
+              "Status": 0,
+              "OverallFastest": false,
+              "PersonalFastest": true
+            }
+          },
+          "81": {
+            "KnockedOut": false,
+            "Cutoff": true,
+            "BestLapTimes": [
+              {
+                "Value": ""
+              },
+              {},
+              {}
+            ],
+            "Stats": [
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              },
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              },
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              }
+            ],
+            "Line": 6,
+            "Position": "6",
+            "ShowPosition": false,
+            "RacingNumber": "81",
+            "Retired": false,
+            "InPit": true,
+            "PitOut": false,
+            "Stopped": false,
+            "Status": 272,
+            "Sectors": [
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              }
+            ],
+            "Speeds": {
+              "I1": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "I2": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "FL": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "ST": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              }
+            },
+            "BestLapTime": {
+              "Value": ""
+            },
+            "LastLapTime": {
+              "Value": "",
+              "Status": 0,
+              "OverallFastest": false,
+              "PersonalFastest": true
+            }
+          },
+          "41": {
+            "KnockedOut": false,
+            "Cutoff": true,
+            "BestLapTimes": [
+              {
+                "Value": ""
+              },
+              {},
+              {}
+            ],
+            "Stats": [
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              },
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              },
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              }
+            ],
+            "Line": 7,
+            "Position": "7",
+            "ShowPosition": false,
+            "RacingNumber": "41",
+            "Retired": false,
+            "InPit": true,
+            "PitOut": false,
+            "Stopped": false,
+            "Status": 272,
+            "Sectors": [
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              }
+            ],
+            "Speeds": {
+              "I1": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "I2": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "FL": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "ST": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              }
+            },
+            "BestLapTime": {
+              "Value": ""
+            },
+            "LastLapTime": {
+              "Value": "",
+              "Status": 0,
+              "OverallFastest": false,
+              "PersonalFastest": true
+            }
+          },
+          "30": {
+            "KnockedOut": false,
+            "Cutoff": true,
+            "BestLapTimes": [
+              {
+                "Value": ""
+              },
+              {},
+              {}
+            ],
+            "Stats": [
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              },
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              },
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              }
+            ],
+            "Line": 8,
+            "Position": "8",
+            "ShowPosition": false,
+            "RacingNumber": "30",
+            "Retired": false,
+            "InPit": true,
+            "PitOut": false,
+            "Stopped": false,
+            "Status": 272,
+            "Sectors": [
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              }
+            ],
+            "Speeds": {
+              "I1": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "I2": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "FL": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "ST": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              }
+            },
+            "BestLapTime": {
+              "Value": ""
+            },
+            "LastLapTime": {
+              "Value": "",
+              "Status": 0,
+              "OverallFastest": false,
+              "PersonalFastest": true
+            }
+          },
+          "6": {
+            "KnockedOut": false,
+            "Cutoff": true,
+            "BestLapTimes": [
+              {
+                "Value": ""
+              },
+              {},
+              {}
+            ],
+            "Stats": [
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              },
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              },
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              }
+            ],
+            "Line": 9,
+            "Position": "9",
+            "ShowPosition": false,
+            "RacingNumber": "6",
+            "Retired": false,
+            "InPit": true,
+            "PitOut": false,
+            "Stopped": false,
+            "Status": 272,
+            "Sectors": [
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              }
+            ],
+            "Speeds": {
+              "I1": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "I2": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "FL": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "ST": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              }
+            },
+            "BestLapTime": {
+              "Value": ""
+            },
+            "LastLapTime": {
+              "Value": "",
+              "Status": 0,
+              "OverallFastest": false,
+              "PersonalFastest": true
+            }
+          },
+          "5": {
+            "KnockedOut": false,
+            "Cutoff": true,
+            "BestLapTimes": [
+              {
+                "Value": ""
+              },
+              {},
+              {}
+            ],
+            "Stats": [
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              },
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              },
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              }
+            ],
+            "Line": 10,
+            "Position": "10",
+            "ShowPosition": false,
+            "RacingNumber": "5",
+            "Retired": false,
+            "InPit": true,
+            "PitOut": false,
+            "Stopped": false,
+            "Status": 272,
+            "Sectors": [
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              }
+            ],
+            "Speeds": {
+              "I1": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "I2": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "FL": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "ST": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              }
+            },
+            "BestLapTime": {
+              "Value": ""
+            },
+            "LastLapTime": {
+              "Value": "",
+              "Status": 0,
+              "OverallFastest": false,
+              "PersonalFastest": true
+            }
+          },
+          "10": {
+            "KnockedOut": false,
+            "Cutoff": true,
+            "BestLapTimes": [
+              {
+                "Value": ""
+              },
+              {},
+              {}
+            ],
+            "Stats": [
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              },
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              },
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              }
+            ],
+            "Line": 11,
+            "Position": "11",
+            "ShowPosition": false,
+            "RacingNumber": "10",
+            "Retired": false,
+            "InPit": true,
+            "PitOut": false,
+            "Stopped": false,
+            "Status": 272,
+            "Sectors": [
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              }
+            ],
+            "Speeds": {
+              "I1": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "I2": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "FL": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "ST": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              }
+            },
+            "BestLapTime": {
+              "Value": ""
+            },
+            "LastLapTime": {
+              "Value": "",
+              "Status": 0,
+              "OverallFastest": false,
+              "PersonalFastest": true
+            }
+          },
+          "44": {
+            "KnockedOut": false,
+            "Cutoff": true,
+            "BestLapTimes": [
+              {
+                "Value": ""
+              },
+              {},
+              {}
+            ],
+            "Stats": [
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              },
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              },
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              }
+            ],
+            "Line": 12,
+            "Position": "12",
+            "ShowPosition": false,
+            "RacingNumber": "44",
+            "Retired": false,
+            "InPit": true,
+            "PitOut": false,
+            "Stopped": false,
+            "Status": 272,
+            "Sectors": [
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              }
+            ],
+            "Speeds": {
+              "I1": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "I2": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "FL": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "ST": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              }
+            },
+            "BestLapTime": {
+              "Value": ""
+            },
+            "LastLapTime": {
+              "Value": "",
+              "Status": 0,
+              "OverallFastest": false,
+              "PersonalFastest": true
+            }
+          },
+          "27": {
+            "KnockedOut": false,
+            "Cutoff": true,
+            "BestLapTimes": [
+              {
+                "Value": ""
+              },
+              {},
+              {}
+            ],
+            "Stats": [
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              },
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              },
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              }
+            ],
+            "Line": 13,
+            "Position": "13",
+            "ShowPosition": false,
+            "RacingNumber": "27",
+            "Retired": false,
+            "InPit": true,
+            "PitOut": false,
+            "Stopped": false,
+            "Status": 272,
+            "Sectors": [
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              }
+            ],
+            "Speeds": {
+              "I1": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "I2": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "FL": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "ST": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              }
+            },
+            "BestLapTime": {
+              "Value": ""
+            },
+            "LastLapTime": {
+              "Value": "",
+              "Status": 0,
+              "OverallFastest": false,
+              "PersonalFastest": true
+            }
+          },
+          "43": {
+            "KnockedOut": false,
+            "Cutoff": true,
+            "BestLapTimes": [
+              {
+                "Value": ""
+              },
+              {},
+              {}
+            ],
+            "Stats": [
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              },
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              },
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              }
+            ],
+            "Line": 14,
+            "Position": "14",
+            "ShowPosition": false,
+            "RacingNumber": "43",
+            "Retired": false,
+            "InPit": true,
+            "PitOut": false,
+            "Stopped": false,
+            "Status": 272,
+            "Sectors": [
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              }
+            ],
+            "Speeds": {
+              "I1": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "I2": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "FL": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "ST": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              }
+            },
+            "BestLapTime": {
+              "Value": ""
+            },
+            "LastLapTime": {
+              "Value": "",
+              "Status": 0,
+              "OverallFastest": false,
+              "PersonalFastest": true
+            }
+          },
+          "51": {
+            "KnockedOut": false,
+            "Cutoff": true,
+            "BestLapTimes": [
+              {
+                "Value": ""
+              },
+              {},
+              {}
+            ],
+            "Stats": [
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              },
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              },
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              }
+            ],
+            "Line": 15,
+            "Position": "15",
+            "ShowPosition": false,
+            "RacingNumber": "51",
+            "Retired": false,
+            "InPit": true,
+            "PitOut": false,
+            "Stopped": false,
+            "Status": 272,
+            "Sectors": [
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              }
+            ],
+            "Speeds": {
+              "I1": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "I2": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "FL": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "ST": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              }
+            },
+            "BestLapTime": {
+              "Value": ""
+            },
+            "LastLapTime": {
+              "Value": "",
+              "Status": 0,
+              "OverallFastest": false,
+              "PersonalFastest": true
+            }
+          },
+          "87": {
+            "KnockedOut": false,
+            "Cutoff": true,
+            "BestLapTimes": [
+              {
+                "Value": ""
+              },
+              {},
+              {}
+            ],
+            "Stats": [
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              },
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              },
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              }
+            ],
+            "Line": 16,
+            "Position": "16",
+            "ShowPosition": false,
+            "RacingNumber": "87",
+            "Retired": false,
+            "InPit": true,
+            "PitOut": false,
+            "Stopped": false,
+            "Status": 272,
+            "Sectors": [
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              }
+            ],
+            "Speeds": {
+              "I1": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "I2": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "FL": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "ST": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              }
+            },
+            "BestLapTime": {
+              "Value": ""
+            },
+            "LastLapTime": {
+              "Value": "",
+              "Status": 0,
+              "OverallFastest": false,
+              "PersonalFastest": true
+            }
+          },
+          "23": {
+            "KnockedOut": false,
+            "Cutoff": true,
+            "BestLapTimes": [
+              {
+                "Value": ""
+              },
+              {},
+              {}
+            ],
+            "Stats": [
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              },
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              },
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              }
+            ],
+            "Line": 17,
+            "Position": "17",
+            "ShowPosition": false,
+            "RacingNumber": "23",
+            "Retired": false,
+            "InPit": true,
+            "PitOut": false,
+            "Stopped": false,
+            "Status": 272,
+            "Sectors": [
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              }
+            ],
+            "Speeds": {
+              "I1": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "I2": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "FL": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "ST": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              }
+            },
+            "BestLapTime": {
+              "Value": ""
+            },
+            "LastLapTime": {
+              "Value": "",
+              "Status": 0,
+              "OverallFastest": false,
+              "PersonalFastest": true
+            }
+          },
+          "14": {
+            "KnockedOut": false,
+            "Cutoff": true,
+            "BestLapTimes": [
+              {
+                "Value": ""
+              },
+              {},
+              {}
+            ],
+            "Stats": [
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              },
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              },
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              }
+            ],
+            "Line": 18,
+            "Position": "18",
+            "ShowPosition": false,
+            "RacingNumber": "14",
+            "Retired": false,
+            "InPit": true,
+            "PitOut": false,
+            "Stopped": false,
+            "Status": 272,
+            "Sectors": [
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              }
+            ],
+            "Speeds": {
+              "I1": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "I2": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "FL": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "ST": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              }
+            },
+            "BestLapTime": {
+              "Value": ""
+            },
+            "LastLapTime": {
+              "Value": "",
+              "Status": 0,
+              "OverallFastest": false,
+              "PersonalFastest": true
+            }
+          },
+          "55": {
+            "KnockedOut": false,
+            "Cutoff": true,
+            "BestLapTimes": [
+              {
+                "Value": ""
+              },
+              {},
+              {}
+            ],
+            "Stats": [
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              },
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              },
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              }
+            ],
+            "Line": 19,
+            "Position": "19",
+            "ShowPosition": false,
+            "RacingNumber": "55",
+            "Retired": false,
+            "InPit": true,
+            "PitOut": false,
+            "Stopped": false,
+            "Status": 272,
+            "Sectors": [
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              }
+            ],
+            "Speeds": {
+              "I1": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "I2": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "FL": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "ST": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              }
+            },
+            "BestLapTime": {
+              "Value": ""
+            },
+            "LastLapTime": {
+              "Value": "",
+              "Status": 0,
+              "OverallFastest": false,
+              "PersonalFastest": true
+            }
+          },
+          "11": {
+            "KnockedOut": false,
+            "Cutoff": true,
+            "BestLapTimes": [
+              {
+                "Value": ""
+              },
+              {},
+              {}
+            ],
+            "Stats": [
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              },
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              },
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              }
+            ],
+            "Line": 20,
+            "Position": "20",
+            "ShowPosition": false,
+            "RacingNumber": "11",
+            "Retired": false,
+            "InPit": true,
+            "PitOut": false,
+            "Stopped": false,
+            "Status": 272,
+            "Sectors": [
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              }
+            ],
+            "Speeds": {
+              "I1": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "I2": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "FL": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "ST": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              }
+            },
+            "BestLapTime": {
+              "Value": ""
+            },
+            "LastLapTime": {
+              "Value": "",
+              "Status": 0,
+              "OverallFastest": false,
+              "PersonalFastest": true
+            }
+          },
+          "77": {
+            "KnockedOut": false,
+            "Cutoff": true,
+            "BestLapTimes": [
+              {
+                "Value": ""
+              },
+              {},
+              {}
+            ],
+            "Stats": [
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              },
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              },
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              }
+            ],
+            "Line": 21,
+            "Position": "21",
+            "ShowPosition": false,
+            "RacingNumber": "77",
+            "Retired": false,
+            "InPit": true,
+            "PitOut": false,
+            "Stopped": false,
+            "Status": 272,
+            "Sectors": [
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              }
+            ],
+            "Speeds": {
+              "I1": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "I2": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "FL": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "ST": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              }
+            },
+            "BestLapTime": {
+              "Value": ""
+            },
+            "LastLapTime": {
+              "Value": "",
+              "Status": 0,
+              "OverallFastest": false,
+              "PersonalFastest": true
+            }
+          },
+          "18": {
+            "KnockedOut": false,
+            "Cutoff": true,
+            "BestLapTimes": [
+              {
+                "Value": ""
+              },
+              {},
+              {}
+            ],
+            "Stats": [
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              },
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              },
+              {
+                "TimeDiffToFastest": "",
+                "TimeDifftoPositionAhead": ""
+              }
+            ],
+            "Line": 22,
+            "Position": "22",
+            "ShowPosition": false,
+            "RacingNumber": "18",
+            "Retired": false,
+            "InPit": true,
+            "PitOut": false,
+            "Stopped": false,
+            "Status": 272,
+            "Sectors": [
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              {
+                "Stopped": false,
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              }
+            ],
+            "Speeds": {
+              "I1": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "I2": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "FL": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              },
+              "ST": {
+                "Value": "",
+                "Status": 0,
+                "OverallFastest": false,
+                "PersonalFastest": false
+              }
+            },
+            "BestLapTime": {
+              "Value": ""
+            },
+            "LastLapTime": {
+              "Value": "",
+              "Status": 0,
+              "OverallFastest": false,
+              "PersonalFastest": true
+            }
+          }
+        },
+        "Withheld": false
+      }
+    },
+    {
+      "utc": "2026-11-07T17:46:56.181618+00:00",
+      "stream": "Heartbeat",
+      "source_line": 3,
+      "payload": {
+        "Utc": "2026-11-07T17:46:56.1816187Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T17:47:41.197810+00:00",
+      "stream": "Heartbeat",
+      "source_line": 6,
+      "payload": {
+        "Utc": "2026-11-07T17:47:41.1978106Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T17:48:26.212673+00:00",
+      "stream": "Heartbeat",
+      "source_line": 9,
+      "payload": {
+        "Utc": "2026-11-07T17:48:26.212673Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T17:49:11.241550+00:00",
+      "stream": "Heartbeat",
+      "source_line": 12,
+      "payload": {
+        "Utc": "2026-11-07T17:49:11.2415505Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T17:49:56.270304+00:00",
+      "stream": "Heartbeat",
+      "source_line": 15,
+      "payload": {
+        "Utc": "2026-11-07T17:49:56.270304Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T17:50:41.286103+00:00",
+      "stream": "Heartbeat",
+      "source_line": 18,
+      "payload": {
+        "Utc": "2026-11-07T17:50:41.2861033Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T17:51:26.313273+00:00",
+      "stream": "Heartbeat",
+      "source_line": 21,
+      "payload": {
+        "Utc": "2026-11-07T17:51:26.3132733Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T17:52:11.349526+00:00",
+      "stream": "Heartbeat",
+      "source_line": 24,
+      "payload": {
+        "Utc": "2026-11-07T17:52:11.3495267Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T17:52:56.360101+00:00",
+      "stream": "Heartbeat",
+      "source_line": 27,
+      "payload": {
+        "Utc": "2026-11-07T17:52:56.3601012Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T17:53:41.385818+00:00",
+      "stream": "Heartbeat",
+      "source_line": 30,
+      "payload": {
+        "Utc": "2026-11-07T17:53:41.3858184Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T17:54:26.406122+00:00",
+      "stream": "Heartbeat",
+      "source_line": 33,
+      "payload": {
+        "Utc": "2026-11-07T17:54:26.4061224Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T17:54:34.180000+00:00",
+      "stream": "SessionData",
+      "source_line": 5,
+      "payload": {
+        "StatusSeries": {
+          "1": {
+            "Utc": "2026-11-07T17:54:34.18Z",
+            "TrackStatus": "AllClear"
+          }
+        }
+      }
+    },
+    {
+      "utc": "2026-11-07T17:55:11.425732+00:00",
+      "stream": "Heartbeat",
+      "source_line": 36,
+      "payload": {
+        "Utc": "2026-11-07T17:55:11.4257322Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T17:55:56.448922+00:00",
+      "stream": "Heartbeat",
+      "source_line": 39,
+      "payload": {
+        "Utc": "2026-11-07T17:55:56.4489221Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T17:56:41.477245+00:00",
+      "stream": "Heartbeat",
+      "source_line": 42,
+      "payload": {
+        "Utc": "2026-11-07T17:56:41.4772455Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T17:57:26.509986+00:00",
+      "stream": "Heartbeat",
+      "source_line": 45,
+      "payload": {
+        "Utc": "2026-11-07T17:57:26.5099869Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T17:58:11.527933+00:00",
+      "stream": "Heartbeat",
+      "source_line": 48,
+      "payload": {
+        "Utc": "2026-11-07T17:58:11.5279337Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T17:58:56.559449+00:00",
+      "stream": "Heartbeat",
+      "source_line": 51,
+      "payload": {
+        "Utc": "2026-11-07T17:58:56.5594494Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T17:59:41.596523+00:00",
+      "stream": "Heartbeat",
+      "source_line": 54,
+      "payload": {
+        "Utc": "2026-11-07T17:59:41.5965231Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:00:00.145000+00:00",
+      "stream": "SessionInfo",
+      "source_line": 4,
+      "payload": {
+        "Meeting": {
+          "Key": 1299,
+          "Name": "São Paulo Grand Prix",
+          "OfficialName": "FORMULA 1 MSC CRUISES GRANDE PRÊMIO DE SÃO PAULO 2026",
+          "Location": "São Paulo",
+          "Number": 20,
+          "Country": {
+            "Key": 10,
+            "Code": "BRA",
+            "Name": "Brazil"
+          },
+          "Circuit": {
+            "Key": 14,
+            "ShortName": "Interlagos"
+          }
+        },
+        "SessionStatus": "Started",
+        "ArchiveStatus": {
+          "Status": "Generating"
+        },
+        "Key": 11408,
+        "Type": "Qualifying",
+        "Name": "Qualifying",
+        "StartDate": "2026-11-07T15:00:00",
+        "EndDate": "2026-11-07T16:00:00",
+        "GmtOffset": "-03:00:00",
+        "Path": "2026/2026-11-08_São_Paulo_Grand_Prix/2026-11-07_Qualifying/"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:00:00.145000+00:00",
+      "stream": "SessionStatus",
+      "source_line": 4,
+      "payload": {
+        "Status": "Started",
+        "Started": "Started"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:00:00.145000+00:00",
+      "stream": "SessionData",
+      "source_line": 6,
+      "payload": {
+        "StatusSeries": {
+          "2": {
+            "Utc": "2026-11-07T18:00:00.145Z",
+            "SessionStatus": "Started"
+          }
+        }
+      }
+    },
+    {
+      "utc": "2026-11-07T18:00:26.621752+00:00",
+      "stream": "Heartbeat",
+      "source_line": 57,
+      "payload": {
+        "Utc": "2026-11-07T18:00:26.6217526Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:01:11.642088+00:00",
+      "stream": "Heartbeat",
+      "source_line": 60,
+      "payload": {
+        "Utc": "2026-11-07T18:01:11.6420887Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:01:56.662375+00:00",
+      "stream": "Heartbeat",
+      "source_line": 63,
+      "payload": {
+        "Utc": "2026-11-07T18:01:56.6623757Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:02:23.309000+00:00",
+      "stream": "SessionStatus",
+      "source_line": 5,
+      "payload": {
+        "Status": "Aborted",
+        "Started": "Started"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:02:23.309000+00:00",
+      "stream": "SessionData",
+      "source_line": 7,
+      "payload": {
+        "StatusSeries": {
+          "3": {
+            "Utc": "2026-11-07T18:02:23.309Z",
+            "SessionStatus": "Aborted"
+          }
+        }
+      }
+    },
+    {
+      "utc": "2026-11-07T18:02:23.611000+00:00",
+      "stream": "SessionData",
+      "source_line": 8,
+      "payload": {
+        "StatusSeries": {
+          "4": {
+            "Utc": "2026-11-07T18:02:23.611Z",
+            "TrackStatus": "Red"
+          }
+        }
+      }
+    },
+    {
+      "utc": "2026-11-07T18:02:41.696591+00:00",
+      "stream": "Heartbeat",
+      "source_line": 66,
+      "payload": {
+        "Utc": "2026-11-07T18:02:41.6965918Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:03:26.727420+00:00",
+      "stream": "Heartbeat",
+      "source_line": 69,
+      "payload": {
+        "Utc": "2026-11-07T18:03:26.7274208Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:04:11.747406+00:00",
+      "stream": "Heartbeat",
+      "source_line": 72,
+      "payload": {
+        "Utc": "2026-11-07T18:04:11.7474066Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:04:56.754114+00:00",
+      "stream": "Heartbeat",
+      "source_line": 75,
+      "payload": {
+        "Utc": "2026-11-07T18:04:56.7541149Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:04:57.417000+00:00",
+      "stream": "TimingData",
+      "source_line": 564,
+      "payload": {
+        "Lines": {
+          "27": {
+            "InPit": true,
+            "PitOut": false,
+            "Status": 80
+          }
+        }
+      }
+    },
+    {
+      "utc": "2026-11-07T18:05:00.615000+00:00",
+      "stream": "SessionData",
+      "source_line": 9,
+      "payload": {
+        "StatusSeries": {
+          "5": {
+            "Utc": "2026-11-07T18:05:00.615Z",
+            "TrackStatus": "AllClear"
+          }
+        }
+      }
+    },
+    {
+      "utc": "2026-11-07T18:05:41.772519+00:00",
+      "stream": "Heartbeat",
+      "source_line": 78,
+      "payload": {
+        "Utc": "2026-11-07T18:05:41.7725193Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:06:26.801655+00:00",
+      "stream": "Heartbeat",
+      "source_line": 81,
+      "payload": {
+        "Utc": "2026-11-07T18:06:26.8016558Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:07:11.819642+00:00",
+      "stream": "Heartbeat",
+      "source_line": 84,
+      "payload": {
+        "Utc": "2026-11-07T18:07:11.8196423Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:07:56.861584+00:00",
+      "stream": "Heartbeat",
+      "source_line": 87,
+      "payload": {
+        "Utc": "2026-11-07T18:07:56.8615842Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:08:41.886741+00:00",
+      "stream": "Heartbeat",
+      "source_line": 90,
+      "payload": {
+        "Utc": "2026-11-07T18:08:41.8867418Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:09:26.909886+00:00",
+      "stream": "Heartbeat",
+      "source_line": 93,
+      "payload": {
+        "Utc": "2026-11-07T18:09:26.9098865Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:10:11.931027+00:00",
+      "stream": "Heartbeat",
+      "source_line": 96,
+      "payload": {
+        "Utc": "2026-11-07T18:10:11.9310277Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:10:56.961029+00:00",
+      "stream": "Heartbeat",
+      "source_line": 99,
+      "payload": {
+        "Utc": "2026-11-07T18:10:56.9610299Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:11:41.989606+00:00",
+      "stream": "Heartbeat",
+      "source_line": 102,
+      "payload": {
+        "Utc": "2026-11-07T18:11:41.9896068Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:12:27.010346+00:00",
+      "stream": "Heartbeat",
+      "source_line": 105,
+      "payload": {
+        "Utc": "2026-11-07T18:12:27.010346Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:13:12.036781+00:00",
+      "stream": "Heartbeat",
+      "source_line": 108,
+      "payload": {
+        "Utc": "2026-11-07T18:13:12.0367811Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:13:57.064661+00:00",
+      "stream": "Heartbeat",
+      "source_line": 111,
+      "payload": {
+        "Utc": "2026-11-07T18:13:57.0646611Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:14:42.092512+00:00",
+      "stream": "Heartbeat",
+      "source_line": 114,
+      "payload": {
+        "Utc": "2026-11-07T18:14:42.0925127Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:15:27.127076+00:00",
+      "stream": "Heartbeat",
+      "source_line": 117,
+      "payload": {
+        "Utc": "2026-11-07T18:15:27.1270765Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:16:12.153148+00:00",
+      "stream": "Heartbeat",
+      "source_line": 120,
+      "payload": {
+        "Utc": "2026-11-07T18:16:12.1531486Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:16:57.188222+00:00",
+      "stream": "Heartbeat",
+      "source_line": 123,
+      "payload": {
+        "Utc": "2026-11-07T18:16:57.1882228Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:17:42.203640+00:00",
+      "stream": "Heartbeat",
+      "source_line": 126,
+      "payload": {
+        "Utc": "2026-11-07T18:17:42.2036404Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:18:27.233357+00:00",
+      "stream": "Heartbeat",
+      "source_line": 129,
+      "payload": {
+        "Utc": "2026-11-07T18:18:27.2333574Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:19:12.267180+00:00",
+      "stream": "Heartbeat",
+      "source_line": 132,
+      "payload": {
+        "Utc": "2026-11-07T18:19:12.2671803Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:19:57.303422+00:00",
+      "stream": "Heartbeat",
+      "source_line": 135,
+      "payload": {
+        "Utc": "2026-11-07T18:19:57.3034224Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:20:42.341232+00:00",
+      "stream": "Heartbeat",
+      "source_line": 138,
+      "payload": {
+        "Utc": "2026-11-07T18:20:42.341232Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:21:27.347766+00:00",
+      "stream": "Heartbeat",
+      "source_line": 141,
+      "payload": {
+        "Utc": "2026-11-07T18:21:27.3477668Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:22:12.383237+00:00",
+      "stream": "Heartbeat",
+      "source_line": 144,
+      "payload": {
+        "Utc": "2026-11-07T18:22:12.3832376Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:22:57.412519+00:00",
+      "stream": "Heartbeat",
+      "source_line": 147,
+      "payload": {
+        "Utc": "2026-11-07T18:22:57.4125194Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:23:42.445085+00:00",
+      "stream": "Heartbeat",
+      "source_line": 150,
+      "payload": {
+        "Utc": "2026-11-07T18:23:42.4450853Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:24:27.459199+00:00",
+      "stream": "Heartbeat",
+      "source_line": 153,
+      "payload": {
+        "Utc": "2026-11-07T18:24:27.4591996Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:25:12.476787+00:00",
+      "stream": "Heartbeat",
+      "source_line": 156,
+      "payload": {
+        "Utc": "2026-11-07T18:25:12.4767878Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:25:57.488551+00:00",
+      "stream": "Heartbeat",
+      "source_line": 159,
+      "payload": {
+        "Utc": "2026-11-07T18:25:57.4885519Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:26:42.492485+00:00",
+      "stream": "Heartbeat",
+      "source_line": 162,
+      "payload": {
+        "Utc": "2026-11-07T18:26:42.4924855Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:27:27.504693+00:00",
+      "stream": "Heartbeat",
+      "source_line": 165,
+      "payload": {
+        "Utc": "2026-11-07T18:27:27.5046932Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:28:12.539934+00:00",
+      "stream": "Heartbeat",
+      "source_line": 168,
+      "payload": {
+        "Utc": "2026-11-07T18:28:12.5399343Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:28:57.569124+00:00",
+      "stream": "Heartbeat",
+      "source_line": 171,
+      "payload": {
+        "Utc": "2026-11-07T18:28:57.5691249Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:29:42.592252+00:00",
+      "stream": "Heartbeat",
+      "source_line": 174,
+      "payload": {
+        "Utc": "2026-11-07T18:29:42.5922524Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:30:27.611237+00:00",
+      "stream": "Heartbeat",
+      "source_line": 177,
+      "payload": {
+        "Utc": "2026-11-07T18:30:27.6112377Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:31:12.633474+00:00",
+      "stream": "Heartbeat",
+      "source_line": 180,
+      "payload": {
+        "Utc": "2026-11-07T18:31:12.6334742Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:31:57.658510+00:00",
+      "stream": "Heartbeat",
+      "source_line": 183,
+      "payload": {
+        "Utc": "2026-11-07T18:31:57.6585103Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:32:42.700145+00:00",
+      "stream": "Heartbeat",
+      "source_line": 186,
+      "payload": {
+        "Utc": "2026-11-07T18:32:42.7001454Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:33:27.719340+00:00",
+      "stream": "Heartbeat",
+      "source_line": 189,
+      "payload": {
+        "Utc": "2026-11-07T18:33:27.71934Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:34:12.754106+00:00",
+      "stream": "Heartbeat",
+      "source_line": 192,
+      "payload": {
+        "Utc": "2026-11-07T18:34:12.7541068Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:34:57.777620+00:00",
+      "stream": "Heartbeat",
+      "source_line": 195,
+      "payload": {
+        "Utc": "2026-11-07T18:34:57.7776205Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:35:42.797560+00:00",
+      "stream": "Heartbeat",
+      "source_line": 198,
+      "payload": {
+        "Utc": "2026-11-07T18:35:42.7975607Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:36:27.841342+00:00",
+      "stream": "Heartbeat",
+      "source_line": 201,
+      "payload": {
+        "Utc": "2026-11-07T18:36:27.8413424Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:37:12.870873+00:00",
+      "stream": "Heartbeat",
+      "source_line": 204,
+      "payload": {
+        "Utc": "2026-11-07T18:37:12.8708734Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:37:57.895867+00:00",
+      "stream": "Heartbeat",
+      "source_line": 207,
+      "payload": {
+        "Utc": "2026-11-07T18:37:57.8958679Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:38:42.905938+00:00",
+      "stream": "Heartbeat",
+      "source_line": 210,
+      "payload": {
+        "Utc": "2026-11-07T18:38:42.9059387Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:39:27.935496+00:00",
+      "stream": "Heartbeat",
+      "source_line": 213,
+      "payload": {
+        "Utc": "2026-11-07T18:39:27.935496Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:40:12.954552+00:00",
+      "stream": "Heartbeat",
+      "source_line": 216,
+      "payload": {
+        "Utc": "2026-11-07T18:40:12.9545522Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:40:57.983762+00:00",
+      "stream": "Heartbeat",
+      "source_line": 219,
+      "payload": {
+        "Utc": "2026-11-07T18:40:57.983762Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:41:43.011011+00:00",
+      "stream": "Heartbeat",
+      "source_line": 222,
+      "payload": {
+        "Utc": "2026-11-07T18:41:43.0110111Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:42:28.024477+00:00",
+      "stream": "Heartbeat",
+      "source_line": 225,
+      "payload": {
+        "Utc": "2026-11-07T18:42:28.0244772Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:43:13.049708+00:00",
+      "stream": "Heartbeat",
+      "source_line": 228,
+      "payload": {
+        "Utc": "2026-11-07T18:43:13.0497087Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:43:58.080292+00:00",
+      "stream": "Heartbeat",
+      "source_line": 231,
+      "payload": {
+        "Utc": "2026-11-07T18:43:58.0802924Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:44:43.092679+00:00",
+      "stream": "Heartbeat",
+      "source_line": 234,
+      "payload": {
+        "Utc": "2026-11-07T18:44:43.0926797Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:45:28.109163+00:00",
+      "stream": "Heartbeat",
+      "source_line": 237,
+      "payload": {
+        "Utc": "2026-11-07T18:45:28.1091632Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:46:13.123788+00:00",
+      "stream": "Heartbeat",
+      "source_line": 240,
+      "payload": {
+        "Utc": "2026-11-07T18:46:13.1237886Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:46:58.139971+00:00",
+      "stream": "Heartbeat",
+      "source_line": 243,
+      "payload": {
+        "Utc": "2026-11-07T18:46:58.1399719Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:47:43.174892+00:00",
+      "stream": "Heartbeat",
+      "source_line": 246,
+      "payload": {
+        "Utc": "2026-11-07T18:47:43.1748928Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:48:28.187186+00:00",
+      "stream": "Heartbeat",
+      "source_line": 249,
+      "payload": {
+        "Utc": "2026-11-07T18:48:28.187186Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:49:13.213706+00:00",
+      "stream": "Heartbeat",
+      "source_line": 252,
+      "payload": {
+        "Utc": "2026-11-07T18:49:13.213706Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:49:58.238514+00:00",
+      "stream": "Heartbeat",
+      "source_line": 255,
+      "payload": {
+        "Utc": "2026-11-07T18:49:58.2385143Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:50:43.268252+00:00",
+      "stream": "Heartbeat",
+      "source_line": 258,
+      "payload": {
+        "Utc": "2026-11-07T18:50:43.2682524Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:51:28.282571+00:00",
+      "stream": "Heartbeat",
+      "source_line": 261,
+      "payload": {
+        "Utc": "2026-11-07T18:51:28.2825718Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:52:13.300253+00:00",
+      "stream": "Heartbeat",
+      "source_line": 264,
+      "payload": {
+        "Utc": "2026-11-07T18:52:13.3002535Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:52:58.345504+00:00",
+      "stream": "Heartbeat",
+      "source_line": 267,
+      "payload": {
+        "Utc": "2026-11-07T18:52:58.3455043Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:53:43.373480+00:00",
+      "stream": "Heartbeat",
+      "source_line": 270,
+      "payload": {
+        "Utc": "2026-11-07T18:53:43.37348Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:54:28.399568+00:00",
+      "stream": "Heartbeat",
+      "source_line": 273,
+      "payload": {
+        "Utc": "2026-11-07T18:54:28.3995681Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:55:13.439142+00:00",
+      "stream": "Heartbeat",
+      "source_line": 276,
+      "payload": {
+        "Utc": "2026-11-07T18:55:13.4391425Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:55:58.458347+00:00",
+      "stream": "Heartbeat",
+      "source_line": 279,
+      "payload": {
+        "Utc": "2026-11-07T18:55:58.4583474Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:56:43.476581+00:00",
+      "stream": "Heartbeat",
+      "source_line": 282,
+      "payload": {
+        "Utc": "2026-11-07T18:56:43.476581Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:57:28.514701+00:00",
+      "stream": "Heartbeat",
+      "source_line": 285,
+      "payload": {
+        "Utc": "2026-11-07T18:57:28.5147014Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:58:13.534556+00:00",
+      "stream": "Heartbeat",
+      "source_line": 288,
+      "payload": {
+        "Utc": "2026-11-07T18:58:13.5345564Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:58:58.561716+00:00",
+      "stream": "Heartbeat",
+      "source_line": 291,
+      "payload": {
+        "Utc": "2026-11-07T18:58:58.5617163Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T18:59:43.581354+00:00",
+      "stream": "Heartbeat",
+      "source_line": 294,
+      "payload": {
+        "Utc": "2026-11-07T18:59:43.5813542Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:00:28.616880+00:00",
+      "stream": "Heartbeat",
+      "source_line": 297,
+      "payload": {
+        "Utc": "2026-11-07T19:00:28.6168806Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:01:13.644242+00:00",
+      "stream": "Heartbeat",
+      "source_line": 300,
+      "payload": {
+        "Utc": "2026-11-07T19:01:13.6442424Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:01:58.669510+00:00",
+      "stream": "Heartbeat",
+      "source_line": 303,
+      "payload": {
+        "Utc": "2026-11-07T19:01:58.6695101Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:02:43.690741+00:00",
+      "stream": "Heartbeat",
+      "source_line": 306,
+      "payload": {
+        "Utc": "2026-11-07T19:02:43.6907416Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:03:28.724909+00:00",
+      "stream": "Heartbeat",
+      "source_line": 309,
+      "payload": {
+        "Utc": "2026-11-07T19:03:28.7249099Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:04:13.756471+00:00",
+      "stream": "Heartbeat",
+      "source_line": 312,
+      "payload": {
+        "Utc": "2026-11-07T19:04:13.7564718Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:04:58.799083+00:00",
+      "stream": "Heartbeat",
+      "source_line": 315,
+      "payload": {
+        "Utc": "2026-11-07T19:04:58.7990834Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:05:43.821832+00:00",
+      "stream": "Heartbeat",
+      "source_line": 318,
+      "payload": {
+        "Utc": "2026-11-07T19:05:43.8218329Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:06:28.835681+00:00",
+      "stream": "Heartbeat",
+      "source_line": 321,
+      "payload": {
+        "Utc": "2026-11-07T19:06:28.835681Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:07:13.862771+00:00",
+      "stream": "Heartbeat",
+      "source_line": 324,
+      "payload": {
+        "Utc": "2026-11-07T19:07:13.8627712Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:07:58.890909+00:00",
+      "stream": "Heartbeat",
+      "source_line": 327,
+      "payload": {
+        "Utc": "2026-11-07T19:07:58.8909093Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:08:43.899306+00:00",
+      "stream": "Heartbeat",
+      "source_line": 330,
+      "payload": {
+        "Utc": "2026-11-07T19:08:43.8993065Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:09:28.914603+00:00",
+      "stream": "Heartbeat",
+      "source_line": 333,
+      "payload": {
+        "Utc": "2026-11-07T19:09:28.9146035Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:10:13.937261+00:00",
+      "stream": "Heartbeat",
+      "source_line": 336,
+      "payload": {
+        "Utc": "2026-11-07T19:10:13.9372618Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:10:58.965919+00:00",
+      "stream": "Heartbeat",
+      "source_line": 339,
+      "payload": {
+        "Utc": "2026-11-07T19:10:58.9659197Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:11:43.994003+00:00",
+      "stream": "Heartbeat",
+      "source_line": 342,
+      "payload": {
+        "Utc": "2026-11-07T19:11:43.9940034Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:12:29.020150+00:00",
+      "stream": "Heartbeat",
+      "source_line": 345,
+      "payload": {
+        "Utc": "2026-11-07T19:12:29.0201509Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:13:14.051127+00:00",
+      "stream": "Heartbeat",
+      "source_line": 348,
+      "payload": {
+        "Utc": "2026-11-07T19:13:14.0511273Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:13:59.079217+00:00",
+      "stream": "Heartbeat",
+      "source_line": 351,
+      "payload": {
+        "Utc": "2026-11-07T19:13:59.0792173Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:14:44.109984+00:00",
+      "stream": "Heartbeat",
+      "source_line": 354,
+      "payload": {
+        "Utc": "2026-11-07T19:14:44.1099845Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:15:29.126555+00:00",
+      "stream": "Heartbeat",
+      "source_line": 357,
+      "payload": {
+        "Utc": "2026-11-07T19:15:29.126555Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:16:14.153568+00:00",
+      "stream": "Heartbeat",
+      "source_line": 360,
+      "payload": {
+        "Utc": "2026-11-07T19:16:14.1535689Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:16:59.167593+00:00",
+      "stream": "Heartbeat",
+      "source_line": 363,
+      "payload": {
+        "Utc": "2026-11-07T19:16:59.1675934Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:17:44.178843+00:00",
+      "stream": "Heartbeat",
+      "source_line": 366,
+      "payload": {
+        "Utc": "2026-11-07T19:17:44.1788435Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:18:29.196740+00:00",
+      "stream": "Heartbeat",
+      "source_line": 369,
+      "payload": {
+        "Utc": "2026-11-07T19:18:29.1967404Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:19:14.225763+00:00",
+      "stream": "Heartbeat",
+      "source_line": 372,
+      "payload": {
+        "Utc": "2026-11-07T19:19:14.2257636Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:19:59.253803+00:00",
+      "stream": "Heartbeat",
+      "source_line": 375,
+      "payload": {
+        "Utc": "2026-11-07T19:19:59.2538034Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:20:44.276133+00:00",
+      "stream": "Heartbeat",
+      "source_line": 378,
+      "payload": {
+        "Utc": "2026-11-07T19:20:44.2761339Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:21:29.289728+00:00",
+      "stream": "Heartbeat",
+      "source_line": 381,
+      "payload": {
+        "Utc": "2026-11-07T19:21:29.2897285Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:22:14.300780+00:00",
+      "stream": "Heartbeat",
+      "source_line": 384,
+      "payload": {
+        "Utc": "2026-11-07T19:22:14.3007807Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:22:59.307493+00:00",
+      "stream": "Heartbeat",
+      "source_line": 387,
+      "payload": {
+        "Utc": "2026-11-07T19:22:59.3074936Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:23:29.104000+00:00",
+      "stream": "SessionStatus",
+      "source_line": 6,
+      "payload": {
+        "Status": "Inactive",
+        "Started": "Started"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:23:29.104000+00:00",
+      "stream": "SessionData",
+      "source_line": 10,
+      "payload": {
+        "StatusSeries": {
+          "6": {
+            "Utc": "2026-11-07T19:23:29.104Z",
+            "SessionStatus": "Inactive"
+          }
+        }
+      }
+    },
+    {
+      "utc": "2026-11-07T19:23:44.337156+00:00",
+      "stream": "Heartbeat",
+      "source_line": 390,
+      "payload": {
+        "Utc": "2026-11-07T19:23:44.3371561Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:24:29.357871+00:00",
+      "stream": "Heartbeat",
+      "source_line": 393,
+      "payload": {
+        "Utc": "2026-11-07T19:24:29.3578714Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:25:14.371353+00:00",
+      "stream": "Heartbeat",
+      "source_line": 396,
+      "payload": {
+        "Utc": "2026-11-07T19:25:14.371353Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:25:59.399219+00:00",
+      "stream": "Heartbeat",
+      "source_line": 399,
+      "payload": {
+        "Utc": "2026-11-07T19:25:59.3992192Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:26:00.142000+00:00",
+      "stream": "SessionStatus",
+      "source_line": 7,
+      "payload": {
+        "Status": "Started",
+        "Started": "Started"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:26:00.142000+00:00",
+      "stream": "SessionData",
+      "source_line": 11,
+      "payload": {
+        "StatusSeries": {
+          "7": {
+            "Utc": "2026-11-07T19:26:00.142Z",
+            "SessionStatus": "Started"
+          }
+        }
+      }
+    },
+    {
+      "utc": "2026-11-07T19:26:02.188000+00:00",
+      "stream": "TimingData",
+      "source_line": 565,
+      "payload": {
+        "Lines": {
+          "77": {
+            "Status": 592
+          }
+        }
+      }
+    },
+    {
+      "utc": "2026-11-07T19:26:44.428659+00:00",
+      "stream": "Heartbeat",
+      "source_line": 402,
+      "payload": {
+        "Utc": "2026-11-07T19:26:44.4286592Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:27:29.464821+00:00",
+      "stream": "Heartbeat",
+      "source_line": 405,
+      "payload": {
+        "Utc": "2026-11-07T19:27:29.464821Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:28:14.498288+00:00",
+      "stream": "Heartbeat",
+      "source_line": 408,
+      "payload": {
+        "Utc": "2026-11-07T19:28:14.4982882Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:28:59.522452+00:00",
+      "stream": "Heartbeat",
+      "source_line": 411,
+      "payload": {
+        "Utc": "2026-11-07T19:28:59.5224524Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:29:06.843000+00:00",
+      "stream": "SessionData",
+      "source_line": 12,
+      "payload": {
+        "StatusSeries": {
+          "8": {
+            "Utc": "2026-11-07T19:29:06.843Z",
+            "TrackStatus": "Yellow"
+          }
+        }
+      }
+    },
+    {
+      "utc": "2026-11-07T19:29:18.125000+00:00",
+      "stream": "SessionData",
+      "source_line": 13,
+      "payload": {
+        "StatusSeries": {
+          "9": {
+            "Utc": "2026-11-07T19:29:18.125Z",
+            "TrackStatus": "AllClear"
+          }
+        }
+      }
+    },
+    {
+      "utc": "2026-11-07T19:29:44.542376+00:00",
+      "stream": "Heartbeat",
+      "source_line": 414,
+      "payload": {
+        "Utc": "2026-11-07T19:29:44.5423763Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:30:29.574129+00:00",
+      "stream": "Heartbeat",
+      "source_line": 417,
+      "payload": {
+        "Utc": "2026-11-07T19:30:29.5741299Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:31:14.601286+00:00",
+      "stream": "Heartbeat",
+      "source_line": 420,
+      "payload": {
+        "Utc": "2026-11-07T19:31:14.6012862Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:31:59.631426+00:00",
+      "stream": "Heartbeat",
+      "source_line": 423,
+      "payload": {
+        "Utc": "2026-11-07T19:31:59.6314268Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:32:44.661798+00:00",
+      "stream": "Heartbeat",
+      "source_line": 426,
+      "payload": {
+        "Utc": "2026-11-07T19:32:44.6617989Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:33:20.214000+00:00",
+      "stream": "SessionData",
+      "source_line": 14,
+      "payload": {
+        "StatusSeries": {
+          "10": {
+            "Utc": "2026-11-07T19:33:20.214Z",
+            "TrackStatus": "Yellow"
+          }
+        }
+      }
+    },
+    {
+      "utc": "2026-11-07T19:33:29.695063+00:00",
+      "stream": "Heartbeat",
+      "source_line": 429,
+      "payload": {
+        "Utc": "2026-11-07T19:33:29.6950637Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:33:38.547000+00:00",
+      "stream": "SessionData",
+      "source_line": 15,
+      "payload": {
+        "StatusSeries": {
+          "11": {
+            "Utc": "2026-11-07T19:33:38.547Z",
+            "TrackStatus": "AllClear"
+          }
+        }
+      }
+    },
+    {
+      "utc": "2026-11-07T19:34:14.713387+00:00",
+      "stream": "Heartbeat",
+      "source_line": 432,
+      "payload": {
+        "Utc": "2026-11-07T19:34:14.7133873Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:34:59.732361+00:00",
+      "stream": "Heartbeat",
+      "source_line": 435,
+      "payload": {
+        "Utc": "2026-11-07T19:34:59.7323619Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:35:08.087000+00:00",
+      "stream": "SessionData",
+      "source_line": 16,
+      "payload": {
+        "StatusSeries": {
+          "12": {
+            "Utc": "2026-11-07T19:35:08.087Z",
+            "TrackStatus": "Yellow"
+          }
+        }
+      }
+    },
+    {
+      "utc": "2026-11-07T19:35:38.270000+00:00",
+      "stream": "SessionData",
+      "source_line": 17,
+      "payload": {
+        "StatusSeries": {
+          "13": {
+            "Utc": "2026-11-07T19:35:38.27Z",
+            "TrackStatus": "AllClear"
+          }
+        }
+      }
+    },
+    {
+      "utc": "2026-11-07T19:35:44.766088+00:00",
+      "stream": "Heartbeat",
+      "source_line": 438,
+      "payload": {
+        "Utc": "2026-11-07T19:35:44.7660888Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:36:29.799386+00:00",
+      "stream": "Heartbeat",
+      "source_line": 441,
+      "payload": {
+        "Utc": "2026-11-07T19:36:29.7993865Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:37:02.037000+00:00",
+      "stream": "SessionData",
+      "source_line": 18,
+      "payload": {
+        "StatusSeries": {
+          "14": {
+            "Utc": "2026-11-07T19:37:02.037Z",
+            "TrackStatus": "Yellow"
+          }
+        }
+      }
+    },
+    {
+      "utc": "2026-11-07T19:37:08.741000+00:00",
+      "stream": "SessionData",
+      "source_line": 19,
+      "payload": {
+        "StatusSeries": {
+          "15": {
+            "Utc": "2026-11-07T19:37:08.741Z",
+            "TrackStatus": "AllClear"
+          }
+        }
+      }
+    },
+    {
+      "utc": "2026-11-07T19:37:14.825406+00:00",
+      "stream": "Heartbeat",
+      "source_line": 444,
+      "payload": {
+        "Utc": "2026-11-07T19:37:14.8254063Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:37:59.845158+00:00",
+      "stream": "Heartbeat",
+      "source_line": 447,
+      "payload": {
+        "Utc": "2026-11-07T19:37:59.8451587Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:38:44.858692+00:00",
+      "stream": "Heartbeat",
+      "source_line": 450,
+      "payload": {
+        "Utc": "2026-11-07T19:38:44.8586923Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:39:29.890128+00:00",
+      "stream": "Heartbeat",
+      "source_line": 453,
+      "payload": {
+        "Utc": "2026-11-07T19:39:29.8901282Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:40:14.913169+00:00",
+      "stream": "Heartbeat",
+      "source_line": 456,
+      "payload": {
+        "Utc": "2026-11-07T19:40:14.9131693Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:40:59.935896+00:00",
+      "stream": "Heartbeat",
+      "source_line": 459,
+      "payload": {
+        "Utc": "2026-11-07T19:40:59.9358967Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:41:37.143000+00:00",
+      "stream": "SessionStatus",
+      "source_line": 8,
+      "payload": {
+        "Status": "Finished",
+        "Started": "Finished"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:41:37.143000+00:00",
+      "stream": "SessionData",
+      "source_line": 20,
+      "payload": {
+        "StatusSeries": {
+          "16": {
+            "Utc": "2026-11-07T19:41:37.143Z",
+            "SessionStatus": "Finished"
+          }
+        }
+      }
+    },
+    {
+      "utc": "2026-11-07T19:41:40.715000+00:00",
+      "stream": "SessionData",
+      "source_line": 21,
+      "payload": {
+        "StatusSeries": {
+          "17": {
+            "Utc": "2026-11-07T19:41:40.715Z",
+            "TrackStatus": "Yellow"
+          }
+        }
+      }
+    },
+    {
+      "utc": "2026-11-07T19:41:44.964668+00:00",
+      "stream": "Heartbeat",
+      "source_line": 462,
+      "payload": {
+        "Utc": "2026-11-07T19:41:44.9646682Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:41:54.134000+00:00",
+      "stream": "SessionData",
+      "source_line": 22,
+      "payload": {
+        "StatusSeries": {
+          "18": {
+            "Utc": "2026-11-07T19:41:54.134Z",
+            "TrackStatus": "AllClear"
+          }
+        }
+      }
+    },
+    {
+      "utc": "2026-11-07T19:42:30.000289+00:00",
+      "stream": "Heartbeat",
+      "source_line": 465,
+      "payload": {
+        "Utc": "2026-11-07T19:42:30.0002894Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:43:15.022097+00:00",
+      "stream": "Heartbeat",
+      "source_line": 468,
+      "payload": {
+        "Utc": "2026-11-07T19:43:15.0220975Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:43:51.121000+00:00",
+      "stream": "SessionData",
+      "source_line": 23,
+      "payload": {
+        "StatusSeries": {
+          "19": {
+            "Utc": "2026-11-07T19:43:51.121Z",
+            "TrackStatus": "Yellow"
+          }
+        }
+      }
+    },
+    {
+      "utc": "2026-11-07T19:44:00.046345+00:00",
+      "stream": "Heartbeat",
+      "source_line": 471,
+      "payload": {
+        "Utc": "2026-11-07T19:44:00.0463455Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:44:15.050877+00:00",
+      "stream": "Heartbeat",
+      "source_line": 472,
+      "payload": {
+        "Utc": "2026-11-07T19:44:15.0508771Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:44:20.644000+00:00",
+      "stream": "SessionData",
+      "source_line": 24,
+      "payload": {
+        "StatusSeries": {
+          "20": {
+            "Utc": "2026-11-07T19:44:20.644Z",
+            "TrackStatus": "AllClear"
+          }
+        }
+      }
+    },
+    {
+      "utc": "2026-11-07T19:44:30.056491+00:00",
+      "stream": "Heartbeat",
+      "source_line": 473,
+      "payload": {
+        "Utc": "2026-11-07T19:44:30.0564919Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:44:45.058110+00:00",
+      "stream": "Heartbeat",
+      "source_line": 474,
+      "payload": {
+        "Utc": "2026-11-07T19:44:45.0581108Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:44:58.025000+00:00",
+      "stream": "TimingData",
+      "source_line": 6542,
+      "payload": {
+        "Lines": {
+          "51": {
+            "Sectors": {
+              "2": {
+                "Segments": {
+                  "3": {
+                    "Status": 2048
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "utc": "2026-11-07T19:45:00.072813+00:00",
+      "stream": "Heartbeat",
+      "source_line": 475,
+      "payload": {
+        "Utc": "2026-11-07T19:45:00.0728135Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:45:01.474000+00:00",
+      "stream": "TimingData",
+      "source_line": 6543,
+      "payload": {
+        "Lines": {
+          "43": {
+            "Sectors": {
+              "2": {
+                "PreviousValue": "32.233"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "utc": "2026-11-07T19:45:15.101547+00:00",
+      "stream": "Heartbeat",
+      "source_line": 476,
+      "payload": {
+        "Utc": "2026-11-07T19:45:15.1015475Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:45:30.103215+00:00",
+      "stream": "Heartbeat",
+      "source_line": 477,
+      "payload": {
+        "Utc": "2026-11-07T19:45:30.1032159Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:45:45.112562+00:00",
+      "stream": "Heartbeat",
+      "source_line": 478,
+      "payload": {
+        "Utc": "2026-11-07T19:45:45.1125625Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:46:15.140821+00:00",
+      "stream": "Heartbeat",
+      "source_line": 480,
+      "payload": {
+        "Utc": "2026-11-07T19:46:15.1408214Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:47:00.162229+00:00",
+      "stream": "Heartbeat",
+      "source_line": 483,
+      "payload": {
+        "Utc": "2026-11-07T19:47:00.1622296Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:47:45.187464+00:00",
+      "stream": "Heartbeat",
+      "source_line": 486,
+      "payload": {
+        "Utc": "2026-11-07T19:47:45.1874646Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:47:59.683000+00:00",
+      "stream": "SessionData",
+      "source_line": 25,
+      "payload": {
+        "Series": {
+          "1": {
+            "Utc": "2026-11-07T19:47:59.683Z",
+            "QualifyingPart": 2
+          }
+        }
+      }
+    },
+    {
+      "utc": "2026-11-07T19:48:05.108000+00:00",
+      "stream": "SessionStatus",
+      "source_line": 9,
+      "payload": {
+        "Status": "Inactive",
+        "Started": "Finished"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:48:05.108000+00:00",
+      "stream": "SessionData",
+      "source_line": 26,
+      "payload": {
+        "StatusSeries": {
+          "21": {
+            "Utc": "2026-11-07T19:48:05.108Z",
+            "SessionStatus": "Inactive"
+          }
+        }
+      }
+    },
+    {
+      "utc": "2026-11-07T19:48:30.206230+00:00",
+      "stream": "Heartbeat",
+      "source_line": 489,
+      "payload": {
+        "Utc": "2026-11-07T19:48:30.2062307Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:49:00.136000+00:00",
+      "stream": "SessionStatus",
+      "source_line": 10,
+      "payload": {
+        "Status": "Started",
+        "Started": "Started"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:49:00.136000+00:00",
+      "stream": "SessionData",
+      "source_line": 27,
+      "payload": {
+        "StatusSeries": {
+          "22": {
+            "Utc": "2026-11-07T19:49:00.136Z",
+            "SessionStatus": "Started"
+          }
+        }
+      }
+    },
+    {
+      "utc": "2026-11-07T19:49:15.236737+00:00",
+      "stream": "Heartbeat",
+      "source_line": 492,
+      "payload": {
+        "Utc": "2026-11-07T19:49:15.2367375Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:50:00.264477+00:00",
+      "stream": "Heartbeat",
+      "source_line": 495,
+      "payload": {
+        "Utc": "2026-11-07T19:50:00.2644778Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:50:45.286372+00:00",
+      "stream": "Heartbeat",
+      "source_line": 498,
+      "payload": {
+        "Utc": "2026-11-07T19:50:45.2863723Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:51:30.309157+00:00",
+      "stream": "Heartbeat",
+      "source_line": 501,
+      "payload": {
+        "Utc": "2026-11-07T19:51:30.309157Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:52:15.326504+00:00",
+      "stream": "Heartbeat",
+      "source_line": 504,
+      "payload": {
+        "Utc": "2026-11-07T19:52:15.3265045Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:53:00.338589+00:00",
+      "stream": "Heartbeat",
+      "source_line": 507,
+      "payload": {
+        "Utc": "2026-11-07T19:53:00.3385898Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:53:45.349820+00:00",
+      "stream": "Heartbeat",
+      "source_line": 510,
+      "payload": {
+        "Utc": "2026-11-07T19:53:45.3498202Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:54:30.373360+00:00",
+      "stream": "Heartbeat",
+      "source_line": 513,
+      "payload": {
+        "Utc": "2026-11-07T19:54:30.3733607Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:55:15.391425+00:00",
+      "stream": "Heartbeat",
+      "source_line": 516,
+      "payload": {
+        "Utc": "2026-11-07T19:55:15.3914253Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:56:00.425897+00:00",
+      "stream": "Heartbeat",
+      "source_line": 519,
+      "payload": {
+        "Utc": "2026-11-07T19:56:00.4258973Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:56:45.447505+00:00",
+      "stream": "Heartbeat",
+      "source_line": 522,
+      "payload": {
+        "Utc": "2026-11-07T19:56:45.4475053Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:57:30.477964+00:00",
+      "stream": "Heartbeat",
+      "source_line": 525,
+      "payload": {
+        "Utc": "2026-11-07T19:57:30.4779642Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:58:15.482645+00:00",
+      "stream": "Heartbeat",
+      "source_line": 528,
+      "payload": {
+        "Utc": "2026-11-07T19:58:15.4826455Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:59:00.502246+00:00",
+      "stream": "Heartbeat",
+      "source_line": 531,
+      "payload": {
+        "Utc": "2026-11-07T19:59:00.5022467Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T19:59:45.528756+00:00",
+      "stream": "Heartbeat",
+      "source_line": 534,
+      "payload": {
+        "Utc": "2026-11-07T19:59:45.5287566Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:00:30.552009+00:00",
+      "stream": "Heartbeat",
+      "source_line": 537,
+      "payload": {
+        "Utc": "2026-11-07T20:00:30.5520099Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:01:15.577381+00:00",
+      "stream": "Heartbeat",
+      "source_line": 540,
+      "payload": {
+        "Utc": "2026-11-07T20:01:15.5773812Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:01:39.122000+00:00",
+      "stream": "SessionData",
+      "source_line": 28,
+      "payload": {
+        "StatusSeries": {
+          "23": {
+            "Utc": "2026-11-07T20:01:39.122Z",
+            "TrackStatus": "Yellow"
+          }
+        }
+      }
+    },
+    {
+      "utc": "2026-11-07T20:01:46.360000+00:00",
+      "stream": "SessionData",
+      "source_line": 29,
+      "payload": {
+        "StatusSeries": {
+          "24": {
+            "Utc": "2026-11-07T20:01:46.36Z",
+            "TrackStatus": "AllClear"
+          }
+        }
+      }
+    },
+    {
+      "utc": "2026-11-07T20:02:00.611126+00:00",
+      "stream": "Heartbeat",
+      "source_line": 543,
+      "payload": {
+        "Utc": "2026-11-07T20:02:00.611126Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:02:45.652661+00:00",
+      "stream": "Heartbeat",
+      "source_line": 546,
+      "payload": {
+        "Utc": "2026-11-07T20:02:45.6526614Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:03:02.531000+00:00",
+      "stream": "SessionData",
+      "source_line": 30,
+      "payload": {
+        "StatusSeries": {
+          "25": {
+            "Utc": "2026-11-07T20:03:02.531Z",
+            "TrackStatus": "Yellow"
+          }
+        }
+      }
+    },
+    {
+      "utc": "2026-11-07T20:03:17.903000+00:00",
+      "stream": "SessionStatus",
+      "source_line": 11,
+      "payload": {
+        "Status": "Aborted",
+        "Started": "Started"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:03:17.903000+00:00",
+      "stream": "SessionData",
+      "source_line": 31,
+      "payload": {
+        "StatusSeries": {
+          "26": {
+            "Utc": "2026-11-07T20:03:17.903Z",
+            "SessionStatus": "Aborted"
+          }
+        }
+      }
+    },
+    {
+      "utc": "2026-11-07T20:03:18.251000+00:00",
+      "stream": "SessionData",
+      "source_line": 32,
+      "payload": {
+        "StatusSeries": {
+          "27": {
+            "Utc": "2026-11-07T20:03:18.251Z",
+            "TrackStatus": "Red"
+          }
+        }
+      }
+    },
+    {
+      "utc": "2026-11-07T20:03:30.676935+00:00",
+      "stream": "Heartbeat",
+      "source_line": 549,
+      "payload": {
+        "Utc": "2026-11-07T20:03:30.6769359Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:04:15.697584+00:00",
+      "stream": "Heartbeat",
+      "source_line": 552,
+      "payload": {
+        "Utc": "2026-11-07T20:04:15.6975847Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:05:00.720054+00:00",
+      "stream": "Heartbeat",
+      "source_line": 555,
+      "payload": {
+        "Utc": "2026-11-07T20:05:00.7200545Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:05:29.797000+00:00",
+      "stream": "SessionData",
+      "source_line": 33,
+      "payload": {
+        "StatusSeries": {
+          "28": {
+            "Utc": "2026-11-07T20:05:29.797Z",
+            "TrackStatus": "AllClear"
+          }
+        }
+      }
+    },
+    {
+      "utc": "2026-11-07T20:05:37.310000+00:00",
+      "stream": "SessionData",
+      "source_line": 34,
+      "payload": {
+        "StatusSeries": {
+          "29": {
+            "Utc": "2026-11-07T20:05:37.31Z",
+            "TrackStatus": "Yellow"
+          }
+        }
+      }
+    },
+    {
+      "utc": "2026-11-07T20:05:45.740564+00:00",
+      "stream": "Heartbeat",
+      "source_line": 558,
+      "payload": {
+        "Utc": "2026-11-07T20:05:45.7405647Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:05:47.127000+00:00",
+      "stream": "SessionStatus",
+      "source_line": 12,
+      "payload": {
+        "Status": "Finished",
+        "Started": "Finished"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:05:47.127000+00:00",
+      "stream": "SessionData",
+      "source_line": 35,
+      "payload": {
+        "StatusSeries": {
+          "30": {
+            "Utc": "2026-11-07T20:05:47.127Z",
+            "SessionStatus": "Finished"
+          }
+        }
+      }
+    },
+    {
+      "utc": "2026-11-07T20:06:30.749601+00:00",
+      "stream": "Heartbeat",
+      "source_line": 561,
+      "payload": {
+        "Utc": "2026-11-07T20:06:30.7496019Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:07:15.777020+00:00",
+      "stream": "Heartbeat",
+      "source_line": 564,
+      "payload": {
+        "Utc": "2026-11-07T20:07:15.7770202Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:08:00.817337+00:00",
+      "stream": "Heartbeat",
+      "source_line": 567,
+      "payload": {
+        "Utc": "2026-11-07T20:08:00.8173374Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:08:45.832240+00:00",
+      "stream": "Heartbeat",
+      "source_line": 570,
+      "payload": {
+        "Utc": "2026-11-07T20:08:45.8322401Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:09:30.863681+00:00",
+      "stream": "Heartbeat",
+      "source_line": 573,
+      "payload": {
+        "Utc": "2026-11-07T20:09:30.8636815Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:10:15.905637+00:00",
+      "stream": "Heartbeat",
+      "source_line": 576,
+      "payload": {
+        "Utc": "2026-11-07T20:10:15.9056371Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:11:00.943062+00:00",
+      "stream": "Heartbeat",
+      "source_line": 579,
+      "payload": {
+        "Utc": "2026-11-07T20:11:00.9430627Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:11:19.409000+00:00",
+      "stream": "SessionData",
+      "source_line": 36,
+      "payload": {
+        "StatusSeries": {
+          "31": {
+            "Utc": "2026-11-07T20:11:19.409Z",
+            "TrackStatus": "AllClear"
+          }
+        }
+      }
+    },
+    {
+      "utc": "2026-11-07T20:11:45.978652+00:00",
+      "stream": "Heartbeat",
+      "source_line": 582,
+      "payload": {
+        "Utc": "2026-11-07T20:11:45.9786528Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:12:31.008611+00:00",
+      "stream": "Heartbeat",
+      "source_line": 585,
+      "payload": {
+        "Utc": "2026-11-07T20:12:31.0086119Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:12:59.826000+00:00",
+      "stream": "SessionData",
+      "source_line": 37,
+      "payload": {
+        "Series": {
+          "2": {
+            "Utc": "2026-11-07T20:12:59.826Z",
+            "QualifyingPart": 3
+          }
+        }
+      }
+    },
+    {
+      "utc": "2026-11-07T20:13:05.099000+00:00",
+      "stream": "SessionStatus",
+      "source_line": 13,
+      "payload": {
+        "Status": "Inactive",
+        "Started": "Finished"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:13:05.099000+00:00",
+      "stream": "SessionData",
+      "source_line": 38,
+      "payload": {
+        "StatusSeries": {
+          "32": {
+            "Utc": "2026-11-07T20:13:05.099Z",
+            "SessionStatus": "Inactive"
+          }
+        }
+      }
+    },
+    {
+      "utc": "2026-11-07T20:13:16.016847+00:00",
+      "stream": "Heartbeat",
+      "source_line": 588,
+      "payload": {
+        "Utc": "2026-11-07T20:13:16.0168478Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:14:00.131000+00:00",
+      "stream": "SessionStatus",
+      "source_line": 14,
+      "payload": {
+        "Status": "Started",
+        "Started": "Started"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:14:00.131000+00:00",
+      "stream": "SessionData",
+      "source_line": 39,
+      "payload": {
+        "StatusSeries": {
+          "33": {
+            "Utc": "2026-11-07T20:14:00.131Z",
+            "SessionStatus": "Started"
+          }
+        }
+      }
+    },
+    {
+      "utc": "2026-11-07T20:14:01.039624+00:00",
+      "stream": "Heartbeat",
+      "source_line": 591,
+      "payload": {
+        "Utc": "2026-11-07T20:14:01.0396242Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:14:46.065141+00:00",
+      "stream": "Heartbeat",
+      "source_line": 594,
+      "payload": {
+        "Utc": "2026-11-07T20:14:46.0651413Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:15:31.074578+00:00",
+      "stream": "Heartbeat",
+      "source_line": 597,
+      "payload": {
+        "Utc": "2026-11-07T20:15:31.074578Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:16:16.087949+00:00",
+      "stream": "Heartbeat",
+      "source_line": 600,
+      "payload": {
+        "Utc": "2026-11-07T20:16:16.0879491Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:17:01.105156+00:00",
+      "stream": "Heartbeat",
+      "source_line": 603,
+      "payload": {
+        "Utc": "2026-11-07T20:17:01.1051562Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:17:46.133979+00:00",
+      "stream": "Heartbeat",
+      "source_line": 606,
+      "payload": {
+        "Utc": "2026-11-07T20:17:46.1339795Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:18:31.156593+00:00",
+      "stream": "Heartbeat",
+      "source_line": 609,
+      "payload": {
+        "Utc": "2026-11-07T20:18:31.1565938Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:19:16.174181+00:00",
+      "stream": "Heartbeat",
+      "source_line": 612,
+      "payload": {
+        "Utc": "2026-11-07T20:19:16.1741817Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:20:01.204399+00:00",
+      "stream": "Heartbeat",
+      "source_line": 615,
+      "payload": {
+        "Utc": "2026-11-07T20:20:01.2043991Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:20:46.231662+00:00",
+      "stream": "Heartbeat",
+      "source_line": 618,
+      "payload": {
+        "Utc": "2026-11-07T20:20:46.2316623Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:21:22.198000+00:00",
+      "stream": "TimingData",
+      "source_line": 11096,
+      "payload": {
+        "Lines": {
+          "16": {
+            "Sectors": {
+              "2": {
+                "PreviousValue": "35.706"
+              }
+            }
+          },
+          "6": {
+            "Sectors": {
+              "2": {
+                "PreviousValue": "32.530"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "utc": "2026-11-07T20:21:31.250375+00:00",
+      "stream": "Heartbeat",
+      "source_line": 621,
+      "payload": {
+        "Utc": "2026-11-07T20:21:31.2503755Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:22:16.259360+00:00",
+      "stream": "Heartbeat",
+      "source_line": 624,
+      "payload": {
+        "Utc": "2026-11-07T20:22:16.2593604Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:23:01.260668+00:00",
+      "stream": "Heartbeat",
+      "source_line": 627,
+      "payload": {
+        "Utc": "2026-11-07T20:23:01.2606684Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:23:46.283827+00:00",
+      "stream": "Heartbeat",
+      "source_line": 630,
+      "payload": {
+        "Utc": "2026-11-07T20:23:46.2838271Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:24:31.322548+00:00",
+      "stream": "Heartbeat",
+      "source_line": 633,
+      "payload": {
+        "Utc": "2026-11-07T20:24:31.3225486Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:25:16.345465+00:00",
+      "stream": "Heartbeat",
+      "source_line": 636,
+      "payload": {
+        "Utc": "2026-11-07T20:25:16.3454652Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:26:01.368349+00:00",
+      "stream": "Heartbeat",
+      "source_line": 639,
+      "payload": {
+        "Utc": "2026-11-07T20:26:01.3683499Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:26:46.383764+00:00",
+      "stream": "Heartbeat",
+      "source_line": 642,
+      "payload": {
+        "Utc": "2026-11-07T20:26:46.3837646Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:27:00.136000+00:00",
+      "stream": "SessionStatus",
+      "source_line": 15,
+      "payload": {
+        "Status": "Finished",
+        "Started": "Finished"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:27:00.136000+00:00",
+      "stream": "SessionData",
+      "source_line": 40,
+      "payload": {
+        "StatusSeries": {
+          "34": {
+            "Utc": "2026-11-07T20:27:00.136Z",
+            "SessionStatus": "Finished"
+          }
+        }
+      }
+    },
+    {
+      "utc": "2026-11-07T20:27:15.650000+00:00",
+      "stream": "SessionInfo",
+      "source_line": 5,
+      "payload": {
+        "Meeting": {
+          "Key": 1299,
+          "Name": "São Paulo Grand Prix",
+          "OfficialName": "FORMULA 1 MSC CRUISES GRANDE PRÊMIO DE SÃO PAULO 2026",
+          "Location": "São Paulo",
+          "Number": 20,
+          "Country": {
+            "Key": 10,
+            "Code": "BRA",
+            "Name": "Brazil"
+          },
+          "Circuit": {
+            "Key": 14,
+            "ShortName": "Interlagos"
+          }
+        },
+        "SessionStatus": "Finalised",
+        "ArchiveStatus": {
+          "Status": "Generating"
+        },
+        "Key": 11408,
+        "Type": "Qualifying",
+        "Name": "Qualifying",
+        "StartDate": "2026-11-07T15:00:00",
+        "EndDate": "2026-11-07T16:00:00",
+        "GmtOffset": "-03:00:00",
+        "Path": "2026/2026-11-08_São_Paulo_Grand_Prix/2026-11-07_Qualifying/"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:27:15.650000+00:00",
+      "stream": "SessionStatus",
+      "source_line": 16,
+      "payload": {
+        "Status": "Finalised",
+        "Started": "Finished"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:27:15.650000+00:00",
+      "stream": "SessionData",
+      "source_line": 41,
+      "payload": {
+        "StatusSeries": {
+          "35": {
+            "Utc": "2026-11-07T20:27:15.65Z",
+            "SessionStatus": "Finalised"
+          }
+        }
+      }
+    },
+    {
+      "utc": "2026-11-07T20:27:31.418355+00:00",
+      "stream": "Heartbeat",
+      "source_line": 645,
+      "payload": {
+        "Utc": "2026-11-07T20:27:31.4183557Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:28:16.431453+00:00",
+      "stream": "Heartbeat",
+      "source_line": 648,
+      "payload": {
+        "Utc": "2026-11-07T20:28:16.4314534Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:29:01.457147+00:00",
+      "stream": "Heartbeat",
+      "source_line": 651,
+      "payload": {
+        "Utc": "2026-11-07T20:29:01.4571472Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:29:46.470557+00:00",
+      "stream": "Heartbeat",
+      "source_line": 654,
+      "payload": {
+        "Utc": "2026-11-07T20:29:46.4705577Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:30:31.483302+00:00",
+      "stream": "Heartbeat",
+      "source_line": 657,
+      "payload": {
+        "Utc": "2026-11-07T20:30:31.4833027Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:31:16.510258+00:00",
+      "stream": "Heartbeat",
+      "source_line": 660,
+      "payload": {
+        "Utc": "2026-11-07T20:31:16.510258Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:32:01.523105+00:00",
+      "stream": "Heartbeat",
+      "source_line": 663,
+      "payload": {
+        "Utc": "2026-11-07T20:32:01.5231058Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:32:43.555000+00:00",
+      "stream": "SessionStatus",
+      "source_line": 17,
+      "payload": {
+        "Status": "Ends",
+        "Started": "Finished"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:32:43.555000+00:00",
+      "stream": "SessionData",
+      "source_line": 42,
+      "payload": {
+        "StatusSeries": {
+          "36": {
+            "Utc": "2026-11-07T20:32:43.555Z",
+            "SessionStatus": "Ends"
+          }
+        }
+      }
+    },
+    {
+      "utc": "2026-11-07T20:32:46.533825+00:00",
+      "stream": "Heartbeat",
+      "source_line": 666,
+      "payload": {
+        "Utc": "2026-11-07T20:32:46.5338252Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:33:31.560746+00:00",
+      "stream": "Heartbeat",
+      "source_line": 669,
+      "payload": {
+        "Utc": "2026-11-07T20:33:31.5607468Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:34:16.577038+00:00",
+      "stream": "Heartbeat",
+      "source_line": 672,
+      "payload": {
+        "Utc": "2026-11-07T20:34:16.5770387Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:35:01.599567+00:00",
+      "stream": "Heartbeat",
+      "source_line": 675,
+      "payload": {
+        "Utc": "2026-11-07T20:35:01.5995675Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:35:46.613316+00:00",
+      "stream": "Heartbeat",
+      "source_line": 678,
+      "payload": {
+        "Utc": "2026-11-07T20:35:46.6133168Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:36:31.656680+00:00",
+      "stream": "Heartbeat",
+      "source_line": 681,
+      "payload": {
+        "Utc": "2026-11-07T20:36:31.65668Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:37:16.689095+00:00",
+      "stream": "Heartbeat",
+      "source_line": 684,
+      "payload": {
+        "Utc": "2026-11-07T20:37:16.6890956Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:38:01.722615+00:00",
+      "stream": "Heartbeat",
+      "source_line": 687,
+      "payload": {
+        "Utc": "2026-11-07T20:38:01.7226154Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:38:46.762446+00:00",
+      "stream": "Heartbeat",
+      "source_line": 690,
+      "payload": {
+        "Utc": "2026-11-07T20:38:46.7624461Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:39:31.787281+00:00",
+      "stream": "Heartbeat",
+      "source_line": 693,
+      "payload": {
+        "Utc": "2026-11-07T20:39:31.7872814Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:40:16.800107+00:00",
+      "stream": "Heartbeat",
+      "source_line": 696,
+      "payload": {
+        "Utc": "2026-11-07T20:40:16.8001078Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:41:01.831060+00:00",
+      "stream": "Heartbeat",
+      "source_line": 699,
+      "payload": {
+        "Utc": "2026-11-07T20:41:01.83106Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:41:46.846420+00:00",
+      "stream": "Heartbeat",
+      "source_line": 702,
+      "payload": {
+        "Utc": "2026-11-07T20:41:46.8464208Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:42:31.877409+00:00",
+      "stream": "Heartbeat",
+      "source_line": 705,
+      "payload": {
+        "Utc": "2026-11-07T20:42:31.8774099Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:43:16.892742+00:00",
+      "stream": "Heartbeat",
+      "source_line": 708,
+      "payload": {
+        "Utc": "2026-11-07T20:43:16.8927427Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:44:01.915241+00:00",
+      "stream": "Heartbeat",
+      "source_line": 711,
+      "payload": {
+        "Utc": "2026-11-07T20:44:01.9152412Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:44:46.939058+00:00",
+      "stream": "Heartbeat",
+      "source_line": 714,
+      "payload": {
+        "Utc": "2026-11-07T20:44:46.9390588Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:45:31.954479+00:00",
+      "stream": "Heartbeat",
+      "source_line": 717,
+      "payload": {
+        "Utc": "2026-11-07T20:45:31.9544799Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:46:16.973920+00:00",
+      "stream": "Heartbeat",
+      "source_line": 720,
+      "payload": {
+        "Utc": "2026-11-07T20:46:16.9739209Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:47:02.007907+00:00",
+      "stream": "Heartbeat",
+      "source_line": 723,
+      "payload": {
+        "Utc": "2026-11-07T20:47:02.0079071Z"
+      }
+    },
+    {
+      "utc": "2026-11-07T20:47:17.007768+00:00",
+      "stream": "Heartbeat",
+      "source_line": 724,
+      "payload": {
+        "Utc": "2026-11-07T20:47:17.0077685Z"
+      }
+    }
+  ]
+}
