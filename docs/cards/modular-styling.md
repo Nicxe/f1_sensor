@@ -35,10 +35,14 @@ Select a **Timing** module and open **Module options**. These choices work with 
 | **Position change** | Off | Shows places gained or lost from the confirmed starting grid for the same race or sprint. |
 | **Show driver status badges** | Off | Adds recorded penalty, investigation and pit or retirement status beside the driver. |
 | **Dim retired drivers** | Off | Reduces emphasis on drivers marked as retired. Pit out and stopped remain distinct statuses. |
-| **Show tyre age beside the compound** | Off | Combines the compound and its recorded tyre age in one cell. |
+| **Show tyre age beside the compound** | Off | Combines the compound and its recorded tyre age in one cell. Age numbers line up beside the tyre marks. |
 | **Qualifying times to show** | All selected qualifying parts | Follow the current Q/SQ part or choose one part. Saved Q1–Q3/SQ1–SQ3 column choices remain available. |
 
 Existing saved cards keep their current presentation. The separate-column **Show live gap toggle** remains available for those layouts. Minimal presentation does not remove selected columns; the narrow overview and qualifying focus are separate choices.
+
+Under **Content and columns**, replace **S1**, **S2** or **S3** with the corresponding **S1 with minisectors**, **S2 with minisectors** or **S3 with minisectors** field. Minimal presentation aligns sector times at the top and shows small minisector indicators underneath. Plain sector fields remain the default.
+
+Minisectors show the provider's latest reported status. They are not guaranteed to describe the same lap as the sector time above them. Lap context and the timing legend remain available to explain the readings.
 
 A position-change dash means a matching confirmed grid is unavailable. A penalty badge shows received decisions and keeps the decision context in the driver details. A pit visit alone does not confirm service; an unconfirmed penalty status must not be read as proof that the penalty remains unserved. A stopped car is not automatically retired. Unknown data stays unknown.
 

@@ -247,7 +247,8 @@ export const sharedStyles = css`
   .timing-decisions li { padding:5px 0; overflow-wrap:anywhere; }
   .timing-decisions small { display:block; color:var(--f1-muted); }
   .driver-disclosure { --mdc-icon-size:16px; flex:0 0 16px; }
-  .tyre-inline { display:inline-flex; align-items:center; gap:5px; font-variant-numeric:tabular-nums; }
+  .tyre-inline { display:inline-grid; width:100%; grid-template-columns:minmax(max-content,1fr) minmax(2ch,max-content); align-items:center; gap:5px; font-variant-numeric:tabular-nums; }
+  .tyre-inline > :last-child { text-align:end; }
   :host([data-presentation=minimal]) { font-size:.875rem; }
   :host([data-presentation=minimal]) .section-head { margin-bottom:8px; }
   :host([data-presentation=minimal]) .chip { border:0; padding:0; color:var(--f1-muted); }
@@ -257,6 +258,13 @@ export const sharedStyles = css`
   :host([data-presentation=minimal]) [data-field] { text-align:right; }
   :host([data-presentation=minimal]) [data-field=driver],:host([data-presentation=minimal]) [data-field=position],:host([data-presentation=minimal]) [data-field=team] { text-align:left; }
   :host([data-presentation=minimal]) .cell-stack { align-items:flex-end; gap:0; }
+  :host([data-presentation=minimal]) .compact-minisectors td[data-field] { vertical-align:top; }
+  :host([data-presentation=minimal]) .minisector-cell { margin-inline-start:auto; gap:2px; }
+  :host([data-presentation=minimal]) .minisector-cell .signal { justify-content:flex-end; }
+  :host([data-presentation=minimal]) .minisector-cell .provenance { text-align:end; }
+  :host([data-presentation=minimal]) .minisector-strip { min-height:6px; padding:0; gap:1px; justify-content:flex-end; }
+  :host([data-presentation=minimal]) .minisector-strip > .minisector-block { width:6px; height:6px; flex-basis:6px; border-radius:1px; font-size:4px; }
+  :host([data-presentation=minimal]) .minisector-empty { display:block; min-height:6px; line-height:6px; font-size:.75em; text-align:end; }
   :host([data-presentation=minimal]) .signal { border:0; padding:0; border-radius:0; gap:3px; }
   :host([data-presentation=minimal]) .signal > span[aria-hidden] { font-size:.7em; }
   :host([data-presentation=minimal]) .driver { min-height:28px; min-width:0; gap:6px; padding:0 5px; }
@@ -840,6 +848,8 @@ export class F1ModuleView extends LitElement {
     return /^q[123]$/.test(focus) ? Number(focus.at(-1)) : focus === 'current' ? this.model.qualifying_part ?? this.model.currentPart ?? null : null;
   }
   timingFieldLabel(id) {
+    const sector = this.minimalTiming && /^sector_([123])_with_minisectors$/.exec(id);
+    if (sector) return html`<span aria-hidden="true">${label(this.field(`sector_${sector[1]}`), this.language)}</span><span class="sr">${label(this.field(id), this.language)}</span>`;
     const part = id === 'qualifying_gap' ? this.qualifyingFocusPart() : null;
     return part ? this.w('modular.timing_part_gap', { part: `${this.model.sessionKind === 'sprint_qualifying' ? 'SQ' : 'Q'}${part}` }) : label(this.field(id), this.language);
   }
@@ -849,6 +859,7 @@ export class F1ModuleView extends LitElement {
     return html`<span class="gap-stack"><span>${this.w(primary === 'interval' ? 'modular.timing_int_short' : 'modular.timing_gap_short')}</span><span class="secondary">${this.w(secondary === 'interval' ? 'modular.timing_int_short' : 'modular.timing_gap_short')}</span></span>`;
   }
   combinedGapCell(row) {
+    if (['race', 'sprint'].includes(this.model.sessionKind) && row.position === 1) return html`<span class="gap-stack" part="timing-gap"><span>${this.w('modular.leader')}</span></span>`;
     const [primary, secondary] = this.timingGapOrder();
     const name = id => label(this.field(id), this.language);
     const value = id => row[id] === null || row[id] === undefined || row[id] === '' ? '—' : formatTimingGap(row[id], this.w('modular.lap'));
@@ -1049,7 +1060,7 @@ export class F1ModuleView extends LitElement {
     </div>` : '';
     const closeAll = this.module.type === 'timing' && this.timingExpanded.length ? html`<div class="timing-detail-actions" part="controls"><button data-focus="timing-close-all" @click=${() => this.clearTimingDrivers()}>${this.w('modular.close_all_driver_details')}</button></div>` : '';
     const focusContext = part ? html`<p class="module-context">${this.w('modular.timing_qualifying_focus_context', { part: `${this.model.sessionKind === 'sprint_qualifying' ? 'SQ' : 'Q'}${part}` })}</p>` : '';
-    return html`${focusContext}${gapToggle}${closeAll}<div class=${`table-scroll ${narrow ? 'timing-summary' : ''}`} part="table-container" tabindex="0" role="region" aria-label=${this.w(narrow ? 'modular.timing_summary_label' : 'modular.timing_table_scroll_horizontally_for_more_columns')}><table part="table">
+    return html`${focusContext}${gapToggle}${closeAll}<div class=${`table-scroll ${narrow ? 'timing-summary' : ''} ${this.minimalTiming && fields.some(id => /^sector_[123]_with_minisectors$|^minisector_[123]$/.test(id)) ? 'compact-minisectors' : ''}`} part="table-container" tabindex="0" role="region" aria-label=${this.w(narrow ? 'modular.timing_summary_label' : 'modular.timing_table_scroll_horizontally_for_more_columns')}><table part="table">
       <caption class="sr">${this.module.title || this.model.title}</caption>
       ${this.timingHeader(fields, lapNumbers)}
       <tbody>${repeat(rows, row => row.id, (row, index) => html`${this.model.pushMode !== 'off' && row.push_group && (index === 0 || row.push_group !== rows[index - 1].push_group) ? html`<tr class="push-group" data-group=${row.push_group}><th colspan=${fields.length + lapNumbers.length} scope="colgroup">${this.w(({ active: 'modular.push_laps', completed: 'modular.completed_attempts', other: 'modular.other_drivers' })[row.push_group])}${row.push_group === 'active' ? html`<span class="provenance">${this.w(this.model.pushOrderUnknown ? 'modular.push_laps_order_incomplete' : 'modular.push_laps_order')}</span>` : ''}</th></tr>` : ''}<tr part="table-row" data-driver=${row.id} data-push-group=${row.push_group ?? ''} data-retired=${String(options.dim_retired === true && row.retired === true)}>${repeat(fields, id => id, id => html`<td part="table-cell" data-field=${id}>${this.cell(row, id)}${!fields.includes('driver') && id === fields[0] ? this.pushLapMarker(row) : ''}</td>`)}${repeat(lapNumbers, lap => lap, (lap, index) => {
