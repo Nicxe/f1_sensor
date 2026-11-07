@@ -950,7 +950,12 @@ class CurrentSessionModel(LiveProjectionModel):
         ended = mapped_status in ("finished", "finalised", "ended")
         with suppress(Exception):
             end_iso = raw.get("EndDate")
-            if end_iso and (not ended) and (not self._is_replay_active()):
+            if (
+                end_iso
+                and not ended
+                and mapped_status not in ("live", "suspended", "break")
+                and not self._is_replay_active()
+            ):
                 end_dt = datetime.datetime.fromisoformat(
                     str(end_iso).replace("Z", "+00:00")
                 )

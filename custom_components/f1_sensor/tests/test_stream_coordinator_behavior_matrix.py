@@ -197,36 +197,41 @@ async def test_status_coordinators_exact_error_and_subscription_paths(
         delay_controller=delay_controller,
         live_state=live_state,
     )
-    assert track._async_update_data is not None
-    track._on_bus_message("bad")
-    track._startup_cutoff = datetime.now(UTC) - timedelta(seconds=1)
-    track._on_bus_message({"Utc": datetime.now(UTC).replace(tzinfo=None).isoformat()})
-    bad_loop = SimpleNamespace(call_later=Mock(side_effect=RuntimeError("timer")))
     original_hass = track.hass
-    track.hass = SimpleNamespace(loop=bad_loop, data={})
-    track._deliver = Mock()
-    track._on_bus_message({"Status": "2"})
-    track._deliver.assert_called_once()
-    track.hass = original_hass
-    await track.async_config_entry_first_refresh()
-    assert set(bus.callbacks) == {"TrackStatus"}
-    monkeypatch.setattr(
-        "custom_components.f1_sensor._is_no_spoiler_blocked", lambda _coord: True
-    )
-    track._deliver({"Status": "1"})
-    monkeypatch.setattr(
-        "custom_components.f1_sensor._is_no_spoiler_blocked", lambda _coord: False
-    )
-    # The next assertions replace timer handles: cancel the real scheduled work first.
-    for handle in track._deliver_handles:
-        handle.cancel()
-    track._deliver_handle = Mock()
-    track._deliver_handles = [Mock(), Mock()]
-    track._handle_live_state(True, "replay")
-    assert track._deliver_handles == []
-    track._deliver_handles = [Mock()]
-    track._handle_live_state(True, "no-spoiler")
-    await track.async_close()
+    try:
+        assert track._async_update_data is not None
+        track._on_bus_message("bad")
+        track._startup_cutoff = datetime.now(UTC) - timedelta(seconds=1)
+        track._on_bus_message(
+            {"Utc": datetime.now(UTC).replace(tzinfo=None).isoformat()}
+        )
+        bad_loop = SimpleNamespace(call_later=Mock(side_effect=RuntimeError("timer")))
+        track.hass = SimpleNamespace(loop=bad_loop, data={})
+        track._deliver = Mock()
+        track._on_bus_message({"Status": "2"})
+        track._deliver.assert_called_once()
+        track.hass = original_hass
+        await track.async_config_entry_first_refresh()
+        assert set(bus.callbacks) == {"SessionInfo", "TrackStatus"}
+        monkeypatch.setattr(
+            "custom_components.f1_sensor._is_no_spoiler_blocked", lambda _coord: True
+        )
+        track._deliver({"Status": "1"})
+        monkeypatch.setattr(
+            "custom_components.f1_sensor._is_no_spoiler_blocked", lambda _coord: False
+        )
+        # The next assertions replace timer handles: cancel the real scheduled work first.
+        for handle in track._deliver_handles:
+            handle.cancel()
+        track._deliver_handle = Mock()
+        track._deliver_handles = [Mock(), Mock()]
+        track._handle_live_state(True, "replay")
+        assert track._deliver_handles == []
+        track._deliver_handles = [Mock()]
+        track._handle_live_state(True, "no-spoiler")
+    finally:
+        track.hass = original_hass
+        await track.async_close()
     delay_remove.assert_called_once()
     live_remove.assert_called_once()
 
@@ -838,7 +843,10 @@ async def test_small_stream_first_refresh_subscriptions_and_close_matrix(
     )
     session = _session_coord()
     for coordinator, streams in (
-        (TrackStatusCoordinator(hass, session, bus=_Bus()), {"TrackStatus"}),
+        (
+            TrackStatusCoordinator(hass, session, bus=_Bus()),
+            {"SessionInfo", "TrackStatus"},
+        ),
         (SessionStatusCoordinator(hass, session, bus=_Bus()), {"SessionStatus"}),
         (TopThreeCoordinator(hass, session, bus=_Bus()), {"TopThree"}),
     ):

@@ -855,7 +855,8 @@ async def test_session_finished_timeout_returns_false(hass) -> None:
 
 
 @pytest.mark.asyncio
-async def test_session_active_returns_true_for_non_terminal_status(hass) -> None:
+@pytest.mark.parametrize("status", ["Started", "Aborted", "Finished", "Finalised"])
+async def test_session_active_returns_true_until_ends(hass, status) -> None:
     coord = _DummySessionCoordinator({}, status=200)
     supervisor = LiveSessionSupervisor(
         hass,
@@ -866,7 +867,7 @@ async def test_session_active_returns_true_for_non_terminal_status(hass) -> None
     window = _mk_window(path="2026/1304/11465/")
 
     async def _active_payload(_url: str) -> dict:
-        return {"Status": "Started"}
+        return {"Status": status}
 
     supervisor._fetch_json = _active_payload  # type: ignore[method-assign]
 
@@ -885,7 +886,7 @@ async def test_session_active_returns_false_for_terminal_status(hass) -> None:
     window = _mk_window(path="2026/1304/11465/")
 
     async def _terminal_payload(_url: str) -> dict:
-        return {"Status": "Finished"}
+        return {"Status": "Ends"}
 
     supervisor._fetch_json = _terminal_payload  # type: ignore[method-assign]
 
@@ -1023,23 +1024,56 @@ async def test_practice_monitor_window_keeps_short_post_finish_inactivity_timeou
 
 
 @pytest.mark.asyncio
-async def test_switch_back_to_index_when_recovered(monkeypatch, hass) -> None:
+async def test_primary_source_recovery_keeps_bus_until_session_ends(
+    monkeypatch, hass
+) -> None:
+    now = dt_util.utcnow()
     coord = _DummySessionCoordinator({}, status=403)
+    bus = _DummyBus()
+    bus.inject_message("SessionInfo", {"Key": 11465, "SessionStatus": "Started"})
     supervisor = LiveSessionSupervisor(
         hass,
         coord,
-        _DummyBus(),
+        bus,
         http_session=object(),  # type: ignore[arg-type]
     )
     fallback_window = _mk_window(
-        session="Day 1",
-        start=dt_util.utcnow() - dt.timedelta(minutes=5),
-        end=dt_util.utcnow() + dt.timedelta(hours=2),
+        session="Practice 1",
+        start=now - dt.timedelta(minutes=5),
+        end=now + dt.timedelta(hours=2),
     )
-    candidate_window = _mk_window(session="Practice 1", path="2026/1304/11465/")
+    candidate_window = _mk_window(
+        session="Practice 1",
+        start=fallback_window.start_utc,
+        end=fallback_window.end_utc,
+        path="2026/1304/11465/",
+    )
+    sleeps = 0
+    starts = []
+    closes = []
+    original_start = bus.start
+    original_close = bus.async_close
+
+    async def _start():
+        starts.append(now)
+        await original_start()
+
+    async def _close():
+        closes.append(now)
+        await original_close()
 
     async def _no_sleep(_seconds: float) -> None:
-        return None
+        nonlocal now, sleeps
+        now += dt.timedelta(seconds=20)
+        sleeps += 1
+        assert sleeps <= 6, "The ended session failed to drain"
+        if sleeps == 2:
+            assert supervisor.current_window_source == "index"
+            assert supervisor.current_window.path == candidate_window.path
+            assert len(starts) == 1
+            assert not closes
+            assert bus.started
+            bus.inject_message("SessionStatus", {"Status": "Ends"})
 
     async def _primary_window(
         *,
@@ -1048,7 +1082,6 @@ async def test_switch_back_to_index_when_recovered(monkeypatch, hass) -> None:
         del active_window
         return candidate_window
 
-    monkeypatch.setattr(live_window.asyncio, "sleep", _no_sleep)
     monkeypatch.setattr(
         live_window,
         "PRIMARY_RECOVERY_CHECK_INTERVAL",
@@ -1056,10 +1089,15 @@ async def test_switch_back_to_index_when_recovered(monkeypatch, hass) -> None:
     )
     monkeypatch.setattr(supervisor, "_resolve_primary_window", _primary_window)
     monkeypatch.setattr(supervisor, "_interruptible_sleep", _no_sleep)
+    monkeypatch.setattr(live_window.dt_util, "utcnow", lambda: now)
+    monkeypatch.setattr(bus, "start", _start)
+    monkeypatch.setattr(bus, "async_close", _close)
 
-    reason = await supervisor._monitor_window(fallback_window, source="event_tracker")
+    await supervisor._activate_window(fallback_window, source="event_tracker")
 
-    assert reason == "primary-source-recovered"
+    assert sleeps == 5
+    assert len(starts) == len(closes) == 1
+    assert supervisor.availability.reason == "finished-Practice 1"
 
 
 @pytest.mark.asyncio
@@ -1153,10 +1191,12 @@ async def test_event_tracker_monitor_recovers_when_index_timing_matches(
         session_key=11280,
         path="2026/2026-05-03_Miami_Grand_Prix/2026-05-03_Race/",
     )
+    bus = _DummyBus()
+    bus.inject_message("SessionInfo", {"Key": 11280, "SessionStatus": "Started"})
     supervisor = LiveSessionSupervisor(
         hass,
         _DummySessionCoordinator({}, status=200),
-        _DummyBus(),
+        bus,
         http_session=object(),  # type: ignore[arg-type]
         index_source=_StaticSource(
             ScheduleFetchResult(
@@ -1167,8 +1207,17 @@ async def test_event_tracker_monitor_recovers_when_index_timing_matches(
         ),
     )
 
+    sleeps = 0
+
     async def _no_sleep(_seconds: float) -> None:
-        return None
+        nonlocal now, sleeps
+        now += dt.timedelta(seconds=20)
+        sleeps += 1
+        assert sleeps <= 6, "The ended session failed to drain"
+        if sleeps == 2:
+            assert active_window.path == index_window.path
+            assert supervisor.current_window_source == "index"
+            bus.inject_message("SessionStatus", {"Status": "Ends"})
 
     monkeypatch.setattr(supervisor, "_interruptible_sleep", _no_sleep)
     monkeypatch.setattr(
@@ -1180,7 +1229,7 @@ async def test_event_tracker_monitor_recovers_when_index_timing_matches(
 
     reason = await supervisor._monitor_window(active_window, source="event_tracker")
 
-    assert reason == "primary-source-recovered"
+    assert reason == "session-finished"
 
 
 @pytest.mark.asyncio

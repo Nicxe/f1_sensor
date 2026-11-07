@@ -4,7 +4,7 @@ import asyncio
 from collections.abc import Callable, Iterable
 import contextlib
 from contextlib import suppress
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta, timezone
 import json
 import logging
@@ -31,7 +31,7 @@ from .const import (
     EVENT_TRACKER_MEETING_ENDPOINT_PREFIX,
     EVENT_TRACKER_REQUEST_TIMEOUT,
 )
-from .signalr import LiveBus
+from .signalr import LiveBus, LiveConnectionState
 
 if TYPE_CHECKING:
     from . import LiveSessionCoordinator
@@ -58,6 +58,8 @@ ACTIVE_REFRESH = timedelta(seconds=20)
 HEARTBEAT_DRAIN_SECONDS = 60.0
 FALLBACK_WINDOW_DURATION = timedelta(minutes=20)
 PRIMARY_RECOVERY_CHECK_INTERVAL = timedelta(minutes=1)
+LIVE_DISCOVERY_TIMEOUT = timedelta(seconds=20)
+LIVE_DISCOVERY_INTERVAL = IDLE_REFRESH
 LIVE_ACTIVITY_STREAMS: tuple[str, ...] = (
     "SessionStatus",
     "SessionInfo",
@@ -925,6 +927,19 @@ def _window_identity(window: SessionWindow) -> tuple[Any, ...]:
     )
 
 
+def _live_session_info(payload: Any) -> dict[str, Any] | None:
+    """Exclude retained replay identity from live lifecycle ownership."""
+    if not isinstance(payload, dict):
+        return None
+    observation = payload.get("_f1_observation")
+    context = observation.get("context") if isinstance(observation, dict) else None
+    if payload.get("_f1_source_domain") == "replay_offset" or (
+        isinstance(context, dict) and context.get("source") != "live"
+    ):
+        return None
+    return payload
+
+
 @dataclass
 class _LiveSessionStatus:
     """Keep session identity with status across incremental stream updates."""
@@ -932,23 +947,114 @@ class _LiveSessionStatus:
     session_key: int | None = None
     payload: dict[str, Any] | None = None
     completion_status: str | None = None
+    started: bool = False
+    info: dict[str, Any] | None = None
+    source_time: float | None = None
+    explicit_status: bool = False
+    info_time: float | None = None
+    identity_time: float | None = None
+    retired_keys: set[int] = field(default_factory=set)
 
     def update_info(self, payload: Any) -> None:
         if not isinstance(payload, dict):
             return
+        if "Key" in payload and (
+            _as_int(payload["Key"]) is None
+            or _as_int(payload["Key"]) in self.retired_keys
+        ):
+            return
+        source_time = payload.get("_f1_source_time")
+        if isinstance(source_time, (int, float)):
+            known_times = [
+                timestamp
+                for timestamp in (self.info_time, self.source_time)
+                if timestamp is not None
+            ]
+            if known_times and source_time < max(known_times):
+                return
+            self.info_time = float(source_time)
         if "Key" in payload:
             session_key = _as_int(payload["Key"])
+            if session_key is None:
+                return
+            if session_key in self.retired_keys:
+                return
             if session_key != self.session_key:
+                if self.session_key is not None:
+                    self.retired_keys.add(self.session_key)
                 self.session_key = session_key
                 self.payload = None
                 self.completion_status = None
-        if "SessionStatus" in payload:
+                self.started = False
+                self.info = None
+                self.source_time = None
+                self.explicit_status = False
+                self.identity_time = (
+                    float(source_time)
+                    if isinstance(source_time, (int, float))
+                    else None
+                )
+        self.info = {**(self.info or {}), **payload}
+        if "SessionStatus" in payload and (
+            self.payload is None or isinstance(source_time, (int, float))
+        ):
             # Same-session snapshots can lag behind the live status stream.
-            self.update_status({"Status": payload["SessionStatus"]}, allow_resume=False)
+            self.update_status(
+                {
+                    "Status": payload["SessionStatus"],
+                    **{
+                        key: payload[key]
+                        for key in ("_f1_source_time", "_f1_snapshot")
+                        if key in payload
+                    },
+                },
+                allow_resume=False,
+            )
 
     def update_status(self, payload: Any, *, allow_resume: bool = True) -> None:
-        self.payload = payload if isinstance(payload, dict) else None
-        final_status = _session_final_status(self.payload)
+        if not isinstance(payload, dict) or self.session_key is None:
+            return
+        source_time = payload.get("_f1_source_time")
+        previous_time = self.source_time
+        if isinstance(source_time, (int, float)):
+            known_times = [
+                timestamp
+                for timestamp in (self.source_time, self.identity_time)
+                if timestamp is not None
+            ]
+            if known_times and source_time < max(known_times):
+                return
+        status = str(payload.get("Status") or payload.get("Message") or "").strip()
+        if (
+            payload.get("_f1_snapshot")
+            and (self.explicit_status or self.source_time is not None)
+            and not isinstance(source_time, (int, float))
+        ):
+            return
+        if (
+            self.completion_status is not None
+            and payload.get("_f1_snapshot")
+            and status in SESSION_RUNNING_STATES
+            and (
+                not isinstance(source_time, (int, float))
+                or previous_time is not None
+                and source_time <= previous_time
+            )
+        ):
+            return
+        if isinstance(source_time, (int, float)):
+            self.source_time = float(source_time)
+        self.payload = {**(self.payload or {}), **payload}
+        if allow_resume and status and not payload.get("_f1_snapshot"):
+            self.explicit_status = True
+        if status in SESSION_RUNNING_STATES or (
+            status == "Inactive"
+            and str(payload.get("Started") or "").strip() in {"Started", "Finished"}
+        ):
+            self.started = True
+        if status in {"Aborted", "Finished", "Finalised", "Ends"}:
+            self.started = True
+        final_status = _session_final_status(payload)
         if final_status is not None:
             if self.completion_status != "Ends":
                 self.completion_status = final_status
@@ -958,6 +1064,39 @@ class _LiveSessionStatus:
                 for field in ("Status", "Message")
             ):
                 self.completion_status = None
+
+    def update_data(self, payload: Any) -> None:
+        """Use dated lifecycle history to order reconnect snapshots safely."""
+        if not isinstance(payload, dict):
+            return
+        series = payload.get("StatusSeries")
+        values = series.values() if isinstance(series, dict) else series
+        if not isinstance(values, (list, tuple)) and not isinstance(series, dict):
+            return
+        events = []
+        for item in values:
+            if not isinstance(item, dict) or not item.get("SessionStatus"):
+                continue
+            raw_time = item.get("Utc")
+            event_time = _to_utc(raw_time if isinstance(raw_time, str) else None, None)
+            if event_time is not None:
+                events.append((event_time.timestamp(), item["SessionStatus"]))
+        for timestamp, status in sorted(events):
+            self.update_status(
+                {
+                    "Status": status,
+                    "_f1_source_time": timestamp,
+                    "_f1_snapshot": bool(payload.get("_f1_snapshot")),
+                }
+            )
+
+    def owns(self, window: SessionWindow) -> bool:
+        """Recognise a started session across pauses and transport recovery."""
+        return (
+            self.started
+            and self.session_key is not None
+            and self.session_key == _as_int(window.session_key)
+        )
 
     def finalised(self, window: SessionWindow) -> bool:
         session_key = _as_int(window.session_key)
@@ -1012,6 +1151,12 @@ class LiveSessionSupervisor:
         self._last_schedule_error: str | None = None
         self._last_primary_recovery_check = 0.0
         self._terminal_sessions: set[tuple[Any, ...]] = set()
+        self._terminal_source_times: dict[tuple[Any, ...], float] = {}
+        self._observed_status: _LiveSessionStatus | None = None
+        self._observed_generation = self._availability.replay_generation
+        self._known_windows: list[SessionWindow] = []
+        self._last_live_probe: float | None = None
+        self._monitor_needs_fresh_info = False
         # Throttle noisy logs (e.g. missing index at season rollover)
         self._log_throttle: dict[str, float] = {}
         # Event used to interrupt sleep cycles (e.g. after replay ends)
@@ -1125,11 +1270,16 @@ class LiveSessionSupervisor:
         with suppress(asyncio.CancelledError):
             while not self._stopped:
                 window, source = await self._resolve_window()
+                now = dt_util.utcnow()
+                if window is None or now < window.connect_at:
+                    discovered = await self._discover_live_window()
+                    if discovered is not None:
+                        window, source = discovered
+                        now = dt_util.utcnow()
                 if window is None:
                     self._availability.set_state(False, "no-session-found")
                     await self._interruptible_sleep(IDLE_REFRESH.total_seconds())
                     continue
-                now = dt_util.utcnow()
                 if now < window.connect_at:
                     wait = max(
                         30.0,
@@ -1167,6 +1317,9 @@ class LiveSessionSupervisor:
         *,
         source: str,
     ) -> SessionWindow | None:
+        active = self._live_window(windows)
+        if active is not None:
+            return active
         if not windows:
             return None
         now = dt_util.utcnow()
@@ -1225,6 +1378,155 @@ class LiveSessionSupervisor:
             now.isoformat(),
         )
         return window
+
+    def _status_observer(self) -> _LiveSessionStatus:
+        """Seed identity and status only from one coherent SessionInfo payload."""
+        if self._observed_generation != self._availability.replay_generation:
+            self._observed_status = None
+            self._observed_generation = self._availability.replay_generation
+        status = self._observed_status or _LiveSessionStatus()
+        status.update_info(_live_session_info(self._cached_bus_payload("SessionInfo")))
+        return status
+
+    def _watch_status(
+        self,
+        subscriptions: contextlib.ExitStack,
+        status: _LiveSessionStatus,
+        *,
+        seed_cache: bool = True,
+    ) -> None:
+        # subscribe() replays independently cached streams. The status cache can
+        # still belong to the preceding session; only new frames may join it to
+        # the identity established above.
+        registering = True
+
+        def update_info(payload: Any) -> None:
+            if seed_cache or not registering:
+                status.update_info(_live_session_info(payload))
+
+        def update(payload: Any) -> None:
+            if not registering:
+                status.update_status(payload)
+
+        subscriptions.callback(self._bus.subscribe("SessionInfo", update_info))
+        subscriptions.callback(self._bus.subscribe("SessionStatus", update))
+        subscriptions.callback(
+            self._bus.subscribe(
+                "SessionData",
+                lambda payload: None if registering else status.update_data(payload),
+            )
+        )
+        registering = False
+        self._observed_status = status
+        self._observed_generation = self._availability.replay_generation
+
+    def _live_window(
+        self,
+        windows: list[SessionWindow],
+        *,
+        status: _LiveSessionStatus | None = None,
+        allow_terminal: bool = False,
+    ) -> SessionWindow | None:
+        """Prefer identified live evidence to the schedule, including late joins."""
+        if (
+            self._availability.replay_locked
+            or getattr(self._bus, "connection_state", None)
+            is LiveConnectionState.STOPPED
+        ):
+            return None
+        status = status or self._status_observer()
+        if status.session_key is None or not status.started:
+            return None
+        info = status.info or {}
+        observation = info.get("_f1_observation")
+        context = observation.get("context") if isinstance(observation, dict) else None
+        if (
+            info.get("_f1_source_domain") == "replay_offset"
+            or isinstance(context, dict)
+            and context.get("source") != "live"
+        ):
+            return None
+        candidates = [
+            window
+            for window in windows
+            if _as_int(window.session_key) == status.session_key
+        ]
+        if not candidates:
+            candidates = build_session_windows({"Sessions": [info]})
+        if not candidates:
+            return None
+        window = candidates[0]
+        if status.ended(window) and not allow_terminal:
+            return None
+        identity = _window_identity(window)
+        if identity in self._terminal_sessions:
+            terminal_time = self._terminal_source_times.get(identity)
+            phase = (status.payload or {}).get("Status") or (status.payload or {}).get(
+                "Message"
+            )
+            if (
+                phase not in SESSION_RUNNING_STATES
+                or terminal_time is None
+                or status.source_time is None
+                or status.source_time <= terminal_time
+            ):
+                return None
+            self._terminal_sessions.discard(identity)
+            self._terminal_source_times.pop(identity, None)
+        # A previously delivered cache is not proof of a current live feed.
+        # Session status itself may legitimately be old during a long red flag.
+        ages = (
+            self._bus.last_heartbeat_age(),
+            self._bus.last_stream_activity_age(LIVE_ACTIVITY_STREAMS),
+        )
+        if not any(
+            isinstance(age, (int, float)) and age <= HEARTBEAT_DRAIN_SECONDS
+            for age in ages
+        ):
+            return None
+        self._observed_status = status
+        return replace(window, connect_at=min(window.connect_at, dt_util.utcnow()))
+
+    async def _discover_live_window(self) -> tuple[SessionWindow, str] | None:
+        """Ask the existing live connection before waiting for a future schedule."""
+        if self._availability.replay_locked or self._is_no_spoiler_active:
+            return None
+        mono_now = time.monotonic()
+        if (
+            self._last_live_probe is not None
+            and mono_now - self._last_live_probe
+            < LIVE_DISCOVERY_INTERVAL.total_seconds()
+        ):
+            return None
+        self._last_live_probe = mono_now
+        generation = self._availability.replay_generation
+        status = _LiveSessionStatus()
+        discovered = None
+        try:
+            with contextlib.ExitStack() as subscriptions:
+                self._watch_status(subscriptions, status, seed_cache=False)
+                await self._bus.start()
+                for _ in range(int(LIVE_DISCOVERY_TIMEOUT.total_seconds())):
+                    if (
+                        self._stopped
+                        or self._availability.replay_locked
+                        or self._availability.replay_generation != generation
+                        or self._is_no_spoiler_active
+                    ):
+                        break
+                    window = self._live_window(self._known_windows, status=status)
+                    if window is not None:
+                        discovered = (window, "live")
+                        break
+                    await self._interruptible_sleep(1)
+        finally:
+            if (
+                discovered is None
+                and not self._availability.replay_locked
+                and self._availability.replay_generation == generation
+            ):
+                await self._bus.async_close()
+        return discovered
 
     def _should_reconcile_window(self, window: SessionWindow) -> bool:
         if self._fallback_active:
@@ -1313,10 +1615,24 @@ class LiveSessionSupervisor:
         self._index_http_status = primary.index_http_status
         if primary.last_error:
             self._last_schedule_error = primary.last_error
+        current_window = active_window or self._current_window
+        status = self._observed_status
+        if (
+            current_window is not None
+            and status is not None
+            and status.owns(current_window)
+        ):
+            return next(
+                (
+                    candidate
+                    for candidate in primary.windows
+                    if _as_int(candidate.session_key) == status.session_key
+                ),
+                None,
+            )
         primary_window = await self._select_window(primary.windows, source="index")
         if primary_window is None:
             return None
-        current_window = active_window or self._current_window
         if current_window is not None:
             if not _same_session(primary_window, current_window):
                 return None
@@ -1340,6 +1656,7 @@ class LiveSessionSupervisor:
             pre_window=self._pre_window,
             post_window=self._post_window,
         )
+        self._known_windows = list(primary.windows)
         self._index_http_status = primary.index_http_status
         if primary.last_error:
             self._last_schedule_error = primary.last_error
@@ -1403,6 +1720,7 @@ class LiveSessionSupervisor:
             post_window=self._post_window,
             active=self._fallback_active,
         )
+        self._known_windows.extend(fallback_result.windows)
         if fallback_result.last_error:
             self._last_schedule_error = fallback_result.last_error
         fallback_window = await self._select_window(
@@ -1458,13 +1776,9 @@ class LiveSessionSupervisor:
                 "SessionStatus payload invalid for %s: %s", window.label, data
             )
             return False
-        status = str(data.get("Status") or "").strip()
-        started = str(data.get("Started") or "").strip()
-        if status in SESSION_END_STATES:
-            return False
-        if started in SESSION_END_STATES:
-            return False
-        return True
+        status = _LiveSessionStatus(session_key=_as_int(window.session_key))
+        status.update_status(data)
+        return status.owns(window) and not status.ended(window)
 
     async def _activate_window(self, window: SessionWindow, *, source: str) -> None:
         replay_generation = self._availability.replay_generation
@@ -1480,6 +1794,10 @@ class LiveSessionSupervisor:
         )
         reason = "interrupted"
         try:
+            self._monitor_needs_fresh_info = (
+                getattr(self._bus, "connection_state", None)
+                is LiveConnectionState.STOPPED
+            )
             await self._bus.start()
             if (
                 self._availability.replay_locked
@@ -1516,7 +1834,7 @@ class LiveSessionSupervisor:
                         else f"finished-{window.session_name}"
                     )
                     self._availability.set_state(False, availability_reason)
-                    _LOGGER.info("Live timing closed for %s (%s)", label, reason)
+                    _LOGGER.info("Live timing closed for %s (%s)", window.label, reason)
                 else:
                     _LOGGER.debug(
                         "Live window released after replay takeover: %s", label
@@ -1547,18 +1865,11 @@ class LiveSessionSupervisor:
         return window.end_utc + PATHLESS_RACE_PROBE_HORIZON
 
     async def _monitor_window(self, window: SessionWindow, *, source: str) -> str:
-        status = _LiveSessionStatus()
+        seed_cache = not self._monitor_needs_fresh_info
+        status = self._status_observer() if seed_cache else _LiveSessionStatus()
+        self._monitor_needs_fresh_info = False
         with contextlib.ExitStack() as subscriptions:
-            subscriptions.callback(
-                self._bus.subscribe("SessionStatus", status.update_status)
-            )
-            subscriptions.callback(
-                self._bus.subscribe("SessionInfo", status.update_info)
-            )
-            # Cached streams can belong to different sessions. Seed only from
-            # SessionInfo, where the identity and status share one payload.
-            status.payload = None
-            status.update_info(self._cached_bus_payload("SessionInfo"))
+            self._watch_status(subscriptions, status, seed_cache=seed_cache)
             return await self._monitor_session_window(
                 window, source=source, status=status
             )
@@ -1568,9 +1879,10 @@ class LiveSessionSupervisor:
     ) -> str:
         replay_generation = self._availability.replay_generation
         label = window.label
-        reason = "disconnect-window-expired"
+        reason = "interrupted"
         max_disconnect_at = window.disconnect_at + POST_WINDOW_EXTENSION_CAP
         terminal_seen_at: datetime | None = None
+        confirmed_owner = status.owns(window)
         while not self._stopped:
             await self._interruptible_sleep(ACTIVE_REFRESH.total_seconds())
             if (
@@ -1589,6 +1901,20 @@ class LiveSessionSupervisor:
             now = dt_util.utcnow()
             hb_age = self._bus.last_heartbeat_age()
             activity_age = self._bus.last_stream_activity_age(LIVE_ACTIVITY_STREAMS)
+            if status.session_key != _as_int(window.session_key) and status.started:
+                successor = self._live_window(
+                    self._known_windows, status=status, allow_terminal=True
+                )
+                if successor is not None:
+                    if confirmed_owner:
+                        self._terminal_sessions.add(_window_identity(window))
+                    for field in SessionWindow.__dataclass_fields__:
+                        setattr(window, field, getattr(successor, field))
+                    label = window.label
+                    terminal_seen_at = None
+                    confirmed_owner = True
+                    max_disconnect_at = window.disconnect_at + POST_WINDOW_EXTENSION_CAP
+                    self._availability.set_state(True, f"live-{window.session_name}")
             session_status = self._cached_bus_payload("SessionStatus")
             session_finalised = status.finalised(window)
             if status.ended(window):
@@ -1608,7 +1934,13 @@ class LiveSessionSupervisor:
                     )
                 )
                 if now >= terminal_seen_at + drain:
-                    self._terminal_sessions.add(_window_identity(window))
+                    identity = _window_identity(window)
+                    self._terminal_sessions.add(identity)
+                    self._terminal_source_times[identity] = (
+                        status.source_time
+                        if status.source_time is not None
+                        else now.timestamp()
+                    )
                     reason = "session-finished"
                     break
                 continue
@@ -1643,7 +1975,9 @@ class LiveSessionSupervisor:
                 window.end_utc <= now < window.disconnect_at
                 and ("qualifying" in session_name_l or "shootout" in session_name_l)
             )
-            if now >= window.disconnect_at:
+            confirmed_owner = confirmed_owner or status.owns(window)
+            confirmed = confirmed_owner
+            if now >= window.disconnect_at and not confirmed:
                 should_extend = window.disconnect_at < extension_cap and fresh_activity
                 if should_extend:
                     extension = min(
@@ -1670,6 +2004,7 @@ class LiveSessionSupervisor:
                 and not fresh_activity
                 and not session_finalised
                 and not allow_post_finish_inactivity
+                and not confirmed
             ):
                 _LOGGER.info(
                     "Heartbeat aged %.0fs for %s; assuming feed idle", hb_age, label
@@ -1684,13 +2019,33 @@ class LiveSessionSupervisor:
                 ):
                     self._last_primary_recovery_check = mono_now
                     candidate = await self._resolve_primary_window(active_window=window)
+                    if (
+                        self._availability.replay_locked
+                        or self._availability.replay_generation != replay_generation
+                    ):
+                        return "replay-takeover"
                     if candidate is not None:
                         _LOGGER.info(
                             "switching back to index source (recovered): %s",
                             candidate.label,
                         )
-                        reason = "primary-source-recovered"
-                        break
+                        # This is a metadata correction for the same owner, not
+                        # a session boundary. Closing would discard delayed data
+                        # and let the next schedule hide an ongoing overrun.
+                        window.path = candidate.path or window.path
+                        window.start_utc = candidate.start_utc
+                        window.end_utc = candidate.end_utc
+                        window.connect_at = candidate.connect_at
+                        window.disconnect_at = max(
+                            window.disconnect_at, candidate.disconnect_at
+                        )
+                        self._current_window_source = "index"
+                        self._set_schedule_state(
+                            source="index",
+                            fallback_active=False,
+                            index_http_status=self._index_http_status,
+                        )
+                        source = "index"
         return reason
 
     async def _session_finished(self, window: SessionWindow) -> bool:

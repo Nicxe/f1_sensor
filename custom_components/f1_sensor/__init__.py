@@ -869,6 +869,11 @@ def _refresh_session_fingerprint(
     return fp, fp != current
 
 
+def _stream_owns_session_data(live_state: LiveAvailabilityTracker | None) -> bool:
+    """Keep index metadata changes outside an active live or replay generation."""
+    return live_state is not None and (live_state.is_live or live_state.replay_locked)
+
+
 def _schedule_deliver_handle(
     loop: asyncio.AbstractEventLoop,
     handle: asyncio.Handle | None,
@@ -1264,6 +1269,7 @@ def _init_signalr_state(
 class _SessionFingerprintMixin:
     _session_coord: Any
     _session_fingerprint: str | None
+    _session_live_state: LiveAvailabilityTracker | None = None
 
     def _on_session_index_update(self) -> None:
         fp, changed = _refresh_session_fingerprint(
@@ -1272,7 +1278,7 @@ class _SessionFingerprintMixin:
         if fp is None:
             return
         self._session_fingerprint = fp
-        if changed:
+        if changed and not _stream_owns_session_data(self._session_live_state):
             _clear_delayed_ingest_state(self)
             self._reset_store()
 
@@ -3285,9 +3291,12 @@ class WeatherDataCoordinator(DataUpdateCoordinator):
             delay_controller=delay_controller,
             live_state=live_state,
         )
+        self._session_info_unsub = None
+        self._live_session_key = None
 
     async def async_close(self, *_):
         self._unsub = _call_unsub(self._unsub)
+        self._session_info_unsub = _call_unsub(self._session_info_unsub)
         self._deliver_handle = _cancel_handle(self._deliver_handle)
         self._delay_listener = _call_unsub(self._delay_listener)
         self._live_state_unsub = _call_unsub(self._live_state_unsub)
@@ -3295,6 +3304,17 @@ class WeatherDataCoordinator(DataUpdateCoordinator):
 
     async def _async_update_data(self):
         return self._last_message
+
+    def _on_sessioninfo(self, payload: dict) -> None:
+        session_key = _stream_session_key(payload)
+        if session_key is None or session_key == self._live_session_key:
+            return
+        changed = self._live_session_key is not None
+        self._live_session_key = session_key
+        if changed:
+            self._last_message = None
+            self.data_list = []
+            self.async_set_updated_data(None)
 
     def _on_bus_message(self, msg: dict) -> None:
         if not isinstance(msg, dict):
@@ -3376,6 +3396,13 @@ class WeatherDataCoordinator(DataUpdateCoordinator):
         await super().async_config_entry_first_refresh()
         # Subscribe to shared live bus
         try:
+            bus = self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")
+            self._session_info_unsub = bus.subscribe(
+                "SessionInfo", _wrap_delayed_handler(self, self._on_sessioninfo)
+            )
+        except Exception:
+            self._session_info_unsub = None
+        try:
             self._unsub = (
                 self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")
             ).subscribe(
@@ -3401,6 +3428,7 @@ class WeatherDataCoordinator(DataUpdateCoordinator):
         self.available = is_live
         if not is_live:
             _clear_delayed_ingest_state(self)
+            self._live_session_key = None
             self._last_message = None
             self.data_list = []
             # Notify entities to clear their state
@@ -3442,6 +3470,9 @@ class RaceControlCoordinator(DataUpdateCoordinator):
         self._deliver_handles: list[asyncio.Handle] = []
         self._bus = bus
         self._unsub: Callable[[], None] | None = None
+        self._session_info_unsub: Callable[[], None] | None = None
+        self._live_session_key: str | None = None
+        self._delivered_session_key: str | None = None
         self._delay_listener: Callable[[], None] | None = None
         self._delay = max(0, int(delay_seconds or 0))
         self._replay_mode = False
@@ -3468,6 +3499,7 @@ class RaceControlCoordinator(DataUpdateCoordinator):
             self._live_state_unsub = live_state.add_listener(self._handle_live_state)
 
     async def async_close(self, *_):
+        self._session_info_unsub = _call_unsub(self._session_info_unsub)
         if self._unsub:
             with suppress(Exception):
                 self._unsub()
@@ -3489,6 +3521,37 @@ class RaceControlCoordinator(DataUpdateCoordinator):
 
     async def _async_update_data(self):
         return self._last_message
+
+    @property
+    def session_key(self) -> str | None:
+        """Return the session identity at the delayed delivery boundary."""
+        return self._delivered_session_key
+
+    def _apply_sessioninfo(self, session_key: str, changed: bool) -> None:
+        self._delivered_session_key = session_key
+        if changed:
+            self._last_message = None
+            self.data_list = []
+            self.async_set_updated_data(None)
+
+    def _on_sessioninfo(self, payload: dict) -> None:
+        session_key = _stream_session_key(payload)
+        if session_key is None or session_key == self._live_session_key:
+            return
+        changed = self._live_session_key is not None
+        self._live_session_key = session_key
+        if changed:
+            # Dedupe receives raw messages before the delayed context changes.
+            self._seen_ids_set.clear()
+            self._seen_ids_order.clear()
+        callback = partial(self._apply_sessioninfo, session_key, changed)
+        delay = 0 if self._replay_mode else self._delay
+        handle = (
+            self.hass.loop.call_later(delay, callback)
+            if delay > 0
+            else self.hass.loop.call_soon(callback)
+        )
+        self._deliver_handles.append(handle)
 
     @staticmethod
     def _parse_message(data):
@@ -3628,6 +3691,10 @@ class RaceControlCoordinator(DataUpdateCoordinator):
             return
         self.available = is_live
         if not is_live:
+            self._live_session_key = None
+            self._delivered_session_key = None
+            self._seen_ids_set.clear()
+            self._seen_ids_order.clear()
             self._last_message = None
             self.data_list = []
             if self._log_store is not None:
@@ -3706,6 +3773,12 @@ class RaceControlCoordinator(DataUpdateCoordinator):
             except Exception:
                 self._startup_cutoff = None
         # Subscribe to LiveBus
+        try:
+            self._session_info_unsub = (
+                self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")
+            ).subscribe("SessionInfo", self._on_sessioninfo)
+        except Exception:
+            self._session_info_unsub = None
         try:
             self._unsub = (
                 self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")
@@ -4033,6 +4106,7 @@ class LiveModeCoordinator(DataUpdateCoordinator):
         self._state: dict = {"overtake_enabled": None, "straight_mode": None}
         self._rc_unsub: Callable[[], None] | None = None
         self._status_unsub: Callable[[], None] | None = None
+        self._live_session_key: str | None = None
         self._live_state_unsub: Callable[[], None] | None = None
         if live_state is not None:
             self._live_state_unsub = live_state.add_listener(self._handle_live_state)
@@ -4098,6 +4172,13 @@ class LiveModeCoordinator(DataUpdateCoordinator):
             _LOGGER.debug("LiveMode: cleared state due to terminal SessionStatus")
 
     def _on_race_control_update(self) -> None:
+        session_key = getattr(self._rc_coordinator, "session_key", None)
+        if session_key is not None and session_key != self._live_session_key:
+            changed = self._live_session_key is not None
+            self._live_session_key = session_key
+            if changed:
+                self._clear_mode_state()
+                self.async_set_updated_data(None)
         if self.session_is_terminal:
             return
         item = self._rc_coordinator.data
@@ -4138,6 +4219,7 @@ class LiveModeCoordinator(DataUpdateCoordinator):
             return
         self.available = is_live
         if not is_live:
+            self._live_session_key = None
             self._clear_mode_state()
             self.async_set_updated_data(None)
             return
@@ -4318,6 +4400,7 @@ class TeamRadioCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
             config_entry=config_entry,
         )
         self._session_coord = session_coord
+        self._session_live_state = live_state
         self.available = False
         self._bus = bus
         self._config_entry = config_entry
@@ -4336,6 +4419,7 @@ class TeamRadioCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
             self._live_state_unsub = live_state.add_listener(self._handle_live_state)
         self._session_unsub: Callable[[], None] | None = None
         self._session_fingerprint: str | None = None
+        self._live_session_key: str | None = None
 
     async def async_close(self, *_):
         _close_unsubs(self._unsubs)
@@ -4366,10 +4450,20 @@ class TeamRadioCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
         self.available = replay_available or auth_live_available
         if not self.available:
             _clear_delayed_ingest_state(self)
+            self._live_session_key = None
             self._reset_store()
 
     def set_delay(self, seconds: int) -> None:
         _apply_delay_with_queue(self, seconds)
+
+    def _on_sessioninfo(self, payload: dict) -> None:
+        session_key = _stream_session_key(payload)
+        if session_key is None or session_key == self._live_session_key:
+            return
+        changed = self._live_session_key is not None
+        self._live_session_key = session_key
+        if changed:
+            self._reset_store()
 
     def _reset_store(self) -> None:
         self._driver_identities = {}
@@ -4569,6 +4663,12 @@ class TeamRadioCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
         with suppress(Exception):
             self._unsubs.append(
                 bus.subscribe(
+                    "SessionInfo", _wrap_delayed_handler(self, self._on_sessioninfo)
+                )
+            )
+        with suppress(Exception):
+            self._unsubs.append(
+                bus.subscribe(
                     "DriverList",
                     _wrap_delayed_handler(self, self._on_driverlist),
                 )
@@ -4617,6 +4717,7 @@ class PitStopCoordinator(_SessionFingerprintMixin, DataUpdateCoordinator):
         )
         self._session = async_get_clientsession(hass)
         self._session_coord = session_coord
+        self._session_live_state = live_state
         self.available = False
         self._bus = bus
         self._config_entry = config_entry
@@ -5423,6 +5524,7 @@ class ChampionshipPredictionCoordinator(
         )
         self._session = async_get_clientsession(hass)
         self._session_coord = session_coord
+        self._session_live_state = live_state
         self.available = False
         self._bus = bus
         self._config_entry = config_entry
@@ -5801,6 +5903,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         )
         self._session = async_get_clientsession(hass)
         self._session_coord = session_coord
+        self._session_live_state = live_state
         self._deliver_handle: asyncio.Handle | None = None
         self._bus = bus
         self._unsubs: list[Callable[[], None]] = []
@@ -5885,6 +5988,8 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             return
         changed = self._session_fingerprint is not None
         self._session_fingerprint = fingerprint
+        if _stream_owns_session_data(self._session_live_state):
+            return
         if changed:
             _clear_delayed_ingest_state(self)
         self._minisectors.set_session(fingerprint)
@@ -8168,6 +8273,7 @@ def _reset_replay_sensitive_coordinator_state(coordinator: Any) -> None:
 
     if isinstance(coordinator, WeatherDataCoordinator):
         _clear_delayed_ingest_state(coordinator)
+        coordinator._live_session_key = None
         coordinator._last_message = None
         coordinator.data_list = []
         coordinator.async_set_updated_data(None)
@@ -8178,6 +8284,8 @@ def _reset_replay_sensitive_coordinator_state(coordinator: Any) -> None:
             with suppress(Exception):
                 handle.cancel()
         coordinator._deliver_handles.clear()
+        coordinator._live_session_key = None
+        coordinator._delivered_session_key = None
         coordinator._last_message = None
         coordinator.data_list = []
         coordinator._seen_ids_set.clear()
@@ -8191,6 +8299,7 @@ def _reset_replay_sensitive_coordinator_state(coordinator: Any) -> None:
         return
 
     if isinstance(coordinator, LiveModeCoordinator):
+        coordinator._live_session_key = None
         coordinator._clear_mode_state()
         coordinator.async_set_updated_data(None)
         return
@@ -8209,6 +8318,7 @@ def _reset_replay_sensitive_coordinator_state(coordinator: Any) -> None:
 
     if isinstance(coordinator, TeamRadioCoordinator):
         _clear_delayed_ingest_state(coordinator)
+        coordinator._live_session_key = None
         coordinator._reset_store()
         return
 
@@ -8242,6 +8352,7 @@ def _reset_replay_sensitive_coordinator_state(coordinator: Any) -> None:
             with suppress(Exception):
                 handle.cancel()
         coordinator._deliver_handles.clear()
+        coordinator._live_session_key = None
         coordinator._last_message = None
         coordinator.data_list = []
         coordinator._startup_cutoff = None
@@ -8264,12 +8375,8 @@ def _reset_replay_sensitive_coordinator_state(coordinator: Any) -> None:
 
     if isinstance(coordinator, TopThreeCoordinator):
         _clear_delayed_ingest_state(coordinator)
-        coordinator._state = {
-            "withheld": None,
-            "lines": [None, None, None],
-            "last_update_ts": None,
-        }
-        coordinator.async_set_updated_data(coordinator._state)
+        coordinator._live_session_key = None
+        coordinator._reset_store()
         return
 
     if isinstance(coordinator, SessionInfoCoordinator):
@@ -10432,6 +10539,8 @@ class TrackStatusCoordinator(DataUpdateCoordinator):
         self._deliver_handles: list[asyncio.Handle] = []
         self._bus = bus
         self._unsub: Callable[[], None] | None = None
+        self._session_info_unsub: Callable[[], None] | None = None
+        self._live_session_key: str | None = None
         self._delay_listener: Callable[[], None] | None = None
         self._t0 = None
         self._startup_cutoff = None
@@ -10446,6 +10555,7 @@ class TrackStatusCoordinator(DataUpdateCoordinator):
             self._live_state_unsub = live_state.add_listener(self._handle_live_state)
 
     async def async_close(self, *_):
+        self._session_info_unsub = _call_unsub(self._session_info_unsub)
         if self._unsub:
             with suppress(Exception):
                 self._unsub()
@@ -10468,6 +10578,29 @@ class TrackStatusCoordinator(DataUpdateCoordinator):
 
     async def _async_update_data(self):
         return self._last_message
+
+    def _reset_store(self) -> None:
+        self._last_message = None
+        self.data_list = []
+        self.hass.data[LATEST_TRACK_STATUS] = None
+        self.async_set_updated_data(None)
+
+    def _on_sessioninfo(self, payload: dict) -> None:
+        session_key = _stream_session_key(payload)
+        if session_key is None or session_key == self._live_session_key:
+            return
+        changed = self._live_session_key is not None
+        self._live_session_key = session_key
+        if changed:
+            # Dedupe runs at raw receipt, while visible state follows live delay.
+            self._last_untimestamped_fingerprint = None
+            delay = 0 if self._replay_mode else self._delay
+            handle = (
+                self.hass.loop.call_later(delay, self._reset_store)
+                if delay > 0
+                else self.hass.loop.call_soon(self._reset_store)
+            )
+            self._deliver_handles.append(handle)
 
     def _on_bus_message(self, msg: dict) -> None:
         if not isinstance(msg, dict):
@@ -10570,6 +10703,12 @@ class TrackStatusCoordinator(DataUpdateCoordinator):
             self._startup_cutoff = None
         # Subscribe to LiveBus
         try:
+            self._session_info_unsub = (
+                self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")
+            ).subscribe("SessionInfo", self._on_sessioninfo)
+        except Exception:
+            self._session_info_unsub = None
+        try:
             self._unsub = (
                 self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")
             ).subscribe("TrackStatus", self._on_bus_message)  # type: ignore[attr-defined]
@@ -10599,13 +10738,9 @@ class TrackStatusCoordinator(DataUpdateCoordinator):
             return
         self.available = is_live
         if not is_live:
-            self._last_message = None
-            self.data_list = []
-            # Clear global cache so sensors don't fall back to stale data
-            with suppress(Exception):
-                self.hass.data[LATEST_TRACK_STATUS] = None
-            # Notify entities to clear their state
-            self.async_set_updated_data(self._last_message)
+            self._live_session_key = None
+            self._last_untimestamped_fingerprint = None
+            self._reset_store()
         # In replay mode, disable startup cutoff and clear dedup state
         if is_live and reason == "replay":
             self._startup_cutoff = None
@@ -10972,8 +11107,11 @@ class TopThreeCoordinator(DataUpdateCoordinator):
             delay_controller=delay_controller,
             live_state=live_state,
         )
+        self._session_info_unsub = None
+        self._live_session_key = None
 
     async def async_close(self, *_):
+        self._session_info_unsub = _call_unsub(self._session_info_unsub)
         _close_stream_delay_state(self)
 
     async def _async_update_data(self):
@@ -10997,17 +11135,28 @@ class TopThreeCoordinator(DataUpdateCoordinator):
             )
         if not is_live:
             _clear_delayed_ingest_state(self)
-            with suppress(Exception):
-                self._state = {
-                    "withheld": None,
-                    "lines": [None, None, None],
-                    "last_update_ts": None,
-                }
-                # Notify entities to clear their state
-                self.async_set_updated_data(self._state)
+            self._live_session_key = None
+            self._reset_store()
 
     def set_delay(self, seconds: int) -> None:
         _apply_delay_with_queue(self, seconds)
+
+    def _reset_store(self) -> None:
+        self._state = {
+            "withheld": None,
+            "lines": [None, None, None],
+            "last_update_ts": None,
+        }
+        self.async_set_updated_data(self._state)
+
+    def _on_sessioninfo(self, payload: dict) -> None:
+        session_key = _stream_session_key(payload)
+        if session_key is None or session_key == self._live_session_key:
+            return
+        changed = self._live_session_key is not None
+        self._live_session_key = session_key
+        if changed:
+            self._reset_store()
 
     def _schedule_deliver(self) -> None:
         self._deliver()
@@ -11116,6 +11265,12 @@ class TopThreeCoordinator(DataUpdateCoordinator):
         except Exception:
             bus = None
         if bus is not None:
+            try:
+                self._session_info_unsub = bus.subscribe(
+                    "SessionInfo", _wrap_delayed_handler(self, self._on_sessioninfo)
+                )
+            except Exception:
+                self._session_info_unsub = None
             try:
                 self._unsub = bus.subscribe(
                     "TopThree", _wrap_delayed_handler(self, self._on_bus_message)
