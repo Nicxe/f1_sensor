@@ -206,6 +206,25 @@ export function sessionClock(hass, entry, key, context = sessionContext(hass, en
   return { value, seconds: valid ? raw : null, phase, quality, part, cap, notApplicable: cap && sessionKind(context.name) !== 'race', replay: context.replay, source: selected, contextMismatch: !comparable };
 }
 
+// This assessment belongs to one delivered session, independently of the
+// weather forecast and the binary WeatherData rain observation.
+export function sessionRainRisk(hass, entry, localSpoilers = 'inherit') {
+  const selected = source(hass, entry, 'session_rain_risk'), attrs = selected.attributes;
+  const current = source(hass, entry, 'current_session'), session = sessionContext(hass, entry);
+  const percentage = number(selected.state), sessionKey = attrs.session_key;
+  const matches = sessionKey != null && current.attributes.session_key != null
+    && String(sessionKey) === String(current.attributes.session_key)
+    && (attrs.meeting_key == null || current.attributes.meeting_key == null
+      || String(attrs.meeting_key) === String(current.attributes.meeting_key));
+  if (spoilerState(hass, entry, localSpoilers) !== 'clear' || selected.status !== 'available'
+    || current.status !== 'available' || !session.name || !matches
+    || ['finished', 'finalised', 'ended', 'complete', 'completed'].includes(String(source(hass, entry, 'session_status').state).toLowerCase())
+    || hass?.connection?.connected === false
+    || percentage === null || percentage < 0 || percentage > 100) return null;
+  return { value: percentage, unit: '%', session: nonempty(attrs.session_name) ?? session.name,
+    utc: nonempty(attrs.utc), message: nonempty(attrs.message), source: selected };
+}
+
 export function lapHistory(driver) {
   const completed = number(driver.completed_laps);
   return Object.entries(driver.laps ?? {}).map(([lap, time]) => ({ lap: positiveInteger(lap), time: seconds(time) }))
@@ -678,7 +697,7 @@ export function weatherValues(hass, entry, module = { type: 'weather', options: 
   if (hass?.connection?.connected === false && weather.status === 'available') weather.status = 'unavailable';
   const available = moduleFields(module);
   const fields = automatic ? moduleFields({ ...module, options: { ...module.options, content: 'automatic_conditions' } }) : available;
-  const values = Object.fromEntries(fields.map(id => {
+  const values = Object.fromEntries(fields.filter(id => id !== 'session_rain_risk').map(id => {
     const field = fieldDefinition(module, id), raw = available.includes(id) ? attrs[field.path] : undefined;
     let value = number(raw), unit = attrs[`${field.path}_unit`] ?? field.unit;
     if (['temperature', 'track_temperature'].includes(id)) {
@@ -861,14 +880,16 @@ export function retainedSourceKey(module) {
   })[module.type] ?? null;
 }
 
-function trackWeatherFingerprint(hass, entry) {
-  const weather = source(hass, entry, 'track_weather');
-  return JSON.stringify([weather.entity_id, weather.status, weather.state, weather.attributes, weather.updated_at]);
+function liveSourceFingerprint(hass, entry, key) {
+  const selected = source(hass, entry, key);
+  return JSON.stringify([selected.entity_id, selected.status, selected.state, selected.attributes, selected.updated_at]);
 }
+const trackWeatherFingerprint = (hass, entry) => liveSourceFingerprint(hass, entry, 'track_weather');
+const rainRiskFingerprint = (hass, entry) => liveSourceFingerprint(hass, entry, 'session_rain_risk');
 
 export class RetainedSources {
   constructor() { this.clear(); }
-  clear() { this.snapshots = new Map(); this.barriers = new Map(); this.token = null; this.position = null; this.seek = false; this.epoch = 0; this.references = new Map(); this.nextEvent = null; this.part = null; this.sessionKey = null; this.liveContext = false; this.protection = 'unknown'; this.viewGeneration = null; this.weatherReference = null; this.weatherBarrier = null; }
+  clear() { this.snapshots = new Map(); this.barriers = new Map(); this.token = null; this.position = null; this.seek = false; this.epoch = 0; this.references = new Map(); this.nextEvent = null; this.part = null; this.sessionKey = null; this.liveContext = false; this.protection = 'unknown'; this.viewGeneration = null; this.weatherReference = null; this.weatherBarrier = null; this.rainRiskReference = null; this.rainRiskBarrier = null; }
   update(hass, entry, config, preview = false) {
     const session = sessionContext(hass, entry), replay = source(hass, entry, 'replay_status');
     const player = source(hass, entry, 'replay_player'), position = number(player.attributes.media_position);
@@ -882,13 +903,15 @@ export class RetainedSources {
       && player.attributes.replay_state === replay.state;
     this.liveContext = session.source.status === 'available' && Boolean(session.name && session.start)
       && (replay.state === 'idle' || coherentReplay);
-    const weatherReference = trackWeatherFingerprint(hass, entry);
-    const viewGeneration = JSON.stringify([entry?.entry_id, session.key, replayPhase, replay.attributes.selected_session, player.attributes.selected_session_id, this.epoch, source(hass, entry, 'live_delay_number').state]);
+    const weatherReference = trackWeatherFingerprint(hass, entry), rainRiskReference = rainRiskFingerprint(hass, entry);
+    const viewGeneration = JSON.stringify([entry?.entry_id, session.key, session.source.attributes.session_key, replayPhase, replay.attributes.selected_session, player.attributes.selected_session_id, this.epoch, source(hass, entry, 'live_delay_number').state]);
     if (this.viewGeneration !== null && this.viewGeneration !== viewGeneration) {
       this.weatherBarrier = this.weatherReference === weatherReference ? weatherReference : null;
+      this.rainRiskBarrier = this.rainRiskReference === rainRiskReference ? rainRiskReference : null;
     }
     if (this.weatherBarrier !== weatherReference) this.weatherBarrier = null;
-    this.viewGeneration = viewGeneration; this.weatherReference = weatherReference;
+    if (this.rainRiskBarrier !== rainRiskReference) this.rainRiskBarrier = null;
+    this.viewGeneration = viewGeneration; this.weatherReference = weatherReference; this.rainRiskReference = rainRiskReference;
     const next = source(hass, entry, 'next_race');
     if (next.status === 'available') this.nextEvent = [next.state, next.attributes.race_start_utc ?? next.attributes.race_start, next.attributes.race_name];
     if (session.key !== this.sessionKey) this.part = null;
@@ -898,7 +921,7 @@ export class RetainedSources {
     const references = new Map(Object.values(entry?.entities ?? {}).map(id => [id, hass.states?.[id]]));
     this.protection = spoilerState(hass, entry, config.context.spoilers);
     const token = JSON.stringify([entry?.entry_id, entry?.entities, entry?.disabled_entities,
-      this.protection, session.key, session.active, session.source.status,
+      this.protection, session.key, session.source.attributes.session_key, session.active, session.source.status,
       replayPhase, replay.attributes.selected_session, player.attributes.selected_session_id, this.epoch,
       source(hass, entry, 'live_delay_number').state,
       this.nextEvent, this.part, [...new Set(Object.values(entry?.card_data ?? {}).map(resource => resource.data?.generation).filter(Boolean))]]);
@@ -915,6 +938,9 @@ export class RetainedSources {
   }
   weatherAwaitingObservation(hass, entry) {
     return this.weatherBarrier !== null && this.weatherBarrier === trackWeatherFingerprint(hass, entry);
+  }
+  rainRiskAwaitingObservation(hass, entry) {
+    return this.rainRiskBarrier !== null && this.rainRiskBarrier === rainRiskFingerprint(hass, entry);
   }
   select(hass, entry, module, definition, preview = false) {
     const primary = retainedSourceKey(module), selected = primary && source(hass, entry, primary);
@@ -947,6 +973,7 @@ export class RetainedSources {
       this.barriers.delete(selected.entity_id);
       const keys = new Set([primary, 'driver_list', 'current_session', 'session_status', 'replay_status',
         ...(module.type === 'timing' ? ['current_tyres', 'starting_grid', 'investigations'] : []),
+        ...(module.type === 'weather' && module.fields.includes('session_rain_risk') ? ['session_rain_risk'] : []),
         ...(module.type === 'pit_stops' ? ['driver_positions', 'f1tv_token_status'] : []),
         ...(module.type === 'standings' ? [module.options.competitors === 'teams' ? 'championship_prediction_teams' : 'championship_prediction_drivers'] : [])]);
       const references = [...keys].map(key => entry.entities?.[key]).filter(Boolean).map(id => [id, hass.states?.[id]]);

@@ -14,6 +14,8 @@ Weather forecast at next race circuit.
 
 `sensor.f1_weather` provides compact weather data for the circuit location, both now and at race start.
 
+The forecast percentages below come from the weather provider. [Session Rain Risk](/entities/session-rain-risk) separately exposes Race Control's assessment for an identified session.
+
 ## State
 
 - Number: current air temperature in Home Assistant's selected temperature unit, or `unknown`.

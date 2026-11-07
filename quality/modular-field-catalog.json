@@ -2,7 +2,7 @@
   "format_version": 1,
   "configuration_version": 3,
   "generated_from": "modular/catalog.js",
-  "field_count": 154,
+  "field_count": 155,
   "module_count": 22,
   "sources": [
     "analysis",
@@ -27,6 +27,7 @@
     "selected_points_progression",
     "selected_result",
     "selected_standings",
+    "session_rain_risk",
     "session_status",
     "session_time_elapsed",
     "session_time_remaining",
@@ -3209,6 +3210,7 @@
         "race_time_to_three_hour_limit",
         "replay_player",
         "replay_status",
+        "session_rain_risk",
         "session_status",
         "session_time_elapsed",
         "session_time_remaining",
@@ -3678,6 +3680,42 @@
               },
               "type": "session_clock",
               "unit": null
+            },
+            {
+              "capability": "public_timing",
+              "filterable": false,
+              "freshness": "session",
+              "generation": "session",
+              "id": "session_rain_risk",
+              "identity": [
+                "entry",
+                "session"
+              ],
+              "label": "modular.session_rain_risk",
+              "mobile": 0,
+              "modes": [
+                "live",
+                "replay"
+              ],
+              "path": "percentage",
+              "presentations": [
+                "summary",
+                "list"
+              ],
+              "sessions": [
+                "all"
+              ],
+              "sortable": false,
+              "source": "session_rain_risk",
+              "spoiler": true,
+              "timestamps": {
+                "source": "utc",
+                "received": "not_provided",
+                "updated": "entity.last_updated",
+                "displayed": "snapshot"
+              },
+              "type": "number",
+              "unit": "%"
             }
           ]
         }
@@ -11413,6 +11451,7 @@
       "id": "weather",
       "label": "Weather",
       "sources": [
+        "session_rain_risk",
         "track_weather",
         "weather"
       ],
@@ -11802,6 +11841,42 @@
               },
               "type": "number",
               "unit": "mm"
+            },
+            {
+              "capability": "public_timing",
+              "filterable": false,
+              "freshness": "session",
+              "generation": "session",
+              "id": "session_rain_risk",
+              "identity": [
+                "entry",
+                "session"
+              ],
+              "label": "modular.session_rain_risk",
+              "mobile": 0,
+              "modes": [
+                "live",
+                "replay"
+              ],
+              "path": "percentage",
+              "presentations": [
+                "summary",
+                "list"
+              ],
+              "sessions": [
+                "all"
+              ],
+              "sortable": false,
+              "source": "session_rain_risk",
+              "spoiler": true,
+              "timestamps": {
+                "source": "utc",
+                "received": "not_provided",
+                "updated": "entity.last_updated",
+                "displayed": "snapshot"
+              },
+              "type": "number",
+              "unit": "%"
             }
           ]
         },
@@ -12190,6 +12265,42 @@
               },
               "type": "number",
               "unit": "mm"
+            },
+            {
+              "capability": "public_timing",
+              "filterable": false,
+              "freshness": "session",
+              "generation": "session",
+              "id": "session_rain_risk",
+              "identity": [
+                "entry",
+                "session"
+              ],
+              "label": "modular.session_rain_risk",
+              "mobile": 0,
+              "modes": [
+                "live",
+                "replay"
+              ],
+              "path": "percentage",
+              "presentations": [
+                "summary",
+                "list"
+              ],
+              "sessions": [
+                "all"
+              ],
+              "sortable": false,
+              "source": "session_rain_risk",
+              "spoiler": true,
+              "timestamps": {
+                "source": "utc",
+                "received": "not_provided",
+                "updated": "entity.last_updated",
+                "displayed": "snapshot"
+              },
+              "type": "number",
+              "unit": "%"
             }
           ]
         },
@@ -13344,6 +13455,42 @@
               },
               "type": "rain_indicator",
               "unit": null
+            },
+            {
+              "capability": "public_timing",
+              "filterable": false,
+              "freshness": "session",
+              "generation": "session",
+              "id": "session_rain_risk",
+              "identity": [
+                "entry",
+                "session"
+              ],
+              "label": "modular.session_rain_risk",
+              "mobile": 0,
+              "modes": [
+                "live",
+                "replay"
+              ],
+              "path": "percentage",
+              "presentations": [
+                "summary",
+                "list"
+              ],
+              "sessions": [
+                "all"
+              ],
+              "sortable": false,
+              "source": "session_rain_risk",
+              "spoiler": true,
+              "timestamps": {
+                "source": "utc",
+                "received": "not_provided",
+                "updated": "entity.last_updated",
+                "displayed": "snapshot"
+              },
+              "type": "number",
+              "unit": "%"
             }
           ]
         },
@@ -13732,6 +13879,42 @@
               },
               "type": "number",
               "unit": "mm"
+            },
+            {
+              "capability": "public_timing",
+              "filterable": false,
+              "freshness": "session",
+              "generation": "session",
+              "id": "session_rain_risk",
+              "identity": [
+                "entry",
+                "session"
+              ],
+              "label": "modular.session_rain_risk",
+              "mobile": 0,
+              "modes": [
+                "live",
+                "replay"
+              ],
+              "path": "percentage",
+              "presentations": [
+                "summary",
+                "list"
+              ],
+              "sessions": [
+                "all"
+              ],
+              "sortable": false,
+              "source": "session_rain_risk",
+              "spoiler": true,
+              "timestamps": {
+                "source": "utc",
+                "received": "not_provided",
+                "updated": "entity.last_updated",
+                "displayed": "snapshot"
+              },
+              "type": "number",
+              "unit": "%"
             }
           ]
         },
@@ -13999,6 +14182,42 @@
               },
               "type": "rain_indicator",
               "unit": null
+            },
+            {
+              "capability": "public_timing",
+              "filterable": false,
+              "freshness": "session",
+              "generation": "session",
+              "id": "session_rain_risk",
+              "identity": [
+                "entry",
+                "session"
+              ],
+              "label": "modular.session_rain_risk",
+              "mobile": 0,
+              "modes": [
+                "live",
+                "replay"
+              ],
+              "path": "percentage",
+              "presentations": [
+                "summary",
+                "list"
+              ],
+              "sessions": [
+                "all"
+              ],
+              "sortable": false,
+              "source": "session_rain_risk",
+              "spoiler": true,
+              "timestamps": {
+                "source": "utc",
+                "received": "not_provided",
+                "updated": "entity.last_updated",
+                "displayed": "snapshot"
+              },
+              "type": "number",
+              "unit": "%"
             }
           ]
         }

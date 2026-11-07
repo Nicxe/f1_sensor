@@ -281,6 +281,17 @@ class PredictionProjection(LiveProjectionModel):
         self._attr_extra_state_attributes = {}
 
 
+class SessionRainRiskModel(LiveProjectionModel):
+    """Expose the shared session assessment without maintaining another cache."""
+
+    def refresh_data(self) -> None:
+        from .session_rain_risk import empty_session_rain_risk
+
+        attributes = self.coordinator.data or empty_session_rain_risk()
+        self._attr_native_value = attributes.get("percentage")
+        self._attr_extra_state_attributes = deepcopy(attributes)
+
+
 class TrackWeatherModel(LiveProjectionModel):
     """Shared calculation for TrackWeather."""
 

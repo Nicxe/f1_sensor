@@ -188,7 +188,12 @@ export const WEATHER_FIELDS = [
   ['rain_probability', 'Rain probability', 'precipitation_probability', 'number', '%'],
   ['precipitation', 'Precipitation amount', 'precipitation', 'number', 'mm'],
   ['rainfall', 'Rain detected', 'rainfall', 'rain_indicator', null],
-].map(([id, sourceText, path, type, unit]) => basic(id, sourceText, ['track_temperature', 'pressure', 'rainfall'].includes(id) ? 'track_weather' : 'weather', path, type, { unit, timestamps: { source: 'not_provided', received: 'not_provided', updated: 'entity.last_updated', displayed: 'snapshot' } }));
+].map(([id, sourceText, path, type, unit]) => basic(id, sourceText, ['track_temperature', 'pressure', 'rainfall'].includes(id) ? 'track_weather' : 'weather', path, type, { unit, timestamps: { source: 'not_provided', received: 'not_provided', updated: 'entity.last_updated', displayed: 'snapshot' } })).concat(basic('session_rain_risk', 'modular.session_rain_risk', 'session_rain_risk', 'percentage', 'number', {
+  unit: '%', capability: 'public_timing', modes: ['live', 'replay'], spoiler: true,
+  identity: ['entry', 'session'], generation: 'session', freshness: 'session',
+  timestamps: { source: 'utc', received: 'not_provided', updated: 'entity.last_updated', displayed: 'snapshot' },
+  presentations: ['summary', 'list'],
+}));
 export const FIELDS = Object.fromEntries([
   ...SESSION_FIELDS,
   ...RESULT_FIELDS,
@@ -239,9 +244,9 @@ const module = (id, sourceText, fields, options, sources, extra = {}) => ({
   id, label: sourceText, fields, options, sources, version: VERSION, ...extra,
 });
 export const MODULES = {
-  overview: module('overview', 'Overview', ['meeting', 'circuit', 'country', 'countdown', 'circuit_map', 'circuit_history', 'session', 'session_status', 'lap_progress', 'track_status', 'session_time_elapsed', 'session_time_remaining', 'race_time_to_three_hour_limit'], {
+  overview: module('overview', 'Overview', ['meeting', 'circuit', 'country', 'countdown', 'circuit_map', 'circuit_history', 'session', 'session_status', 'lap_progress', 'track_status', 'session_time_elapsed', 'session_time_remaining', 'race_time_to_three_hour_limit', 'session_rain_risk'], {
     layout_mode: { type: 'enum', values: ['auto', 'compact', 'full'], default: 'auto', label: 'Layout mode' },
-  }, ['next_race', 'current_season', 'current_session', 'session_status', 'replay_status', 'replay_player', 'race_lap_count', 'track_status', 'session_time_elapsed', 'session_time_remaining', 'race_time_to_three_hour_limit'], { defaultFields: ['meeting', 'circuit', 'countdown'] }),
+  }, ['next_race', 'current_season', 'current_session', 'session_status', 'replay_status', 'replay_player', 'race_lap_count', 'track_status', 'session_time_elapsed', 'session_time_remaining', 'race_time_to_three_hour_limit', 'session_rain_risk'], { defaultFields: ['meeting', 'circuit', 'countdown', 'session_rain_risk'] }),
   calendar: module('calendar', 'Schedule', ['schedule'], {
     details: { type: 'list', values: ['round', 'circuit', 'location'], default: [], label: 'Event details' },
     past: { type: 'enum', values: ['show', 'dim', 'hide'], default: 'show', label: 'Past session starts' },
@@ -501,7 +506,7 @@ export const MODULES = {
     presentation: { type: 'enum', values: ['metrics', 'compact_list'], default: 'metrics', label: 'Weather layout' },
     colored_icons: { type: 'boolean', default: true, label: 'Colored weather icons' },
     show_explanation: { type: 'boolean', default: true, label: 'Show About section' },
-  }, ['weather', 'track_weather']),
+  }, ['weather', 'track_weather', 'session_rain_risk']),
 };
 
 export function moduleFocusKinds(module) {
@@ -547,11 +552,11 @@ export const INCIDENT_PROFILES = {
   track_limits_summary: ['driver', 'track_limit_deletions', 'track_limit_warning', 'track_limit_penalty'],
 };
 export const WEATHER_PROFILES = {
-  weather_overview: ['temperature', 'humidity', 'wind', 'rain_probability'],
+  weather_overview: ['temperature', 'humidity', 'wind', 'rain_probability', 'session_rain_risk'],
   current_conditions: ['weather_condition', 'temperature', 'humidity', 'wind'],
   race_forecast: ['weather_condition', 'temperature', 'rain_probability', 'precipitation', 'wind'],
-  automatic_conditions: ['temperature', 'humidity', 'wind'],
-  track_conditions: ['temperature', 'track_temperature', 'wind', 'rainfall'],
+  automatic_conditions: ['temperature', 'humidity', 'wind', 'session_rain_risk'],
+  track_conditions: ['temperature', 'track_temperature', 'wind', 'rainfall', 'session_rain_risk'],
 };
 export const BATTLE_PROFILES = {
   active_battles: ['battle_status', 'incident_drivers', 'battle_gap'],
@@ -577,7 +582,7 @@ export function moduleFields(module) {
     ? ['driver', 'team', 'track_limit_deletions', 'track_limit_warning', 'track_limit_penalty', 'event_time'] : INCIDENT_PROFILES.investigations;
   if (module.type === 'weather' && module.options?.content === 'automatic_conditions') return MODULES.weather.fields;
   if (module.type === 'weather') return MODULES.weather.fields.filter(id => module.options?.content === 'track_conditions'
-    ? ['temperature', 'track_temperature', 'humidity', 'wind', 'wind_direction', 'pressure', 'rainfall'].includes(id)
+    ? ['temperature', 'track_temperature', 'humidity', 'wind', 'wind_direction', 'pressure', 'rainfall', 'session_rain_risk'].includes(id)
     : !['track_temperature', 'pressure', 'rainfall'].includes(id));
   if (module.type === 'battles') return MODULES.battles.fields.filter(id => id !== 'exchange_positions' || module.options?.content === 'position_exchanges');
   if (module.type === 'strategy') {
@@ -602,7 +607,7 @@ export function fieldDefinition(module, id) {
   if (module.type === 'incidents' && module.options?.content === 'track_limits_summary' && field) return { ...field, source: 'track_limits', identity: ['entry', 'session', 'driver'],
     path: ({ driver: 'by_driver.key', team: 'driver_list.drivers[].team', event_time: 'latest(by_driver.*.violations[].utc)' })[id] ?? field.path,
     ...(id === 'event_time' ? { label: 'Latest recorded event' } : {}) };
-  if (module.type === 'weather' && field) {
+  if (module.type === 'weather' && field && id !== 'session_rain_risk') {
     const content = module.options?.content ?? 'weather_overview', track = content === 'track_conditions';
     if (content === 'automatic_conditions') return { ...field, source: 'automatic_weather', path: 'selected_source', modes: ['weather', 'live', 'replay'], generation: 'selected_weather_source', spoiler: true,
       alternatives: ['current_conditions', 'track_conditions'].map(content => ({ ...module, options: { ...module.options, content } })).filter(candidate => moduleFields(candidate).includes(id)).map(candidate => fieldDefinition(candidate, id)),
@@ -646,8 +651,8 @@ export const INCIDENT_SIGNALS = {
 export const PRESETS = {
   weekend: { label: 'Race weekend', modules: [{ type: 'overview' }, { type: 'calendar' }, { type: 'weather', options: { content: 'automatic_conditions' } }, { type: 'weather', options: { content: 'race_forecast' } }] },
   weather: { label: 'Weather comparison', modules: [{ type: 'weather', options: { content: 'automatic_conditions' } }, { type: 'weather', options: { content: 'race_forecast' } }] },
-  session: { label: 'Follow the session', modules: [{ type: 'overview', fields: ['session', 'track_status'] }, { type: 'timing' }, { type: 'race_control' }] },
-  driver: { label: 'My driver', modules: [{ type: 'overview', fields: ['session', 'track_status'] }, { type: 'timing', fields: ['position', 'driver', 'last_lap', 'best_lap', 'tyre', 'tyre_age'], options: { history: 5 } }, { type: 'race_control' }] },
+  session: { label: 'Follow the session', modules: [{ type: 'overview', fields: ['session', 'track_status', 'session_rain_risk'] }, { type: 'timing' }, { type: 'race_control' }] },
+  driver: { label: 'My driver', modules: [{ type: 'overview', fields: ['session', 'track_status', 'session_rain_risk'] }, { type: 'timing', fields: ['position', 'driver', 'last_lap', 'best_lap', 'tyre', 'tyre_age'], options: { history: 5 } }, { type: 'race_control' }] },
   results: { label: 'Results and championship', modules: [{ type: 'results', options: { rows: 5 } }, { type: 'standings', options: { rows: 5 } }, { type: 'progression' }] },
   custom: { label: 'Build your own', modules: [] },
 };

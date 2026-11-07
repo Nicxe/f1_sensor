@@ -138,7 +138,8 @@ const sidebars = {
         "entities/race-week",
         "entities/next-race-weather",
         "entities/weather-summary",
-        "entities/track-weather"
+        "entities/track-weather",
+        "entities/session-rain-risk"
       ]
     },
     {

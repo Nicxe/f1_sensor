@@ -78,6 +78,7 @@ SENSOR_OPTIONS = {
     # Live timing / SignalR backed.
     "current_session": "Current session (live)",
     "track_weather": "Track weather (live)",
+    "session_rain_risk": "Session rain risk (live)",
     "race_lap_count": "Race lap count (live)",
     "driver_list": "Driver list (live)",
     "current_tyres": "Current tyres (live)",

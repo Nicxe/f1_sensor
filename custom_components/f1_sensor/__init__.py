@@ -204,6 +204,7 @@ from .runtime import (
     track_sensor_demand,
 )
 from .schedule_laps import add_scheduled_laps, validate_session_page
+from .session_rain_risk import SessionRainRiskCoordinator
 from .signalr import (
     AUTH_GATED_LIVE_STREAMS,
     PUBLIC_LIVE_STREAMS,
@@ -2539,6 +2540,7 @@ async def _async_setup_entry(
     weather_data_coordinator = None
     lap_count_coordinator = None
     race_control_coordinator = None
+    session_rain_risk_coordinator = None
     incident_coordinator = None
     race_control_log_store = None
     live_mode_coordinator = None
@@ -2856,6 +2858,18 @@ async def _async_setup_entry(
             delay_controller=delay_controller,
             live_state=live_state,
         )
+    if feature_plan.needs("session_rain_risk"):
+        session_rain_risk_coordinator = SessionRainRiskCoordinator(
+            hass,
+            config_entry=entry,
+            bus=analysis_bus,
+            session_info=session_info_coordinator,
+            session_status=session_status_coordinator,
+            live_state=live_state,
+            delay_controller=delay_controller,
+        )
+        transaction.track(session_rain_risk_coordinator)
+        await session_rain_risk_coordinator.async_initialize()
     if feature_plan.needs("lap_count"):
         lap_count_coordinator = LapCountCoordinator(
             hass,
@@ -3084,6 +3098,7 @@ async def _async_setup_entry(
         "session_info_coordinator": session_info_coordinator,
         "session_clock_coordinator": session_clock_coordinator,
         "race_control_coordinator": race_control_coordinator,
+        "session_rain_risk_coordinator": session_rain_risk_coordinator,
         "incident_coordinator": incident_coordinator,
         _RC_LOG_STORE_KEY: race_control_log_store,
         "live_mode_coordinator": live_mode_coordinator,
@@ -3135,6 +3150,7 @@ async def _async_setup_entry(
             session_info_coordinator,
             session_clock_coordinator,
             race_control_coordinator,
+            session_rain_risk_coordinator,
             live_mode_coordinator,
             weather_data_coordinator,
             lap_count_coordinator,

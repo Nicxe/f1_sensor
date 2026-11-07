@@ -747,12 +747,19 @@ export class F1SensorCard extends LitElement {
           : this.w('modular.the_pinned_session_is_not_available_from_the_selected_source_the_saved_identity_has');
         model.hidden = module.unavailable === 'hide'; models.set(module.id, model); continue;
       }
-      if (module.type === 'weather' && effective.options.content === 'track_conditions' && !this.modelPreview && this.savedSources.weatherAwaitingObservation(this.sourceHass, entry)) {
+      const rainRiskWaiting = !this.modelPreview && this.savedSources.rainRiskAwaitingObservation(this.sourceHass, entry);
+      const currentRainRisk = module.fields.includes('session_rain_risk') && !rainRiskWaiting
+        ? data.sessionRainRisk(this.sourceHass, entry, this.config.context.spoilers) : null;
+      const weatherWaiting = module.type === 'weather' && effective.options.content === 'track_conditions'
+        && !this.modelPreview && this.savedSources.weatherAwaitingObservation(this.sourceHass, entry);
+      if (weatherWaiting && !currentRainRisk) {
         model.blocked = this.w('modular.waiting_for_a_new_track_weather_update_after_the_session_or_playback_context_changed');
         model.hidden = module.unavailable === 'hide'; models.set(module.id, model); continue;
       }
       const saved = this.savedSources.select(this.sourceHass, entry, effective, definition, Boolean(this.modelPreview));
       const viewHass = saved.hass, viewEntry = saved.entry ?? entry, moduleSession = data.sessionContext(viewHass, viewEntry);
+      const rainRisk = currentRainRisk ? data.sessionRainRisk(viewHass, viewEntry, this.config.context.spoilers) : null;
+      if (module.fields.length && module.fields.every(id => id === 'session_rain_risk') && !rainRisk) { model.hidden = true; models.set(module.id, model); continue; }
       if (module.type === 'results') {
         Object.assign(model, season.resultsModel(viewHass, viewEntry, effective, focus));
         if (effective.options.show_session_type_badge !== false && model.context?.session) model.badge = model.context.session;
@@ -942,7 +949,9 @@ export class F1SensorCard extends LitElement {
         });
       }
       if (module.type === 'weather') {
-        const weather = data.weatherValues(viewHass, viewEntry, effective); Object.assign(model, weather);
+        const weather = data.weatherValues(viewHass, viewEntry, effective);
+        if (weatherWaiting) for (const value of Object.values(weather.values)) value.value = null;
+        Object.assign(model, weather);
         if (weather.track) {
           model.badge = weather.replay ? this.w('modular.recorded_replay') : this.w('modular.track_observations');
           model.explanation = this.w('modular.the_measurement_time_is_not_exposed_by_this_source_the_home_assistant_update_time');
@@ -956,9 +965,21 @@ export class F1SensorCard extends LitElement {
           model.explanation = [model.explanation, selectionExplanation].filter(Boolean).join(' ');
         }
         model.explanationTitle = this.w('modular.about_the_weather_data');
-        model.items = module.fields.filter(id => weather.values[id]).map(id => { const item = weather.values[id]; return { id, ...item,
-          detail: weather.mixed ? item.estimated ? this.w('modular.forecast_near_race_start') : this.w('modular.current_circuit_weather') : null }; });
-        if (model.source.status !== 'available') model.capabilityMessage = weather.track ? this.w('modular.track_weather_observations_are_not_available_for_this_session') : this.w('modular.circuit_weather_is_currently_unavailable');
+        model.items = module.fields.flatMap(id => {
+          if (id === 'session_rain_risk') return rainRisk ? [{ id, ...rainRisk, type: 'number', rainRisk: true }] : [];
+          const item = weather.values[id];
+          return item ? [{ id, ...item, detail: weather.mixed ? item.estimated ? this.w('modular.forecast_near_race_start') : this.w('modular.current_circuit_weather') : null }] : [];
+        });
+        if (model.source.status !== 'available' || weatherWaiting) {
+          model.capabilityMessage = weather.track ? this.w('modular.track_weather_observations_are_not_available_for_this_session') : this.w('modular.circuit_weather_is_currently_unavailable');
+          // Race Control is an independent source: an absent thermometer must
+          // not prevent a valid session assessment from being displayed.
+          if (rainRisk) {
+            if (module.fields.some(id => id !== 'session_rain_risk')) model.notice = model.capabilityMessage;
+            model.source = rainRisk.source; model.context = null; model.badge = null;
+          }
+        }
+        if (rainRisk && !module.fields.some(id => id !== 'session_rain_risk')) { model.source = rainRisk.source; model.context = null; model.badge = null; model.explanation = null; }
       }
       if (module.type === 'overview') {
         const event = data.overviewEvent(viewHass, viewEntry, selection), track = data.source(viewHass, viewEntry, 'track_status'), laps = data.source(viewHass, viewEntry, 'race_lap_count');
@@ -975,8 +996,9 @@ export class F1SensorCard extends LitElement {
         const values = { ...Object.fromEntries(Object.entries(clocks).map(([key, clock]) => [key, protection === 'clear' ? clock.value : hiddenMessage])), meeting: attrs.race_name, circuit: attrs.circuit_name, country: attrs.circuit_country, countdown,
           circuit_map: { url: safeImageUrl(attrs.circuit_map_url), circuit: attrs.circuit_name, locality: attrs.circuit_locality, country: attrs.circuit_country, season: attrs.season },
           circuit_history: { defending_winner: attrs.defending_winner, defending_pole_sitter: attrs.defending_pole_sitter, races_held_here: attrs.races_held_here, first_f1_race_here: attrs.first_f1_race_here, last_year_podium: attrs.last_year_podium, last_5_winners: attrs.last_5_winners, top_5_driver_wins_here: attrs.top_5_driver_wins_here, top_5_constructor_wins_here: attrs.top_5_constructor_wins_here, dnf_rate_last_5: attrs.dnf_rate_last_5, pole_to_win_conversion_last_5: attrs.pole_to_win_conversion_last_5 },
+          ...(rainRisk ? { session_rain_risk: `${new Intl.NumberFormat(this.language, { maximumFractionDigits: 1 }).format(rainRisk.value)} %` } : {}),
           session: session.name ?? this.w('modular.between_sessions'), session_status: ['unavailable', 'unknown'].includes(session.status) ? null : session.status, lap_progress: protection === 'clear' ? lapProgress : hiddenMessage, track_status: protection === 'clear' ? track.status === 'available' ? track.state : null : hiddenMessage };
-        model.items = module.fields.filter(id => Object.hasOwn(values, id)).map(id => ({ id, value: values[id], flag: id === 'meeting' ? safeImageUrl(attrs.country_flag_url) : null, country: attrs.circuit_country,
+        model.items = module.fields.filter(id => Object.hasOwn(values, id)).map(id => ({ id, value: values[id], ...(id === 'session_rain_risk' ? { rainRisk: true, ...rainRisk, value: values[id] } : {}), flag: id === 'meeting' ? safeImageUrl(attrs.country_flag_url) : null, country: attrs.circuit_country,
           detail: id === 'countdown' && estimated ? this.w('modular.provisional_start_time') : clocks[id] ? protection === 'clear' ? this.clockDescription(clocks[id]) : null : id === 'track_status' && protection === 'clear' && track.status !== 'available' ? this.missingMessage(track.status) : null }));
         if (event.replay && !event.context_available) model.notice = this.w('modular.waiting_for_event_information_from_the_loaded_replay');
         else if (event.replay && !event.calendar_match) model.notice = this.w('modular.the_replay_event_is_not_available_in_the_loaded_season_calendar_replay_provided_details');

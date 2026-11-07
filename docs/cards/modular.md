@@ -120,6 +120,12 @@ During replay, seeking restores the recorded history up to the selected position
 
 [Add minisector status](/cards/minisectors) beside sector times or in a separate module. The source does not provide a time for each minisector.
 
+### Show session rain risk
+
+Select **Session rain risk** in an **Overview** or **Weather** module's fields. The value shows Race Control's published percentage for the identified session, such as **30 % · Practice 3**. It remains hidden when no matching assessment is available and shows a published **0 %**.
+
+This field is separate from the weather provider's forecast probability and the track's rain-detection indicator. Open its details for the original message and timestamp. See [Session Rain Risk](/entities/session-rain-risk) for availability and session behavior.
+
 ### Compare driver details
 
 [Choose driver details and recent laps](/cards/timing#compare-driver-details) without adding every field to the timing table.

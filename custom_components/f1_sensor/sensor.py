@@ -12,7 +12,7 @@ from homeassistant.components.sensor import (
     SensorEntity,
     SensorStateClass,
 )
-from homeassistant.const import Platform, UnitOfTemperature
+from homeassistant.const import PERCENTAGE, Platform, UnitOfTemperature
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.event import (
@@ -113,6 +113,10 @@ async def async_setup_entry(
         ),
         "weather": (F1WeatherSensor, data.get("race_weather_coordinator")),
         "track_weather": (F1TrackWeatherSensor, data.get("weather_data_coordinator")),
+        "session_rain_risk": (
+            F1SessionRainRiskSensor,
+            data.get("session_rain_risk_coordinator"),
+        ),
         "race_lap_count": (F1RaceLapCountSensor, data.get("lap_count_coordinator")),
         "last_race_results": (F1LastRaceSensor, data["last_race_coordinator"]),
         "season_results": (F1SeasonResultsSensor, data["season_results_coordinator"]),
@@ -2120,6 +2124,23 @@ class F1CurrentSessionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
     def _clear_state(self) -> None:
         return _live_models.CurrentSessionModel._clear_state(self)
+
+
+class F1SessionRainRiskSensor(F1BaseEntity, SensorEntity):
+    """Numeric Race Control assessment for the verified current session."""
+
+    _device_category = "officials"
+    _attr_translation_key = "session_rain_risk"
+    _attr_icon = "mdi:weather-rainy"
+    _attr_native_unit_of_measurement = PERCENTAGE
+
+    @property
+    def native_value(self) -> int | float | None:
+        return (self.coordinator.data or {}).get("percentage")
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return dict(self.coordinator.data or {})
 
 
 class F1RaceControlSensor(F1BaseEntity, RestoreEntity, SensorEntity):

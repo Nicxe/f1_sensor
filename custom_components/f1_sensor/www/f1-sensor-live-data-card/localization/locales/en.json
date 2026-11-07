@@ -1933,5 +1933,7 @@
   "modular.timing_status_stopped": "Stopped",
   "modular.timing_status_on_track": "On track",
   "modular.timing_part_gap": "{part} gap",
-  "modular.timing_investigation_after_session": "Investigation after the session"
+  "modular.timing_investigation_after_session": "Investigation after the session",
+  "modular.session_rain_risk": "Session rain risk",
+  "modular.rain_risk_details": "Race Control assessment for this session, separate from the weather forecast and rain detection."
 }

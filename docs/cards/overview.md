@@ -106,6 +106,8 @@ The focused guides in the finder cover Timing, Minisectors, Team Radio, Pit stop
 
 Add **Overview** and start with the meeting, circuit and countdown fields. Optional session status, track status, lap progress and session clocks use the data available for the card's selected installation and session.
 
+Select **Session rain risk** to show the percentage published by Race Control with its session label, for example **30 % · Practice 3**. The field hides when no valid assessment is available; an explicit **0 %** remains visible. Open the value to read the original message and its timestamp. It does not require a Race Control module or an enabled sensor entity. See [Session Rain Risk](/entities/session-rain-risk).
+
 Use [Next Race](/entities/next-race) for schedule fields, [Current Session](/entities/current-session) for the session label and the [clock comparison](/reference/overview#which-session-clock) to choose the appropriate timer.
 
 ### Schedule module {/* #calendar-module */}
@@ -119,6 +121,8 @@ The dashboard module uses [next-race](/entities/next-race) and [season schedule]
 Add **Weather** and choose its content under **Module options**: current conditions, race-start forecast, track conditions or an overview/automatic view. Choose metrics or a compact list, then select the fields you want.
 
 Forecasts and session measurements have different sources and availability. See the [weather comparison](/reference/overview#which-weather-entity) and [Track Weather](/entities/track-weather) before interpreting a missing value as current conditions.
+
+The optional **Session rain risk** field uses [Race Control's assessment](/entities/session-rain-risk) for the identified session. It stays separate from **Rain probability** in the weather provider's forecast and **Rain detected** in track observations. When the field is selected, missing data hides it while a published **0 %** is shown.
 
 ### Race Control module {/* #race-control-module */}
 

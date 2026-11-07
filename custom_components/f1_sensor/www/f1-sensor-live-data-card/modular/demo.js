@@ -21,6 +21,7 @@ export function makeDemo(scene = 'race', language = 'en', entryId = 'demo') {
   put('current_session', active ? name : scene === 'missing' ? 'unavailable' : 'no_session', { season: 2026, meeting_key: 'demo-meeting', session_key: 'demo-session', meeting_name: 'Demo Grand Prix', start: '2026-09-13T13:00:00Z', active, last_label: active || scene === 'ended' ? name : null });
   put('session_status', active ? 'live' : scene === 'ended' ? 'finished' : scene === 'missing' ? 'unavailable' : 'inactive');
   for (const [key, value] of [['session_time_elapsed', 1800], ['session_time_remaining', 5400], ['race_time_to_three_hour_limit', 9000]]) put(key, active ? 'clock' : 'unavailable', { value_seconds: value, session_name: name, session_part: qualifying ? 2 : null, clock_running: active && scene !== 'replay', clock_phase: active ? scene === 'replay' ? 'paused' : 'running' : 'idle', source_quality: 'official' });
+  put('session_rain_risk', active ? '30' : 'unknown', { percentage: active ? 30 : null, session_key: 'demo-session', meeting_key: 'demo-meeting', session_name: name, utc: active ? '2026-09-13T13:15:00Z' : null, message: active ? `RISK OF RAIN FOR F1 ${name.toUpperCase()} IS 30%` : null, source: 'race_control' });
   put('track_status', active ? 'Clear' : 'unavailable');
   put('race_lap_count', active ? '12' : 'unavailable', active ? { total_laps: 53 } : {});
   put('driver_list', String(people.length), { drivers: people });

@@ -4,12 +4,12 @@ export const cardsCatalog = [
     "id": "overview",
     "title": "Overview",
     "category": "Planning",
-    "description": "Show the meeting, circuit and countdown, with optional session status and lap progress.",
+    "description": "Show the meeting, circuit and countdown, with optional session status, lap progress and session rain risk.",
     "href": "/cards/cards-overview#overview-module",
     "availability": [
       "Schedule and session context"
     ],
-    "keywords": "meeting countdown circuit lap flags",
+    "keywords": "meeting countdown circuit lap flags session rain risk",
     "sources": [
       "next_race",
       "current_season",
@@ -21,7 +21,8 @@ export const cardsCatalog = [
       "track_status",
       "session_time_elapsed",
       "session_time_remaining",
-      "race_time_to_three_hour_limit"
+      "race_time_to_three_hour_limit",
+      "session_rain_risk"
     ],
     "nativeAnchor": true
   },
@@ -45,15 +46,16 @@ export const cardsCatalog = [
     "id": "weather",
     "title": "Weather",
     "category": "Planning",
-    "description": "Compare current conditions, race-start forecasts and measurements published during a session.",
+    "description": "Compare current conditions, race-start forecasts, track measurements and the session's published rain risk.",
     "href": "/cards/cards-overview#weather-module",
     "availability": [
       "Forecasts and session measurements differ"
     ],
-    "keywords": "weather forecast temperature rain wind track",
+    "keywords": "weather forecast temperature rain wind track session rain risk race control",
     "sources": [
       "weather",
-      "track_weather"
+      "track_weather",
+      "session_rain_risk"
     ],
     "nativeAnchor": true
   },

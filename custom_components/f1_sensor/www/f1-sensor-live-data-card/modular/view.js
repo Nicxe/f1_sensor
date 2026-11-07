@@ -101,6 +101,12 @@ export const sharedStyles = css`
   ha-icon.weather-symbol { --mdc-icon-size:1.1em; display:inline-flex; align-items:center; justify-content:center; flex:0 0 1.3em; height:1.1em; margin:0; line-height:0; }
   @media (forced-colors:active) { ha-icon.weather-symbol { color:CanvasText !important; } }
   .weather-item .provenance { font-weight:400; }
+  ha-icon.rain-risk-symbol { --mdc-icon-size:1em; vertical-align:-.15em; margin-right:.25em; }
+  .rain-risk-details { font-size:.8rem; font-weight:400; line-height:1.5; margin-top:4px; }
+  .rain-risk-details summary { width:fit-content; min-height:24px; cursor:pointer; color:var(--f1-muted); }
+  .rain-risk-details summary:focus-visible { outline:3px solid var(--f1-focus); outline-offset:3px; }
+  .rain-risk-details p { margin:6px 0; }
+  .rain-risk-details time { color:var(--f1-muted); }
 
   .analysis-explanation { margin-top:12px; font-size:.85em; }
   .analysis-explanation summary { min-height:44px; padding:10px 0; cursor:pointer; }
@@ -690,10 +696,20 @@ export class F1ModuleView extends LitElement {
     const items = this.model.items ?? [];
     if (!items.length) return this.empty(this.w('modular.waiting_for_information'));
     return html`<div class="overview ${this.module.options.layout_mode === 'auto' ? '' : this.module.options.layout_mode}" part="metrics">${items.map(item => item.id === 'circuit_map' ? this.circuitMap(item.value) : item.id === 'circuit_history' ? this.circuitHistory(item.value) : html`<div class="metric ${item.id === 'meeting' ? 'hero' : ''}" part="metric">
-      <small>${label(FIELDS[item.id], this.language)}</small><div class="metric-value">
+      <small>${item.rainRisk ? this.rainRiskLabel() : label(FIELDS[item.id], this.language)}</small><div class="metric-value">
       ${item.flag && this.settings.appearance.flags ? html`<img class="flag" src=${item.flag} alt=${item.country ?? ''} width="40" height="27" @error=${event => { event.target.hidden = true; }} @load=${event => { event.target.hidden = false; }}>` : ''}
-      <strong>${item.id === 'track_status' ? this.flagCell(item.value) : item.value ?? '—'}</strong></div>${item.detail ? html`<span class="provenance">${item.detail}</span>` : ''}
+      <strong>${item.id === 'track_status' ? this.flagCell(item.value) : item.value ?? '—'}</strong></div>${item.rainRisk ? this.rainRiskDetails(item) : ''}${item.detail ? html`<span class="provenance">${item.detail}</span>` : ''}
     </div>`)}</div>`;
+  }
+  rainRiskLabel() {
+    return html`${this.settings.accessibility.signals !== 'text' ? html`<ha-icon class="rain-risk-symbol" icon="mdi:weather-rainy" aria-hidden="true"></ha-icon>` : ''}${this.w('modular.session_rain_risk')}`;
+  }
+  rainRiskDetails(item) {
+    return html`<details class="rain-risk-details"><summary>${this.w(item.session)}</summary>
+      <p>${this.w('modular.rain_risk_details')}</p>
+      ${item.message ? html`<p>${item.message}</p>` : ''}
+      ${item.utc ? html`<time datetime=${item.utc}>${dateTime(item.utc, this.settings, { timeZone: 'UTC', dateStyle: 'medium', timeStyle: 'medium' })} UTC</time>` : ''}
+    </details>`;
   }
   circuitMap(value = {}) {
     return html`<section class="circuit-panel" aria-label=${this.w('modular.circuit_map')}><div class="circuit-map">${value.url ? html`<img src=${value.url} alt=${value.circuit ?? this.w('modular.circuit_map')} loading="lazy">` : html`<div class="circuit-map-copy"><strong>${value.circuit ?? this.w('modular.circuit_map_unavailable')}</strong><span class="provenance">${[value.locality, value.country, value.season ? `${this.w('modular.season')} ${value.season}` : null].filter(Boolean).join(' · ')}</span></div>`}</div></section>`;
@@ -774,7 +790,7 @@ export class F1ModuleView extends LitElement {
     if (!items.length) return this.empty(this.w('modular.choose_weather_fields_in_the_editor'));
     const compact = this.module.options.presentation === 'compact_list';
     return html`<dl class=${compact ? 'weather-list' : 'overview'}>${items.map(item => html`<div class=${compact ? 'weather-item' : 'metric weather-item'}>
-      <dt>${label(this.field(item.id), this.language)}</dt><dd>${this.weatherValue(item)}${item.detail ? html`<span class="provenance">${item.detail}</span>` : ''}</dd>
+      <dt>${item.rainRisk ? this.rainRiskLabel() : label(this.field(item.id), this.language)}</dt><dd>${this.weatherValue(item)}${item.rainRisk ? this.rainRiskDetails(item) : ''}${item.detail ? html`<span class="provenance">${item.detail}</span>` : ''}</dd>
     </div>`)}</dl>`;
   }
   weatherValue(item) {
