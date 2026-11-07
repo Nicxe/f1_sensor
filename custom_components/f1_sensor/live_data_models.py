@@ -37,6 +37,7 @@ from .helpers import (
     normalize_track_status,
 )
 from .lap_history import LAP_HISTORY_VERSION
+from .live_window import _to_utc
 from .push_laps import empty_push_lap
 from .qualifying_deltas import empty_push_lap_delta
 from .race_trace_observation import pending_observation
@@ -971,14 +972,16 @@ class CurrentSessionModel(LiveProjectionModel):
         ended = mapped_status in ("finished", "finalised", "ended")
         with suppress(Exception):
             end_iso = raw.get("EndDate")
-            if end_iso and (not ended) and (not self._is_replay_active()):
-                end_dt = datetime.datetime.fromisoformat(
-                    str(end_iso).replace("Z", "+00:00")
-                )
-                if end_dt.tzinfo is None:
-                    end_dt = end_dt.replace(tzinfo=datetime.UTC)
+            if (
+                end_iso
+                and not ended
+                and mapped_status not in ("live", "suspended")
+                and not self._is_replay_active()
+            ):
+                # A scheduled end cannot terminate a confirmed live interruption.
+                end_dt = _to_utc(str(end_iso), raw.get("GmtOffset"))
                 now_utc = datetime.datetime.now(datetime.UTC)
-                if now_utc >= end_dt + datetime.timedelta(minutes=5):
+                if end_dt and now_utc >= end_dt + datetime.timedelta(minutes=5):
                     st = str(status or "").strip()
                     if st not in ("Started", "Green", "GreenFlag"):
                         ended = True

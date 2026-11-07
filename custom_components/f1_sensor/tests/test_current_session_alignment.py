@@ -4,9 +4,11 @@ import logging
 from types import SimpleNamespace
 
 from homeassistant.const import STATE_UNKNOWN
+from homeassistant.core import State
 from homeassistant.helpers.entity_component import EntityComponent
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 import pytest
+from pytest_homeassistant_custom_component.common import mock_restore_cache
 
 from custom_components.f1_sensor import SessionStatusCoordinator
 from custom_components.f1_sensor.const import (
@@ -406,6 +408,61 @@ async def test_current_session_keeps_replay_qualifying_label_after_scheduled_end
     assert current_state.state == "Qualifying"
     assert current_state.attributes["live_status"] == "Inactive"
     assert current_state.attributes["active"] is True
+
+
+@pytest.mark.parametrize(
+    ("now", "status", "fresh_info", "expected"),
+    [
+        ("2026-11-07T18:15:00Z", None, False, "Qualifying"),
+        ("2026-11-07T20:04:00Z", None, False, STATE_UNKNOWN),
+        ("2026-11-07T20:04:00Z", "Aborted", False, STATE_UNKNOWN),
+        ("2026-11-07T20:04:00Z", "Aborted", True, "Qualifying"),
+        ("2026-11-07T18:15:00Z", "Finalised", False, STATE_UNKNOWN),
+        ("2026-11-07T18:15:00Z", "Finalised", True, STATE_UNKNOWN),
+    ],
+)
+async def test_current_session_restore_respects_timezone_and_fresh_terminal_status(
+    hass, freezer, now, status, fresh_info, expected
+):
+    """Saved labels must expire safely while fresh qualifying can remain suspended."""
+    freezer.move_to(now)
+    entry_id = "restore_qualifying_session"
+    status_coordinator = _build_coordinator(
+        hass,
+        {"Status": status, "Started": "Started"} if status else {},
+    )
+    info = {
+        "Key": 11408,
+        "Type": "Qualifying",
+        "Name": "Qualifying",
+        "StartDate": "2026-11-07T15:00:00",
+        "EndDate": "2026-11-07T16:00:00",
+        "GmtOffset": "-03:00:00",
+    }
+    info_coordinator = _build_coordinator(hass, info if fresh_info else {})
+    _set_live_context(hass, entry_id, status_coordinator=status_coordinator)
+    current = F1CurrentSessionSensor(
+        info_coordinator, f"{entry_id}_current_session", entry_id, "F1"
+    )
+    current.entity_id = "sensor.test_restore_qualifying_session"
+    mock_restore_cache(
+        hass,
+        [
+            State(
+                current.entity_id,
+                "Qualifying",
+                {
+                    "session_key": 11408,
+                    "type": "Qualifying",
+                    "name": "Qualifying",
+                    "end": info["EndDate"],
+                    "gmt_offset": info["GmtOffset"],
+                },
+            )
+        ],
+    )
+    await _add_sensors(hass, [current])
+    assert hass.states.get(current.entity_id).state == expected
 
 
 @pytest.mark.asyncio
