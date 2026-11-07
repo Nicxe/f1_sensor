@@ -23,6 +23,7 @@ async def _monitor(
     key=11379,
     session_name="Sprint Qualifying",
     meeting_name="Singapore Grand Prix",
+    stop_after_updates=False,
 ):
     """Run the real bus and supervisor with recorded-style frames and a fake clock."""
     now = datetime(2026, 10, 9, 11, 30, tzinfo=UTC)
@@ -51,8 +52,13 @@ async def _monitor(
 
     async def advance(_seconds):
         nonlocal now, tick
-        assert tick < len(updates), "Monitor did not stop after feed inactivity"
         now += timedelta(seconds=20)
+        if tick == len(updates):
+            assert stop_after_updates, "Monitor did not stop after feed inactivity"
+            supervisor._stopped = True
+            tick += 1
+            return
+        assert tick < len(updates), "Monitor ignored the explicit shutdown"
         for stream, payload in updates[tick]:
             bus.inject_message(stream, payload)
         tick += 1
@@ -60,12 +66,12 @@ async def _monitor(
     monkeypatch.setattr(supervisor, "_interruptible_sleep", advance)
     monkeypatch.setattr(live_window.dt_util, "utcnow", lambda: now)
     monkeypatch.setattr(
-        bus, "last_heartbeat_age", lambda: 80.0 if tick == len(updates) else 0.0
+        bus, "last_heartbeat_age", lambda: 80.0 if tick >= len(updates) else 0.0
     )
     monkeypatch.setattr(
         bus,
         "last_stream_activity_age",
-        lambda *_args: 80.0 if tick == len(updates) else 0.0,
+        lambda *_args: 80.0 if tick >= len(updates) else 0.0,
     )
     reason = await supervisor._monitor_window(window, source=source)
     assert not bus._subs
@@ -167,9 +173,9 @@ async def test_qualifying_segment_finish_and_break_keep_window_open(
         [("SessionStatus", {"Status": "Inactive", "Started": "Finished"})],
     ] + [[]] * 5
     reason, supervisor, window, _ = await _monitor(
-        hass, monkeypatch, initial, updates, source=source
+        hass, monkeypatch, initial, updates, source=source, stop_after_updates=True
     )
-    assert reason == "heartbeat-timeout-80s"
+    assert reason == "interrupted"
     assert await supervisor._select_window([window], source=source) is window
 
 
@@ -319,9 +325,14 @@ async def test_session_info_type_protects_renamed_qualifying_session(hass, monke
     initial = [("SessionInfo", {"Key": 11379, "Type": "Qualifying"})]
     updates = [[("SessionStatus", {"Status": "Finished"})]] + [[]] * 5
     reason, supervisor, window, _ = await _monitor(
-        hass, monkeypatch, initial, updates, session_name="Timed Segment"
+        hass,
+        monkeypatch,
+        initial,
+        updates,
+        session_name="Timed Segment",
+        stop_after_updates=True,
     )
-    assert reason == "heartbeat-timeout-80s"
+    assert reason == "interrupted"
     assert await supervisor._select_window([window], source="index") is window
 
 
@@ -385,6 +396,8 @@ async def test_changed_identity_cancels_pending_finish(hass, monkeypatch):
         [("SessionInfo", {"Key": 11380})],
         [("SessionInfo", {"ArchiveStatus": {"Status": "Complete"}})],
     ] + [[]] * 5
-    reason, supervisor, window, _ = await _monitor(hass, monkeypatch, initial, updates)
-    assert reason == "heartbeat-timeout-80s"
+    reason, supervisor, window, _ = await _monitor(
+        hass, monkeypatch, initial, updates, stop_after_updates=True
+    )
+    assert reason == "interrupted"
     assert await supervisor._select_window([window], source="index") is window

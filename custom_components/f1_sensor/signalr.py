@@ -31,8 +31,14 @@ def timing_source_payload(
     source_time: float | None = None,
     snapshot: bool = False,
 ) -> StreamPayload:
-    """Attach event time to timing inference without changing provider objects."""
-    if stream not in {"TimingData", "Heartbeat"} or not isinstance(payload, dict):
+    """Preserve event time and snapshot provenance for lifecycle decisions."""
+    if stream not in {
+        "TimingData",
+        "Heartbeat",
+        "SessionInfo",
+        "SessionStatus",
+        "SessionData",
+    } or not isinstance(payload, dict):
         return payload
     metadata: dict[str, Any] = {}
     if isinstance(source_utc, str):
@@ -45,9 +51,11 @@ def timing_source_payload(
                 timestamp = timestamp.replace(tzinfo=dt.UTC)
             metadata["_f1_source_utc"] = timestamp.astimezone(dt.UTC).isoformat()
             metadata["_f1_source_time"] = timestamp.timestamp()
+            metadata["_f1_source_domain"] = "utc"
     if source_time is not None:
         metadata["_f1_source_time"] = source_time
-    if snapshot and stream == "TimingData":
+        metadata["_f1_source_domain"] = "replay_offset"
+    if snapshot:
         metadata["_f1_snapshot"] = True
     return {**payload, **metadata} if metadata else payload
 

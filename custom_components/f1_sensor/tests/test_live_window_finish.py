@@ -1,4 +1,4 @@
-"""Final laps must outlive Finished without defeating bounded live windows."""
+"""Final laps follow session completion rather than scheduled time limits."""
 
 from __future__ import annotations
 
@@ -35,12 +35,15 @@ async def _run_window(
     heartbeat_age=0.0,
     activity_age=0.0,
     disconnect_seconds=1800,
+    identified=True,
+    stop_at=None,
 ):
     """Drive the real supervisor and bus using only a controlled clock."""
     origin = datetime(2026, 10, 30, 19, 30, tzinfo=UTC)
     now = origin
     bus = LiveBus(hass, AsyncMock())
-    bus.inject_message("SessionInfo", {"Key": 11396, "SessionStatus": "Started"})
+    if identified:
+        bus.inject_message("SessionInfo", {"Key": 11396, "SessionStatus": "Started"})
     bus.inject_message("SessionStatus", {"Status": "Started", "Started": "Started"})
     supervisor = LiveSessionSupervisor(
         hass,
@@ -69,11 +72,13 @@ async def _run_window(
         nonlocal now, following
         now += timedelta(seconds=seconds)
         elapsed = (now - origin).total_seconds()
-        assert elapsed <= 4000, "Live window failed to stop within its bounded lifetime"
+        assert elapsed <= 4000, "The session failed to complete or detect inactivity"
         while following is not None and following[0] <= elapsed:
             _, stream, payload = following
             bus.inject_message(stream, payload)
             following = next(pending, None)
+        if stop_at is not None and elapsed >= stop_at:
+            supervisor._stopped = True
 
     monkeypatch.setattr(supervisor, "_interruptible_sleep", advance)
     monkeypatch.setattr(live_window.dt_util, "utcnow", lambda: now)
@@ -169,20 +174,25 @@ async def test_delayed_race_retains_extended_window_through_last_laps(
 
 
 @pytest.mark.parametrize("active_feed", [False, True])
-async def test_missing_finalisation_still_stops_on_idle_or_window_cap(
+async def test_missing_finalisation_keeps_fresh_feed_until_ends_or_idle(
     hass, monkeypatch, active_feed
 ):
     reason, elapsed, _, _ = await _run_window(
         hass,
         monkeypatch,
-        [(20, "SessionStatus", {"Status": "Finished", "Started": "Finished"})],
+        [
+            (20, "SessionStatus", {"Status": "Finished", "Started": "Finished"}),
+            (2200, "TimingData", _LAST_LAP),
+            (2400, "SessionStatus", {"Status": "Ends"}),
+        ],
         heartbeat_age=0.0 if active_feed else 80.0,
         activity_age=0.0 if active_feed else 80.0,
         disconnect_seconds=40,
+        identified=active_feed,
     )
     if active_feed:
-        assert reason == "disconnect-window-expired"
-        assert elapsed == 1840
+        assert reason == "session-finished"
+        assert elapsed == 2460
     else:
         assert reason == "heartbeat-timeout-80s"
         assert elapsed == 20
@@ -208,7 +218,9 @@ async def test_finalised_waits_through_idle_for_ends_without_starting_drain(
     assert eligible is None
 
 
-async def test_missing_ends_still_has_bounded_finalised_wait(hass, monkeypatch):
+async def test_missing_ends_retains_identified_owner_until_explicit_stop(
+    hass, monkeypatch
+):
     reason, elapsed, _, _ = await _run_window(
         hass,
         monkeypatch,
@@ -216,9 +228,10 @@ async def test_missing_ends_still_has_bounded_finalised_wait(hass, monkeypatch):
         heartbeat_age=80.0,
         activity_age=80.0,
         disconnect_seconds=40,
+        stop_at=2400,
     )
-    assert reason == "disconnect-window-expired"
-    assert elapsed == 40
+    assert reason != "session-finished"
+    assert elapsed == 2400
 
 
 async def test_ends_drain_survives_duplicate_and_partial_status_snapshots(
