@@ -354,6 +354,23 @@ class CardDataStore:
                     "state": projection.value,
                     "attributes": projection.attributes,
                 }
+                if key == "driver_positions":
+                    # This additive reference belongs only to modular card data;
+                    # shared models and sensor attributes retain their contract.
+                    reference = getattr(
+                        coordinator, "modular_starting_grid_reference", None
+                    )
+                    info = getattr(
+                        self.data.get("session_info_coordinator"), "data", None
+                    )
+                    session_key = info.get("Key") if isinstance(info, dict) else None
+                    payload["attributes"]["starting_grid_reference"] = (
+                        reference
+                        if reference is not None
+                        and session_key is not None
+                        and reference["session_key"] == str(session_key)
+                        else None
+                    )
                 if key in LIVE_PRODUCTS and not model.available:
                     status, reason, payload = "unavailable", "source_inactive", None
                 elif not getattr(coordinator, "last_update_success", True):

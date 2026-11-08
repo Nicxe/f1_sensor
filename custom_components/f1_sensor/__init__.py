@@ -6078,6 +6078,10 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         self._session_unsub: Callable[[], None] | None = None
         self._session_fingerprint: str | None = None
         self._live_session_key: str | None = None
+        # Only the modular card uses this explicit feed reference. Keep it
+        # separate from legacy lap-history positions, which also have fallbacks.
+        self._modular_grid_positions: dict[str, int] = {}
+        self._modular_grid_session_key: str | None = None
         _init_delayed_ingest_state(self)
         self._delay = max(0, int(delay_seconds or 0))
         self._replay_mode = False
@@ -6193,6 +6197,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
 
     def _reset_session_state(self, reason: str) -> None:
         """Clear previous-session timing without dropping queued current-session frames."""
+        self._clear_modular_grid_reference()
         if self._deliver_handle is not None:
             self._deliver_handle.cancel()
             self._deliver_handle = None
@@ -6215,6 +6220,57 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             "fastest_lap": self._empty_fastest_lap(),
         }
         self.async_set_updated_data(self._state)
+
+    def _clear_modular_grid_reference(self) -> None:
+        self._modular_grid_positions.clear()
+        self._modular_grid_session_key = None
+
+    @property
+    def modular_starting_grid_reference(self) -> dict[str, Any] | None:
+        """Return confirmed GridPos evidence without altering shared projections."""
+        if (
+            not self._modular_grid_positions
+            or not self._live_session_key
+            or self._modular_grid_session_key != self._live_session_key
+        ):
+            return None
+        positions = [
+            value for value in self._modular_grid_positions.values() if value > 0
+        ]
+        if len(positions) != len(set(positions)):
+            return None
+        return {
+            "source": "TimingAppData.GridPos",
+            "session_key": self._modular_grid_session_key,
+            "grid": [
+                {"racing_number": rn, "grid_position": position}
+                for rn, position in sorted(
+                    self._modular_grid_positions.items(),
+                    key=lambda item: (item[1], item[0]),
+                )
+            ],
+        }
+
+    def _capture_modular_grid_positions(self, lines: dict) -> None:
+        """Capture only explicit integer GridPos after delayed stream delivery."""
+        if not self._live_session_key:
+            return
+        for rn, app in lines.items():
+            if not isinstance(app, dict) or "GridPos" not in app:
+                continue
+            value = app["GridPos"]
+            position = None
+            if type(value) is int:
+                position = value
+            elif isinstance(value, str) and re.fullmatch(r"[0-9]+", value.strip()):
+                with suppress(ValueError):
+                    position = int(value)
+            key = str(rn)
+            if position is None or position < 0:
+                self._modular_grid_positions.pop(key, None)
+            else:
+                self._modular_grid_positions[key] = position
+                self._modular_grid_session_key = self._live_session_key
 
     def _publish_push_laps(self, *, update_stream_time: bool = True) -> bool:
         """Update the bounded effort projection alongside existing driver timing."""
@@ -7231,6 +7287,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
     def set_delay(self, seconds: int) -> None:
         new_delay = max(0, int(seconds or 0))
         if new_delay != self._delay:
+            self._clear_modular_grid_reference()
             self._state["race_trace_observation"] = pending_observation("delay_changed")
             for driver in self._state.get("drivers", {}).values():
                 history = driver.get("lap_history", {})
@@ -7247,12 +7304,14 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             return
         replay_mode = _is_replay_delay_reason(reason)
         if replay_mode != self._replay_mode:
+            self._clear_modular_grid_reference()
             self._minisectors.set_source("replay" if replay_mode else "live")
             self._push_laps.reset()
         self._replay_mode = replay_mode
         if self._replay_mode:
             _clear_delayed_ingest_state(self)
         if _is_no_spoiler_live_state(reason):
+            self._clear_modular_grid_reference()
             _clear_delayed_ingest_state(self)
             self._minisectors.reset("spoiler_protected")
             self._state["race_trace_observation"] = pending_observation(
@@ -7265,6 +7324,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         self._tyre_first_compound_logged = False
         self._tyre_missing_warning_logged = False
         if not is_live:
+            self._clear_modular_grid_reference()
             # Clear consolidated state so a future session window does not briefly
             # show stale driver/timing information before the first live frames.
             _clear_delayed_ingest_state(self)
@@ -7459,6 +7519,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         lines = (payload or {}).get("Lines", {})
         if not isinstance(lines, dict):
             return False
+        self._capture_modular_grid_positions(lines)
         drivers = self._state["drivers"]
         changed = False
         stints_changed = False

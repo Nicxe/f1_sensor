@@ -239,6 +239,23 @@ export function normalizeConfig(input) {
       else if (spec.type === 'list') { strings(item.options[key], optionPath); for (const value of item.options[key]) choice(value, spec.values, optionPath); }
       else text(item.options[key], optionPath);
     }
+    if (item.type === 'timing' && item.options.position_change === 'grid') {
+      // Profiles and the former narrow summary provide a position even when
+      // saved custom fields omit it. Keep that effective choice and profile.
+      if ((item.options.profile !== 'custom' || item.options.narrow_layout) && !item.fields.some(id => ['position', 'position_with_change'].includes(id))) {
+        item.fields.unshift('position_with_change');
+      }
+      // Move the former global switch into the selected column, keeping its
+      // index. Explicit advanced configs may intentionally contain both fields.
+      for (const key of ['fields', 'detail_fields']) {
+        if (!item[key].includes('position_with_change')) {
+          item[key] = item[key].map(id => id === 'position' ? 'position_with_change' : id);
+        }
+      }
+      // Consume the saved switch so selecting plain Position stays plain on
+      // later normalizations, template round trips and editor updates.
+      item.options.position_change = 'off';
+    }
     if (item.type === 'lap_chart' && item.options.metric === 'cumulative_lap_delta') {
       const driverNumber = (value, optionPath) => {
         if (!/^[0-9]+$/.test(value) || Number(value) < 1 || Number(value) > 99) fail(optionPath, 'choose a driver number from 1 to 99');

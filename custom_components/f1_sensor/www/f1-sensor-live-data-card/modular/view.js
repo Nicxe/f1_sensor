@@ -227,7 +227,7 @@ export const sharedStyles = css`
   .timing-detail dd { margin:2px 0 0; overflow-wrap:anywhere; }
   .timing-detail ol { margin:6px 0 0; padding-left:22px; }
   .timing-position { display:inline-flex; align-items:center; gap:7px; }
-  .position-change { display:inline-block; min-width:2.5em; font-size:.8em; color:var(--f1-muted); }
+  .position-change { display:inline-block; min-width:2.5em; font-size:1em; color:var(--f1-muted); }
   .position-change.gain { color:var(--f1-gain,#176b36); }
   .position-change.loss { color:var(--f1-loss,#ab2424); }
   :host([data-mode=dark]) { --f1-gain:#75dc94; --f1-loss:#ffb3b3; }
@@ -261,7 +261,7 @@ export const sharedStyles = css`
   :host([data-presentation=minimal]) th,:host([data-presentation=minimal]) .provenance { font-size:.857em; }
   :host([data-presentation=minimal]) th,:host([data-presentation=minimal]) td { padding:4px 8px; }
   :host([data-presentation=minimal]) [data-field] { text-align:right; }
-  :host([data-presentation=minimal]) [data-field=driver],:host([data-presentation=minimal]) [data-field=position],:host([data-presentation=minimal]) [data-field=team] { text-align:left; }
+  :host([data-presentation=minimal]) [data-field=driver],:host([data-presentation=minimal]) [data-field=position],:host([data-presentation=minimal]) [data-field=position_with_change],:host([data-presentation=minimal]) [data-field=team] { text-align:left; }
   :host([data-presentation=minimal]) .cell-stack { align-items:flex-end; gap:0; }
   :host([data-presentation=minimal]) :is([data-field-type=text],[data-field-type=status],[data-field-type=battle_status],[data-field-type=incident_status],[data-field-type=strategy_outcome],[data-field-type=exchange_positions],[data-field-type=reason_counts],[data-field-type=driver_paces],[data-field-type=driver_laps],[data-field-type=penalty_summary],[data-field-type=warning_indicator]) { text-align:left; }
   :host([data-presentation=minimal]) :is([data-field-type=text],[data-field-type=status],[data-field-type=battle_status],[data-field-type=incident_status],[data-field-type=strategy_outcome],[data-field-type=penalty_summary]) { white-space:normal; overflow-wrap:anywhere; }
@@ -931,6 +931,7 @@ export class F1ModuleView extends LitElement {
     return /^q[123]$/.test(focus) ? Number(focus.at(-1)) : focus === 'current' ? this.model.qualifying_part ?? this.model.currentPart ?? null : null;
   }
   timingFieldLabel(id) {
+    if (id === 'position_with_change') return html`<span aria-hidden="true">${label(this.field('position'), this.language)} Δ</span><span class="sr">${label(this.field(id), this.language)}</span>`;
     const sector = this.minimalTiming && /^sector_([123])_with_minisectors$/.exec(id);
     if (sector) return html`<span aria-hidden="true">${label(this.field(`sector_${sector[1]}`), this.language)}</span><span class="sr">${label(this.field(id), this.language)}</span>`;
     const part = id === 'qualifying_gap' ? this.qualifyingFocusPart() : null;
@@ -949,10 +950,10 @@ export class F1ModuleView extends LitElement {
     return html`<span class="gap-stack" part="timing-gap"><span data-gap=${primary}><span class="sr">${name(primary)}: </span>${value(primary)}</span><span class="secondary" data-gap=${secondary}><span class="sr">${name(secondary)}: </span>${value(secondary)}</span></span>`;
   }
   timingPosition(row) {
-    if (this.module.options.position_change !== 'grid') return row.position ?? '—';
     const change = row.position_change;
     const description = change ? `${this.w('modular.timing_position_reference')} · ${Math.abs(change.value)} ${this.w(({ gain: 'places gained', loss: 'places lost', equal: 'unchanged' })[change.status])}` : this.w('modular.timing_position_unknown');
-    return html`<span class="timing-position"><span>${row.position ?? '—'}</span><span class="position-change ${change?.status ?? 'unknown'}" title=${description}><span aria-hidden="true">${change?.value ? `${change.symbol}${Math.abs(change.value)}` : '—'}</span><span class="sr">${description}</span></span></span>`;
+    const value = change?.value ? `${change.value > 0 ? '▲' : '▼'}${Math.abs(change.value)}` : '—';
+    return html`<span class="timing-position"><span>${row.position ?? '—'}</span><span class="position-change ${change?.status ?? 'unknown'}" title=${description}><span aria-hidden="true">${value}</span><span class="sr">${description}</span></span></span>`;
   }
   timingBadge(badge) {
     const codes = { penalty: 'penalty', drive_through: 'drive_through', stop_go: 'stop_go', under_investigation: 'investigation', noted: 'noted', in_pit: 'pit', pit_out: 'pit_out', retired: 'retired', stopped: 'stopped' };
@@ -1067,7 +1068,7 @@ export class F1ModuleView extends LitElement {
   }
   cell(row, id) {
     if (id === 'driver') return this.driverCell(row);
-    if (id === 'position' && this.module.type === 'timing') return this.timingPosition(row);
+    if (id === 'position_with_change' && this.module.type === 'timing') return this.timingPosition(row);
     if (id === 'timing_gap') return this.combinedGapCell(row);
     if (id === 'gap' || id === 'interval') return formatTimingGap(row[id], this.w('modular.lap'));
     if (this.field(id)?.type === 'seconds_delta') {
@@ -1118,7 +1119,7 @@ export class F1ModuleView extends LitElement {
     if (narrow) {
       // Summary is an explicit layout choice. Keep all saved timing columns in
       // the expandable driver details rather than changing the saved fields.
-      fields = ['position', 'driver', ...fields.filter(id => ['timing_gap', 'qualifying_gap', 'best_lap_gap', 'tyre'].includes(id))];
+      fields = [...fields.filter(id => ['position', 'position_with_change'].includes(id)), 'driver', ...fields.filter(id => ['timing_gap', 'qualifying_gap', 'best_lap_gap', 'tyre'].includes(id))];
     }
     if (!rows.length) {
       if (this.model.pushMode === 'only') {

@@ -311,9 +311,45 @@ function sameTimingSession(selected, session) {
     && (!current.meeting_key || !attrs.meeting_key || timingKey(current.meeting_key) === timingKey(attrs.meeting_key));
 }
 
+function replayTimingGrid(entry, session) {
+  const keys = ['session_context', 'current_session', 'driver_positions'];
+  const resources = keys.map(key => entry?.data_api?.enabled?.includes(key) ? entry.card_data?.[key] : null);
+  const envelopes = resources.map(resource => resource?.data), context = envelopes[0];
+  const sessionId = timingKey(context?.context?.session_id), generation = timingKey(context?.generation);
+  const replayGeneration = context?.context?.replay_generation;
+  if (!sessionId || !generation || !Number.isInteger(replayGeneration) || replayGeneration < 0
+    || resources.some(resource => resource?.status !== 'ready')
+    || envelopes.some(data => data?.status !== 'ready' || data.source !== 'replay'
+      || timingKey(data.generation) !== generation || timingKey(data.context?.session_id) !== sessionId
+      || data.context?.replay_generation !== replayGeneration)) return new Map();
+  const reference = envelopes[2].payload?.attributes?.starting_grid_reference;
+  if (reference?.source !== 'TimingAppData.GridPos' || session.source?.status !== 'available'
+    || !timingKey(session.source.attributes.session_key)
+    || timingKey(reference.session_key) !== timingKey(session.source.attributes.session_key)
+    || !Array.isArray(reference.grid)) return new Map();
+  const grid = new Map(), positions = new Set();
+  for (const row of reference.grid) {
+    const rn = timingKey(row?.racing_number), position = row?.grid_position;
+    if (!rn || grid.has(rn) || !Number.isInteger(position) || position < 0
+      || position > 0 && positions.has(position)) return new Map();
+    grid.set(rn, position);
+    if (position > 0) positions.add(position);
+  }
+  // Zero is an explicit pit-lane start, not a positive grid slot.
+  return new Map([...grid].filter(([, position]) => position > 0));
+}
+
 function timingGrid(hass, entry, session, kind, requested) {
+  if (!requested || !['race', 'sprint'].includes(kind)) return new Map();
+  const envelopes = ['session_context', 'current_session', 'driver_positions']
+    .filter(key => entry?.data_api?.enabled?.includes(key)).map(key => entry.card_data?.[key]?.data);
+  if (envelopes.some(data => data?.source === 'replay')) return replayTimingGrid(entry, session);
+  // Entity-only replay data cannot prove the origin or generation of a start
+  // reference. A coherent live transport can ignore a retained replay entity.
+  if (!envelopes.some(data => data?.source === 'live')
+    && ['selected', 'loading', 'ready', 'seeking', 'playing', 'paused'].includes(session.replay)) return new Map();
   const selected = source(hass, entry, 'starting_grid'), attrs = selected.attributes;
-  if (!requested || !['race', 'sprint'].includes(kind) || !sameTimingSession(selected, session)
+  if (!sameTimingSession(selected, session)
     || attrs.status !== 'confirmed' || attrs.grid_context !== kind) return new Map();
   const rows = timingRecords(attrs.grid), positions = new Set(), numbers = new Set(), grid = new Map();
   for (const row of rows) {
@@ -388,7 +424,9 @@ export function timingRows(hass, entry, context, sectors, module, focus = {}, mi
   const reportedPart = positiveInteger(positions.attributes.current_qualifying_part);
   const part = qualifying && [1, 2, 3].includes(reportedPart) ? reportedPart : null;
   const session = context.source ? context : sessionContext(hass, entry);
-  const grid = timingGrid(hass, entry, session, kind, module.options.position_change === 'grid');
+  const requestedGrid = timingFields(module, context.name).includes('position_with_change')
+    || module.detail_fields?.includes('position_with_change') || module.options.position_change === 'grid';
+  const grid = timingGrid(hass, entry, session, kind, requestedGrid);
   const investigations = source(hass, entry, 'investigations');
   const rawDrivers = Array.isArray(positions.attributes.drivers) ? positions.attributes.drivers
     : Object.entries(positions.attributes.drivers ?? {}).map(([rn, driver]) => ({ racing_number: rn, ...driver }));

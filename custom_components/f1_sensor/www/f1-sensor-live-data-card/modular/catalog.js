@@ -61,6 +61,7 @@ export const MINISECTOR_FIELDS = [
 
 export const TIMING_FIELDS = [
   timing('position', 'Pos', 'integer', 'current_position', { mobile: 0 }),
+  timing('position_with_change', 'Position + change', 'position_with_change', 'current_position + starting_grid.grid[].grid_position', { mobile: 0, comparison: 'starting_grid' }),
   timing('driver', 'Driver', 'driver', 'racing_number', { mobile: 0, filterable: true }),
   timing('team', 'Team', 'text', 'team', { filterable: true }),
   timing('gap', 'To leader', 'gap', 'gap_to_leader', { mobile: 1 }),
@@ -262,6 +263,7 @@ export const MODULES = {
     narrow_layout: { type: 'boolean', default: false, label: 'modular.timing_narrow_layout' },
     gap_display: { type: 'enum', values: ['separate', 'combined'], default: 'separate', label: 'modular.timing_gap_display' },
     gap_primary: { type: 'enum', values: ['interval', 'gap'], default: 'interval', label: 'modular.timing_gap_primary' },
+    // Kept for validating and migrating saved configurations; the editor uses fields.
     position_change: { type: 'enum', values: ['off', 'grid'], default: 'off', label: 'modular.timing_position_change' },
     driver_badges: { type: 'boolean', default: false, label: 'modular.timing_driver_badges' },
     dim_retired: { type: 'boolean', default: false, label: 'modular.timing_dim_retired' },
@@ -539,7 +541,9 @@ export function sessionKind(name) {
 }
 export function timingFields(module, session) {
   const profile = module.options?.profile;
-  return [...(TIMING_PROFILES[profile === 'auto' ? sessionKind(session) : profile] ?? module.fields)];
+  const selected = TIMING_PROFILES[profile === 'auto' ? sessionKind(session) : profile];
+  if (!selected) return [...module.fields];
+  return selected.map(id => id === 'position' && module.fields?.includes('position_with_change') ? 'position_with_change' : id);
 }
 export const TYRE_PROFILES = {
   current: ['position', 'driver', 'tyre', 'tyre_age', 'tyre_new'],

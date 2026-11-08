@@ -70,7 +70,7 @@ Under **Module options**, turn on **Use overview rows on narrow cards** for a co
 
 Choose **Combined column** to show INT and GAP together. Set the primary value in the editor when building the layout; the combined and narrow views do not add a GAP/INT switch to the card. **Qualifying times to show** can follow the current Q/SQ part or show a chosen part while keeping your saved column choices.
 
-Position changes, driver status badges, dimmed retired rows and tyre age beside the compound are separate choices. Position arrows need a confirmed starting grid for the same session. Penalty badges follow recorded decisions; a pit visit alone does not prove that a penalty was served. See [compact Timing options](/cards/modular-styling#choose-a-minimal-timing-presentation) for the settings and defaults.
+Under **Content and columns**, choose **Position** for the position alone or **Position + change** for the position and places gained or lost from the confirmed starting grid for the same session. The default is **Position**. Driver status badges, dimmed retired rows and tyre age beside the compound remain separate choices. Penalty badges follow recorded decisions; a pit visit alone does not prove that a penalty was served. See [compact Timing options](/cards/modular-styling#choose-a-minimal-timing-presentation) for the settings and defaults.
 
 ### Follow push laps
 
