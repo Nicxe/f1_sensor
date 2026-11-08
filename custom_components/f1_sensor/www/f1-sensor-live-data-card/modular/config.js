@@ -87,6 +87,7 @@ function normalizeVisibility(value, path, depth = 0) {
 
 export const APPEARANCE = {
   style: 'f1', mode: 'auto', font: 'auto', show_header: true, density: 'comfortable', accent: '#e10600',
+  presentation: 'current',
   accent_mode: 'style', accent_team: '', surface: 'style',
   logos: true, logo_style: 'auto', logo_size: 'normal', flags: true, team_colors: true, full_names: false,
   numbers: 'tabular', tyre_style: 'ring', palette: {},
@@ -94,6 +95,18 @@ export const APPEARANCE = {
 export const CUSTOM_STYLE_MAX_LENGTH = 32_768;
 export const ACCESSIBILITY = { high_contrast: false, signals: 'shape', motion: 'system', announce: true };
 export const PHASES = ['before', 'active', 'finished', 'unknown'];
+export const COMPACT_MODULE_TYPES = Object.keys(MODULES);
+
+export function resolvePresentation(appearance, module) {
+  if (!COMPACT_MODULE_TYPES.includes(module?.type)) return 'current';
+  const selected = module.appearance?.presentation;
+  if (selected === 'current' || selected === 'compact') return selected;
+  // Accept legacy, unnormalized timing configs as well as saved module overrides.
+  if (selected !== 'inherit' && module.type === 'timing' && ['current', 'minimal'].includes(module.options?.presentation)) {
+    return module.options.presentation === 'minimal' ? 'compact' : 'current';
+  }
+  return appearance?.presentation === 'compact' ? 'compact' : 'current';
+}
 export const CONTEXT = {
   driver: '', team: '', group: '', scope: 'local', spoilers: 'inherit', viewing_controls: false,
   show_focus_control: true, show_freeze_control: true,
@@ -151,6 +164,7 @@ export function normalizeConfig(input) {
   config.columns ??= 2; integer(config.columns, 2, 4, 'columns');
   config.appearance = { ...copyConfig(APPEARANCE), ...object(config.appearance ?? {}, 'appearance') };
   const appearance = config.appearance;
+  choice(appearance.presentation, ['current', 'compact'], 'appearance.presentation');
   for (const [key, values] of Object.entries({ style: ['f1', 'ha', 'minimal'], mode: ['auto', 'light', 'dark'], density: ['comfortable', 'compact', 'spacious'], font: ['auto', 'f1', 'system'], logo_style: ['auto', 'color', 'white', 'mono'], logo_size: ['small', 'normal', 'large'], accent_mode: ['style', 'neutral', 'f1', 'team', 'custom'], surface: ['style', 'framed', 'soft', 'flat'], numbers: ['tabular', 'inherit'], tyre_style: ['ring', 'image', 'text', 'both'] })) choice(appearance[key], values, `appearance.${key}`);
   for (const key of ['show_header', 'logos', 'flags', 'team_colors', 'full_names']) bool(appearance[key], `appearance.${key}`);
   const color = (value, path) => { if (typeof value !== 'string' || !/^#[0-9a-f]{6}$/i.test(value)) fail(path, 'expected a six-digit hex color'); };
@@ -186,6 +200,12 @@ export function normalizeConfig(input) {
     item.column_span ??= 1;
     if (item.column_span !== 'full') integer(item.column_span, 1, 4, `${path}.column_span`);
     for (const key of ['show_header', 'show_table_header']) { item[key] ??= true; bool(item[key], `${path}.${key}`); }
+    item.appearance = object(item.appearance ?? {}, `${path}.appearance`);
+    if (item.appearance.presentation === undefined) {
+      const legacy = item.type === 'timing' ? item.options?.presentation : undefined;
+      item.appearance.presentation = legacy === 'minimal' ? 'compact' : legacy === 'current' ? 'current' : 'inherit';
+    }
+    choice(item.appearance.presentation, ['inherit', 'current', 'compact'], `${path}.appearance.presentation`);
     item.unavailable ??= 'explain'; choice(item.unavailable, ['explain', 'retain', 'hide'], `${path}.unavailable`);
     item.focus_mode ??= 'inherit'; choice(item.focus_mode, ['inherit', 'independent'], `${path}.focus_mode`);
     item.selection = normalizeSelection(item.selection ?? { mode: 'inherit' }, `${path}.selection`, true);

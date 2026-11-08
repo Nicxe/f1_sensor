@@ -22,13 +22,50 @@ Use the normal appearance controls before adding CSS:
 The preview uses the same CSS as the saved card. Save the dashboard only after
 checking the narrow and wide layouts you use.
 
+## Choose a compact presentation
+
+Under **Appearance**, set **Card presentation** to **Compact** to use the
+lighter presentation throughout the modular card. **Current** remains the
+default. Every module supports the shared setting and its own override.
+
+Select a module and open **Module appearance** to choose **Follow card**,
+**Current** or **Compact**. This lets you try the compact presentation in one
+module or keep one module in its current presentation while the rest follow
+the card. A previously saved **Timing presentation** choice is preserved as
+an explicit module choice. Set **Module presentation** to **Follow card** if
+you want that module to use the card's setting instead.
+
+The card title and outer spacing are shared by the whole card. A module's
+**Current** override preserves that module's content styling.
+
+Compact presentation uses lighter headings, smaller identity and tyre marks,
+and quieter table and message decoration. It keeps the selected columns,
+filters, source choices and module options. The weather layout, combined
+INT/GAP values, narrow timing rows and tyre content remain separate choices.
+Touch controls keep larger targets even when the surrounding content is compact.
+Main module text stays at least 14 px and scales with larger base fonts, so a
+smaller Home Assistant font setting does not shrink the data a second time.
+
+Charts, track maps and telemetry keep their reading area, units, legends and
+data controls. Their headings and surrounding panels use the same lighter
+presentation. Compact presentation does not create missing observations or
+change the meaning of source, status or analysis-quality labels.
+
+Race Control keeps the full message visible and lets long text wrap. Open
+**Details** beside a message to read its complete date and timestamp. Compact
+presentation does not change message order, filters or playback timing.
+
 ## Choose a minimal Timing presentation
 
-Select a **Timing** module and open **Module options**. These choices work with the existing styles and density settings under **Appearance**. You can use minimal timing in a comfortable layout, or compact spacing with the current timing presentation.
+Select a **Timing** module and use **Module appearance** to choose its
+presentation. Open **Module options** for the independent timing choices.
+These choices work with the existing styles and density settings under
+**Appearance**. You can use compact timing in a comfortable layout, or compact
+spacing with the current timing presentation.
 
 | Setting | Default | What it changes |
 | --- | --- | --- |
-| **Timing presentation** | Current presentation | Minimal uses colored timing text, smaller tyre marks and lighter decoration. It keeps timing symbols or text and the meaning of each color. |
+| **Module presentation** | Follow card | Compact uses colored timing text, smaller tyre marks and lighter decoration. It keeps timing symbols or text and the meaning of each color. Existing saved Timing presentation choices remain explicit module choices. |
 | **Use overview rows on narrow cards** | Off | Shows the main values together on a narrow card. Open a driver to read the remaining selected fields. |
 | **GAP and INT columns** | Separate columns | Combined shows INT to the car ahead and GAP to the leader in one column. |
 | **Primary value in combined GAP / INT** | INT | Choose which value appears first. This is an editor setting; combined and narrow views add no GAP/INT switch to the card. |
@@ -38,9 +75,9 @@ Select a **Timing** module and open **Module options**. These choices work with 
 | **Show tyre age beside the compound** | Off | Combines the compound and its recorded tyre age in one cell. Age numbers line up beside the tyre marks. |
 | **Qualifying times to show** | All selected qualifying parts | Follow the current Q/SQ part or choose one part. Saved Q1–Q3/SQ1–SQ3 column choices remain available. |
 
-Existing saved cards keep their current presentation. The separate-column **Show live gap toggle** remains available for those layouts. Minimal presentation does not remove selected columns; the narrow overview and qualifying focus are separate choices.
+Existing saved cards keep their current presentation. The separate-column **Show live gap toggle** remains available for those layouts. Compact presentation does not remove selected columns; the narrow overview and qualifying focus are separate choices.
 
-Under **Content and columns**, replace **S1**, **S2** or **S3** with the corresponding **S1 with minisectors**, **S2 with minisectors** or **S3 with minisectors** field. Minimal presentation aligns sector times at the top and shows small minisector indicators underneath. Plain sector fields remain the default.
+Under **Content and columns**, replace **S1**, **S2** or **S3** with the corresponding **S1 with minisectors**, **S2 with minisectors** or **S3 with minisectors** field. Compact presentation aligns sector times at the top and shows small minisector indicators underneath. Plain sector fields remain the default.
 
 Minisectors show the provider's latest reported status. They are not guaranteed to describe the same lap as the sector time above them. Lap context and the timing legend remain available to explain the readings.
 

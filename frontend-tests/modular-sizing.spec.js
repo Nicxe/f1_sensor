@@ -90,6 +90,18 @@ async function expectContained(page, maxGap = Infinity) {
   return size;
 }
 
+async function expectMeasuredChart(page) {
+  await expect(page.locator('f1-series-chart svg.plot')).toBeVisible();
+  // The first SVG uses a fallback width before ResizeObserver's deferred
+  // measurement. Take height baselines only after the plot has its actual
+  // container width and the configured 320px reading area is rendered.
+  await expect.poll(() => page.locator('f1-series-chart').evaluateAll(charts => charts.every(chart => {
+    const plot = chart.shadowRoot.querySelector('svg.plot');
+    return plot?.viewBox.baseVal.width === Math.round(chart.getBoundingClientRect().width)
+      && Math.abs(plot.getBoundingClientRect().height - 320) < 1;
+  }))).toBe(true);
+}
+
 async function settleFrames(page, count = 12) {
   await page.evaluate(async count => {
     await document.fonts.ready;
@@ -122,7 +134,7 @@ test('saved two-row sections contain every modular preset and the next editing c
   await page.setViewportSize({ width: 1100, height: 1000 });
   for (const preset of ['weekend', 'weather', 'session', 'driver', 'results', 'custom']) {
     await mountSections(page, { preset });
-    if (preset === 'results') await expect(page.locator('f1-series-chart svg.plot')).toBeVisible();
+    if (preset === 'results') await expectMeasuredChart(page);
     await settleFrames(page, 3);
     const size = await expectContained(page, 128);
     expect(size.options.rows).toBeUndefined();
@@ -132,7 +144,7 @@ test('saved two-row sections contain every modular preset and the next editing c
 
 test('opening and closing chart data moves later cards and sections with the actual card height', async ({ page }) => {
   await mountSections(page, { config: { modules: [{ type: 'progression' }] } });
-  await expect(page.locator('f1-series-chart svg.plot')).toBeVisible();
+  await expectMeasuredChart(page);
   const closed = await expectContained(page);
   await page.getByRole('button', { name: 'Show data table', exact: true }).click();
   await expect(page.locator('f1-series-chart tbody tr')).toHaveCount(4);
@@ -161,7 +173,7 @@ test('container wrapping resizes the occupied section without requiring a viewpo
 
 test('automatic height and explicit larger rows preserve content and report the rendered masonry size', async ({ page }) => {
   await mountSections(page, { preset: 'results', savedRows: null });
-  await expect(page.locator('f1-series-chart svg.plot')).toBeVisible();
+  await expectMeasuredChart(page);
   const automatic = await expectContained(page);
   expect(automatic.options.rows).toBeUndefined();
   expect(automatic.slotHeight).toBeCloseTo(automatic.cardHeight, 0);
@@ -235,6 +247,14 @@ test('masonry geometry and reported size use the same render after a delayed cha
       return getCardSize();
     };
   });
+  // Delivering an observer callback now schedules a later measurement frame;
+  // an already fulfilled updateComplete cannot flush that future render.
+  // Confirm the delayed chart has actually changed the DOM height before
+  // accepting the same-render geometry and reported-size snapshot below.
+  await expect.poll(() => page.evaluate(async () => {
+    await window.fixtureCard.getCardSize();
+    return window.sizingGeometry().cardHeight;
+  })).not.toBe(initialHeight);
   const size = await expectContained(page);
   expect(size.reportedSize).toBe(Math.ceil(size.cardHeight / 50));
   expect(size.cardHeight).not.toBe(initialHeight);
@@ -275,7 +295,7 @@ test('entry discovery and loss preserve accurate themed sizing when the card tem
 
   for (let discovery = 0; discovery < 2; discovery++) {
     await page.evaluate(() => { window.fixtureCard.previewData = window.fixtureDemo.preview; });
-    await expect(page.locator('f1-series-chart svg.plot')).toBeVisible();
+    await expectMeasuredChart(page);
     const populated = await expectContained(page, 52);
     expect(populated.slotHeight - populated.cardHeight).toBeLessThan(52);
     expect(populated.cardHeight).toBeGreaterThan(waiting.cardHeight + 200);

@@ -7,7 +7,7 @@ const patterns = ['', '9 4', '2 4', '10 3 2 3'];
 const colors = { dark: ['#75baff', '#ffb673', '#92d99f', '#d9a7ff'], light: ['#145f9e', '#994100', '#226a33', '#77409b'] };
 const symbols = ['●', '■', '▲', '◆'];
 export class F1TelemetryView extends LitElement {
-  static properties = { model: { attribute: false }, module: { attribute: false }, settings: { attribute: false }, pickerOnly: { type: Boolean }, draftDriver: { state: true }, draftLap: { state: true }, table: { state: true }, width: { state: true }, textSize: { state: true } };
+  static properties = { presentation: { type: String, reflect: true }, model: { attribute: false }, module: { attribute: false }, settings: { attribute: false }, pickerOnly: { type: Boolean }, draftDriver: { state: true }, draftLap: { state: true }, table: { state: true }, width: { state: true }, textSize: { state: true } };
   static styles = [sharedStyles, css`
     details > summary { cursor:pointer; min-height:44px; display:list-item; padding:10px 0; font-weight:650; }
     .pickers { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin:14px 0; }
@@ -28,17 +28,43 @@ export class F1TelemetryView extends LitElement {
     h3 { margin:22px 0 8px; font-size:1em; }
     .muted { font-size:.85em; }
     .table-scroll { max-height:28rem; }
+    :host([presentation=compact]) { font-size:max(.875rem,14px); --_f1-component-caption:max(.75rem,12px); }
+    :host([presentation=compact]) details > summary { padding:6px 0; font-weight:500; }
+    :host([presentation=compact]) .pickers { grid-template-columns:repeat(auto-fit,minmax(min(100%,12rem),1fr)); gap:8px; margin:8px 0; }
+    :host([presentation=compact]) .pickers label > span,:host([presentation=compact]) .axis,:host([presentation=compact]) .muted,:host([presentation=compact]) .legend { font-size:var(--_f1-component-caption); }
+    :host([presentation=compact]) .selections { margin:8px 0; }
+    :host([presentation=compact]) .selections li { gap:6px; padding:3px 0; }
+    :host([presentation=compact]) .controls { gap:8px; margin:8px 0; }
+    :host([presentation=compact]) .legend { gap:6px 14px; margin:8px 0; }
+    :host([presentation=compact]) h3 { margin:14px 0 6px; font-weight:600; }
+    :host([presentation=compact]) p > strong { font-weight:500; }
+    :host([presentation=compact]) .table-scroll { border:0; border-radius:0; }
+    :host([presentation=compact]) th,:host([presentation=compact]) td { padding:6px 8px; }
+    :host([presentation=compact]) th { font-size:var(--_f1-component-caption); background:transparent; }
+    :host([presentation=compact]) .empty { padding:12px 10px; border-radius:6px; }
     @media(forced-colors:active) { .curve,.dot { stroke:CanvasText!important; } .dot { fill:Canvas!important; } .axis { fill:CanvasText; } .grid { stroke:GrayText; } }
   `];
-  constructor() { super(); this.draftDriver = ''; this.draftLap = ''; this.table = ''; this.width = 620; this.textSize = 16; }
+  constructor() { super(); this.presentation = 'current'; this.resizeFrame = 0; this.draftDriver = ''; this.draftLap = ''; this.table = ''; this.width = 620; this.textSize = 16; }
   connectedCallback() {
-    super.connectedCallback(); this.observer = new ResizeObserver(entries => {
-      const width = Math.round(entries[0]?.contentRect.width ?? 0);
-      if (width > 0) this.width = Math.max(280, width);
+    super.connectedCallback();
+    const measure = () => {
+      this.resizeFrame = 0;
+      if (!this.isConnected) return;
+      if (this.pendingWidth > 0) this.width = Math.max(this.presentation === 'compact' ? 200 : 280, this.pendingWidth);
       this.textSize = parseFloat(getComputedStyle(this).fontSize) || 16;
+    };
+    this.observer = new ResizeObserver(entries => {
+      this.pendingWidth = Math.round(entries[0]?.contentRect.width ?? 0);
+      // Geometry writes run in the next frame, outside ResizeObserver's
+      // delivery cycle. Current and compact keep their own final dimensions.
+      if (!this.resizeFrame) this.resizeFrame = requestAnimationFrame(measure);
     }); this.observer.observe(this);
   }
-  disconnectedCallback() { super.disconnectedCallback(); this.observer?.disconnect(); }
+  disconnectedCallback() {
+    super.disconnectedCallback(); this.observer?.disconnect();
+    if (this.resizeFrame) cancelAnimationFrame(this.resizeFrame);
+    this.resizeFrame = 0;
+  }
   willUpdate() {
     if (this.session !== this.model?.replay?.sessionId) { this.session = this.model?.replay?.sessionId; this.draftDriver = ''; this.draftLap = ''; this.table = ''; }
   }

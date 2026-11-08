@@ -375,6 +375,10 @@ export class F1SensorCardEditor extends LitElement {
       ` : ''}
       ${this.minisectorOverlap(module) ? html`<p class="notice" role="status">${this.minisectorOverlap(module)}</p>` : ''}
       <details><summary>${this.w('modular.module_appearance')}</summary>
+        ${configAPI.COMPACT_MODULE_TYPES.includes(module.type) ? html`
+          ${this.select(this.w('modular.module_presentation'), module.appearance.presentation, [['inherit', this.w('modular.presentation_inherit')], ['current', this.w('modular.presentation_current')], ['compact', this.w('modular.compact')]], value => this.setModule('appearance', { ...module.appearance, presentation: value }))}
+          <p class="muted">${this.w('modular.compact_module_presentation_help')}</p>
+        ` : ''}
         ${this.check(this.w('modular.show_module_title'), module.show_header, value => this.setModule('show_header', value))}
         ${['timing', 'minisectors', 'results', 'standings', 'archive', 'tyres', 'pit_stops', 'strategy', 'battles', 'timeline', 'incidents'].includes(module.type) ? html`${this.check(this.w('modular.show_table_header'), module.show_table_header, value => this.setModule('show_table_header', value))}<p class="muted">${this.w('modular.hidden_column_labels_remain_available_to_screen_readers_chart_data_tables_always_keep_their')}</p>` : ''}
         <p class="muted">${this.w('modular.session_details_and_status_labels_remain_visible_when_the_title_is_hidden')}</p>
@@ -421,7 +425,7 @@ export class F1SensorCardEditor extends LitElement {
         }
         if (module.type === 'incidents' && (key === 'summary_sort' && module.options.content !== 'track_limits_summary' || ['order', 'presentation'].includes(key) && module.options.content === 'track_limits_summary')) return '';
         if (module.type === 'telemetry' && key === 'session_id') return '';
-        if (module.type === 'timing' && ['show_driver_details', 'detail_laps'].includes(key)) return '';
+        if (module.type === 'timing' && ['show_driver_details', 'detail_laps', 'presentation'].includes(key)) return '';
         if (module.type === 'timing') {
           const combined = module.options.gap_display === 'combined' || module.options.narrow_layout;
           if (key === 'show_gap_toggle' && combined || key === 'gap_primary' && !combined) return '';
@@ -532,6 +536,8 @@ export class F1SensorCardEditor extends LitElement {
     if (appearance.accent_team && !teams.some(team => team.name === appearance.accent_team)) teamOptions.unshift([appearance.accent_team, `${appearance.accent_team} · ${this.w('modular.saved_selection')}`]);
     const accent = cardAccent(appearance, teams, mode);
     return html`<details><summary>${this.w('modular.appearance')}</summary>
+      ${this.select(this.w('modular.card_presentation'), appearance.presentation, [['current', this.w('modular.presentation_current')], ['compact', this.w('modular.compact')]], value => this.setGroup('appearance', 'presentation', value))}
+      <p class="muted">${this.w('modular.compact_presentation_help')}</p>
       ${this.select(this.w('modular.style'), appearance.style, [['f1', 'F1'], ['ha', 'Home Assistant'], ['minimal', this.w('modular.minimal')]], value => this.setGroup('appearance', 'style', value))}
       ${this.select(this.w('modular.theme'), appearance.mode, [['auto', this.w('modular.automatic')], ['light', this.w('modular.light')], ['dark', this.w('modular.dark')]], value => this.setGroup('appearance', 'mode', value))}
       ${this.select(this.w('modular.density'), appearance.density, [['compact', this.w('modular.compact')], ['comfortable', this.w('modular.normal')], ['spacious', this.w('modular.spacious')]], value => this.setGroup('appearance', 'density', value))}

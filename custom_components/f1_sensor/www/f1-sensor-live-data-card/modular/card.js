@@ -64,6 +64,10 @@ export class F1SensorCard extends LitElement {
       display:block; padding:var(--f1-card-padding); border:1px solid var(--f1-border); border-radius:var(--f1-card-radius); background:var(--f1-surface); color:var(--f1-text); overflow:hidden;
     }
     ha-card[data-style=minimal] { border-color:transparent; box-shadow:none; padding:var(--f1-minimal-padding,12px); }
+    ha-card[data-presentation=compact] .heading strong { font-size:1rem; font-weight:600; letter-spacing:0; }
+    ha-card[data-presentation=compact] .heading small { font-size:.75rem; }
+    ha-card[data-presentation=compact][data-font=f1] .heading strong { font-size:1.2rem; font-weight:700; }
+    ha-card[data-presentation=compact][data-configured-font=auto] .heading strong { font-family:var(--ha-font-family-heading,var(--ha-font-family-body,inherit)); font-size:1rem; font-weight:600; text-transform:none; letter-spacing:0; }
     ha-card[data-surface=framed] { border:1px solid var(--f1-border); box-shadow:none; }
     ha-card[data-surface=soft] { border:1px solid var(--f1-divider); box-shadow:none; }
     ha-card[data-surface=flat] { border:0; box-shadow:none; }
@@ -300,7 +304,7 @@ export class F1SensorCard extends LitElement {
     const timePreference = this.sourceHass?.locale?.time_zone;
     const timezone = timePreference === 'local' ? Intl.DateTimeFormat().resolvedOptions().timeZone
       : timePreference && timePreference !== 'server' ? timePreference : this.sourceHass?.config?.time_zone ?? 'UTC';
-    return { appearance, accessibility: this.config.accessibility, mode, language: this.language, timezone, timeFormat: this.sourceHass?.locale?.time_format };
+    return { appearance, configuredFont: saved.font, accessibility: this.config.accessibility, mode, language: this.language, timezone, timeFormat: this.sourceHass?.locale?.time_format };
   }
   willUpdate(changed) {
     this.syncPreview();
@@ -1044,12 +1048,16 @@ export class F1SensorCard extends LitElement {
     const text = haStyle ? 'var(--primary-text-color)' : dark ? '#f1f4f8' : '#1a2533';
     const muted = haStyle ? 'var(--secondary-text-color)' : high ? text : dark ? '#bdc6d4' : '#536174';
     const density = settings.appearance.density;
-    const spacing = density === 'compact' ? [16, 10, 16, 14, '5px 9px', '5px'] : density === 'spacious' ? [24, 16, 32, 24, '15px 16px', '14px'] : [20, 12, 26, 20, '10px 12px', '9px'];
+    const compact = settings.appearance.presentation === 'compact';
+    const normalSpacing = density === 'compact' ? [16, 10, 16, 14, '5px 9px', '5px'] : density === 'spacious' ? [24, 16, 32, 24, '15px 16px', '14px'] : [20, 12, 26, 20, '10px 12px', '9px'];
+    // The shell shares spacing; each opted-in module owns its compact content.
+    const shellSpacing = density === 'compact' ? [10, 8, 10, 10] : density === 'spacious' ? [16, 12, 20, 16] : [12, 10, 14, 12];
+    const spacing = compact ? [...shellSpacing, ...normalSpacing.slice(4)] : normalSpacing;
     const typography = settings.appearance.font === 'f1';
     const accent = cardAccent(settings.appearance, this.modelPreview?.accentTeams ?? data.accentTeams(this.sourceHass, this.entry), settings.mode);
     const radius = settings.appearance.surface === 'framed' ? '8px' : settings.appearance.surface === 'soft' ? '20px' : settings.appearance.surface === 'flat' ? '0' : 'var(--ha-card-border-radius,14px)';
     const style = `--_f1-card-padding:${spacing[0]}px;--_f1-minimal-padding:${spacing[1]}px;--_f1-module-gap:${spacing[2]}px;--_f1-section-space:${spacing[3]}px;--_f1-cell-padding:${spacing[4]};--_f1-item-padding:${spacing[5]};--_f1-heading-font:${typography ? "'F1 Barlow Condensed',sans-serif" : 'var(--ha-font-family-heading,var(--ha-font-family-body,inherit))'};--_f1-heading-transform:${typography ? 'uppercase' : 'none'};--_f1-module-heading-size:${typography ? '1.3em' : '1.1em'};--_f1-surface:${background};--_f1-text:${text};--_f1-muted:${muted};--_f1-border:${dark ? '#637083' : '#778397'};--_f1-divider:${dark ? '#354150' : '#cbd1da'};--_f1-panel:${dark ? '#1b2430' : '#f1f4f8'};--_f1-focus:${dark ? '#7ebfff' : '#005db5'};--_f1-row-alternate:${settings.appearance.surface === 'soft' ? 'var(--f1-panel)' : 'transparent'};--_f1-accent:${accent.color};--_f1-numerals:${settings.appearance.numbers === 'tabular' ? 'tabular-nums' : 'normal'};--_f1-card-radius:${radius}`;
-    if (!this.entry) return html`<ha-card part="card" data-style=${settings.appearance.style} data-font=${settings.appearance.font} data-surface=${settings.appearance.surface} data-accent=${String(accent.visible)} role="group" aria-label=${this.config.title} style=${style}>${this.previewControls()}${settings.appearance.show_header ? html`<header class="heading" part="header">${this.actionHeading()}</header>` : ''}<div class="empty" part="empty-state">${this.discovery?.status === 'error' ? this.discovery.error : (this.modelPreview?.entries ?? this.entries).length > 1 ? this.w('modular.choose_an_f1_sensor_installation_in_the_editor') : this.w('modular.waiting_for_f1_sensor')}</div>${this.actionAlternatives()}</ha-card>`;
+    if (!this.entry) return html`<ha-card part="card" data-style=${settings.appearance.style} data-presentation=${settings.appearance.presentation} data-configured-font=${settings.configuredFont} data-font=${settings.appearance.font} data-surface=${settings.appearance.surface} data-accent=${String(accent.visible)} role="group" aria-label=${this.config.title} style=${style}>${this.previewControls()}${settings.appearance.show_header ? html`<header class="heading" part="header">${this.actionHeading()}</header>` : ''}<div class="empty" part="empty-state">${this.discovery?.status === 'error' ? this.discovery.error : (this.modelPreview?.entries ?? this.entries).length > 1 ? this.w('modular.choose_an_f1_sensor_installation_in_the_editor') : this.w('modular.waiting_for_f1_sensor')}</div>${this.actionAlternatives()}</ha-card>`;
     if (this.entry?.data_api?.configuration_required) return html`<ha-card part="card" style=${style}><div class="empty" role="status"><p>${this.w('modular.data_configuration_required')}</p><a href="/config/integrations/integration/f1_sensor">${this.w('modular.open_integration_settings')}</a></div></ha-card>`;
     const models = this.frozen ? this.frozenModels : this.buildModels();
     if (this.frozen) { this.guardFrozenRaceTrace(models); this.guardFrozenTyreHistory(models); }
@@ -1107,7 +1115,7 @@ export class F1SensorCard extends LitElement {
       return node;
     });
     for (const id of this.moduleNodes.keys()) if (!this.config.modules.some(module => module.id === id)) this.moduleNodes.delete(id);
-    return html`<ha-card data-layout=${this.config.layout} part="card" data-style=${settings.appearance.style} data-font=${settings.appearance.font} data-surface=${settings.appearance.surface} data-accent=${String(accent.visible)} role="group" aria-label=${this.config.title} style=${style}>
+    return html`<ha-card data-layout=${this.config.layout} part="card" data-style=${settings.appearance.style} data-presentation=${settings.appearance.presentation} data-configured-font=${settings.configuredFont} data-font=${settings.appearance.font} data-surface=${settings.appearance.surface} data-accent=${String(accent.visible)} role="group" aria-label=${this.config.title} style=${style}>
       ${this.previewControls()}
       ${this.modelPreview ? html`<p class="demo">${this.w('modular.demo_sample_data')}</p>` : ''}
       <header part="header">${settings.appearance.show_header ? html`<div class="heading" part="title">${this.actionHeading()}<small>${this.w('modular.your_formula_1_view')}</small></div>` : ''}

@@ -13,7 +13,7 @@ const duration = value => {
 
 class F1TeamRadioView extends LitElement {
   static properties = {
-    module: { attribute: false }, model: { attribute: false }, settings: { attribute: false },
+    presentation: { type: String, reflect: true }, module: { attribute: false }, model: { attribute: false }, settings: { attribute: false },
     unread: { state: true }, activeId: { state: true }, audioRevision: { state: true },
   };
 
@@ -53,6 +53,32 @@ class F1TeamRadioView extends LitElement {
     audio { display:none; }
     .status { color:var(--f1-muted,var(--secondary-text-color,#b9c1ce)); font-size:.82rem; }
     .error { color:var(--error-color,#db4437); }
+    :host([presentation=compact]) { container:f1-radio / inline-size; font-size:max(.875rem,14px); --_f1-component-caption:max(.75rem,12px); }
+    :host([presentation=compact]) .radio-list { gap:10px; }
+    :host([presentation=compact]) .radio-card { border-color:var(--f1-divider); border-top-width:2px; border-radius:6px; background:var(--f1-surface); box-shadow:none; }
+    :host([presentation=compact]) .radio-card::after { display:none; }
+    :host([presentation=compact]) .radio-head { min-height:44px; grid-template-columns:auto minmax(0,1fr) auto; gap:8px; padding:8px 10px; }
+    :host([presentation=compact]) .number,:host([presentation=compact]) .identity strong { color:var(--f1-text); }
+    :host([presentation=compact]) .number { font-size:1.35em; font-weight:600; line-height:1.2; letter-spacing:0; }
+    :host([presentation=compact]) .identity { display:flex; align-items:baseline; flex-wrap:wrap; gap:2px 8px; text-align:start; text-transform:none; }
+    :host([presentation=compact]) .identity strong,:host([presentation=compact]) .identity span { display:inline; }
+    :host([presentation=compact]) .identity strong,:host([presentation=compact]) .identity .radio { font-size:1em; line-height:1.4; letter-spacing:0; font-weight:500; }
+    :host([presentation=compact]) .identity .team { flex-basis:100%; margin-top:0; font-size:var(--_f1-component-caption); font-weight:400; letter-spacing:0; }
+    :host([presentation=compact]:not([data-configured-font=f1])) .number,:host([presentation=compact]:not([data-configured-font=f1])) .identity strong,:host([presentation=compact]:not([data-configured-font=f1])) .identity .radio { font-family:var(--ha-font-family-heading,var(--ha-font-family-body,inherit)); }
+    :host([presentation=compact]) f1-team-logo { --f1-logo-frame:30px; --f1-logo-image:26px; grid-column:auto; }
+    :host([presentation=compact]) .new { position:static; display:inline-flex; margin:8px 10px 0; padding:2px 6px; font-size:var(--_f1-component-caption); font-weight:500; animation:none; }
+    :host([presentation=compact]) .radio-body { gap:8px; padding:10px; }
+    :host([presentation=compact]) .meta,:host([presentation=compact]) .status,:host([presentation=compact]) .audio-time { font-size:var(--_f1-component-caption); }
+    :host([presentation=compact]) .transcript { gap:8px; }
+    :host([presentation=compact]) .audio { gap:8px; }
+    :host([presentation=compact]) .audio button { min-height:44px; min-width:44px; padding:6px 8px; font-weight:500; }
+    :host([presentation=compact]) .audio .transcribe { font-size:var(--_f1-component-caption); }
+    :host([presentation=compact]) .empty { padding:12px 10px; border-radius:6px; }
+    @container f1-radio (max-width:420px) {
+      :host([presentation=compact]) .audio { grid-template-columns:auto minmax(0,1fr); }
+      :host([presentation=compact]) .audio-time { grid-column:2; }
+      :host([presentation=compact]) .audio[data-has-audio=false] { grid-template-columns:minmax(0,1fr); }
+    }
     @keyframes radio-pulse { 50% { box-shadow:0 0 0 5px color-mix(in srgb,var(--f1-text) 14%,transparent); } }
     @media(max-width:420px) {
       .radio-head { grid-template-columns:auto minmax(0,1fr); }
@@ -71,6 +97,7 @@ class F1TeamRadioView extends LitElement {
 
   constructor() {
     super();
+    this.presentation = 'current';
     this.unread = false;
     this.activeId = null;
     this.audioRevision = 0;
@@ -83,6 +110,7 @@ class F1TeamRadioView extends LitElement {
   w(source, replacements = {}) { return words(this.language, source, replacements); }
 
   willUpdate() {
+    this.setAttribute('data-configured-font', this.settings?.configuredFont ?? this.settings?.appearance?.font ?? 'auto');
     const first = this.model?.clips?.[0]?.id ?? null;
     const context = `${this.module?.id ?? ''}|${this.model?.context?.key ?? ''}|${this.model?.readonly === true}`;
     if (context !== this.radioContext) {

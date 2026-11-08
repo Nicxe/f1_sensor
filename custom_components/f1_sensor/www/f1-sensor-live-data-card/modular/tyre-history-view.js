@@ -5,7 +5,7 @@ const [{ LitElement, html, css, repeat }, { sharedStyles, words }, { compoundMet
 ]);
 
 export class F1TyreHistoryView extends LitElement {
-  static properties = { model: { attribute: false }, module: { attribute: false }, settings: { attribute: false }, expanded: { state: true } };
+  static properties = { presentation: { type: String, reflect: true }, model: { attribute: false }, module: { attribute: false }, settings: { attribute: false }, expanded: { state: true } };
   static styles = [sharedStyles, css`
     :host { container-type:inline-size; }
     .lap-progress { text-align:end; font-size:.85em; margin-bottom:12px; color:var(--f1-muted); }
@@ -64,6 +64,21 @@ export class F1TyreHistoryView extends LitElement {
       .segment { padding-inline:2px; font-size:max(.8em,11px); }
       .driver-detail { padding-inline:0; }
     }
+    :host([presentation=compact]) { font-size:max(.875rem,14px); --_f1-component-caption:max(.75rem,12px); }
+    :host([presentation=compact]) .lap-progress { margin-bottom:8px; font-size:var(--_f1-component-caption); }
+    :host([presentation=compact]) .history-axis { margin-bottom:6px; font-size:var(--_f1-component-caption); }
+    :host([presentation=compact]) .driver-row { min-height:32px; padding:3px 4px; font-size:1em; font-weight:400; }
+    :host([presentation=compact]) .position,:host([presentation=compact]) .missing-range,:host([presentation=compact]) .partial { font-size:var(--_f1-component-caption); }
+    :host([presentation=compact]) .age { font-weight:500; }
+    :host([presentation=compact]) .lane { height:18px; }
+    :host([presentation=compact]) .segment { font-size:var(--_f1-component-caption); }
+    :host([presentation=compact]) .driver-detail { padding:8px 6px 12px; margin-bottom:6px; }
+    :host([presentation=compact]) .stints { font-size:1em; }
+    :host([presentation=compact]) .stints th { font-size:var(--_f1-component-caption); }
+    :host([presentation=compact]) .stints th,:host([presentation=compact]) .stints td { padding:6px 8px; }
+    :host([presentation=compact]) .stint-status { font-size:var(--_f1-component-caption); }
+    :host([presentation=compact]) .legend { gap:6px 14px; padding-top:10px; margin-top:10px; font-size:var(--_f1-component-caption); }
+    @media(pointer:coarse) { :host([presentation=compact]) .driver-row { min-height:44px; } }
     @media (forced-colors:active) {
       .segment,.compound { forced-color-adjust:none; background:Canvas!important; color:CanvasText!important; box-shadow:inset 0 0 0 1px CanvasText; }
       .segment.used { background:repeating-linear-gradient(135deg,Canvas,Canvas 4px,GrayText 4px,GrayText 6px)!important; }
@@ -72,7 +87,7 @@ export class F1TyreHistoryView extends LitElement {
       .team-accent { background:CanvasText!important; }
     }
   `];
-  constructor() { super(); this.expanded = ''; }
+  constructor() { super(); this.presentation = 'current'; this.expanded = ''; }
   w(key, replacements = {}) { return words(this.settings?.language ?? 'en', key, replacements); }
   value(value) { return value == null ? '—' : new Intl.NumberFormat(this.settings?.language ?? 'en').format(value); }
   willUpdate() {

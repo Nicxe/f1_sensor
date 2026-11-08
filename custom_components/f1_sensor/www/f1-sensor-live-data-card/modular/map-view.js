@@ -2,7 +2,7 @@ const version = new URL(import.meta.url).searchParams.get('v');
 const load = path => import(`${path}${version ? `?v=${encodeURIComponent(version)}` : ''}`);
 const [{ LitElement, html, svg, css, repeat }, { sharedStyles, words, dateTime }, { displayTrack }] = await Promise.all([load('../f1-lit-3.3.2.js'), load('./view.js'), load('./map-geometry.js')]);
 class F1TrackMapView extends LitElement {
-  static properties = { model: { attribute: false }, module: { attribute: false }, settings: { attribute: false }, width: { state: true }, selected: { state: true }, listOpen: { state: true } };
+  static properties = { presentation: { type: String, reflect: true }, model: { attribute: false }, module: { attribute: false }, settings: { attribute: false }, width: { state: true }, selected: { state: true }, listOpen: { state: true } };
   static styles = [sharedStyles, css`
     .map-frame { border:1px solid var(--f1-border); border-radius:10px; background:var(--f1-panel); }
     .map-shell { display:grid; gap:12px; }
@@ -45,17 +45,43 @@ class F1TrackMapView extends LitElement {
     .driver-list { display:grid; gap:6px; list-style:none; margin:14px 0 0; padding:0; }
     .driver-list button { width:100%; display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:6px 12px; text-align:left; }
     .driver-list small { display:block; font-size:.8em; }
+    :host([presentation=compact]) { container:f1-map / inline-size; font-size:max(.875rem,14px); --_f1-component-caption:max(.75rem,12px); }
+    :host([presentation=compact]) .map-shell { gap:8px; }
+    :host([presentation=compact]) .map-frame { border-color:var(--f1-divider); border-radius:6px; }
+    :host([presentation=compact]) .map-meta,:host([presentation=compact]) .map-footer { gap:6px 12px; font-size:var(--_f1-component-caption); }
+    :host([presentation=compact]) .map-meta strong { font-weight:500; }
+    :host([presentation=compact]) .map-status { min-height:24px; padding:0 2px; border:0; border-radius:0; }
+    :host([presentation=compact]) .map-badges { gap:5px 10px; }
+    :host([presentation=compact]) .map-footer { padding-top:6px; }
+    :host([presentation=compact]) .annotation-summary,:host([presentation=compact]) .annotation-note,:host([presentation=compact]) .annotation-unavailable,:host([presentation=compact]) .annotation-experimental { font-size:var(--_f1-component-caption); }
+    :host([presentation=compact]) .annotation-experimental { font-weight:500; }
+    :host([presentation=compact]) .driver-list { margin-top:8px; gap:2px; }
+    :host([presentation=compact]) .driver-list button { min-height:32px; padding:4px 6px; border-color:var(--f1-divider); border-radius:4px; font-weight:400; }
+    :host([presentation=compact]) .driver-list small { font-size:var(--_f1-component-caption); }
+    @media(pointer:coarse) { :host([presentation=compact]) .driver-list button { min-height:44px; } }
     @media(forced-colors:active) { .track,.marker circle,.annotation-line,.annotation-feature-tick,.annotation-leader { stroke:CanvasText!important; } .marker text,.annotation-number,.annotation-feature-text,.annotation-tag-text { fill:CanvasText!important; stroke:Canvas!important; } .marker .team { display:none; } }
   `];
   constructor() {
-    super(); this.width = 400; this.selected = ''; this.listOpen = false;
+    super(); this.presentation = 'current'; this.resizeFrame = 0; this.width = 400; this.selected = ''; this.listOpen = false;
     this.motions = new Map(); this.motionFrame = 0; this.tickCache = new WeakMap(); this.geometryCache = new WeakMap();
   }
   connectedCallback() {
-    super.connectedCallback(); this.observer = new ResizeObserver(entries => { this.width = Math.max(200, entries[0].contentRect.width); }); this.observer.observe(this);
+    super.connectedCallback();
+    const measure = () => {
+      this.resizeFrame = 0;
+      if (this.isConnected) this.width = Math.max(200, this.pendingWidth);
+    };
+    this.observer = new ResizeObserver(entries => {
+      this.pendingWidth = entries[0].contentRect.width;
+      // Geometry writes run in the next frame, outside ResizeObserver's
+      // delivery cycle. Current and compact keep their own final dimensions.
+      if (!this.resizeFrame) this.resizeFrame = requestAnimationFrame(measure);
+    }); this.observer.observe(this);
   }
   disconnectedCallback() {
     super.disconnectedCallback(); this.observer?.disconnect();
+    if (this.resizeFrame) cancelAnimationFrame(this.resizeFrame);
+    this.resizeFrame = 0;
     if (this.motionFrame) cancelAnimationFrame(this.motionFrame);
     this.motionFrame = 0;
   }
