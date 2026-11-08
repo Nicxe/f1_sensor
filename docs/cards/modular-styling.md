@@ -22,6 +22,12 @@ Use the normal appearance controls before adding CSS:
 The preview uses the same CSS as the saved card. Save the dashboard only after
 checking the narrow and wide layouts you use.
 
+To place Tyre history and Track map under each other beside a taller Timing
+module, choose [**Independent stacks** in the layout controls](/cards/modular#stack-modules-beside-a-taller-module).
+Each stack controls its own vertical flow inside the same card, without fixed
+module heights or custom CSS. The `--f1-module-gap` variable controls spacing
+between stacks and between the modules within each stack.
+
 ## Choose a compact presentation
 
 Under **Appearance**, set **Card presentation** to **Compact** to use the

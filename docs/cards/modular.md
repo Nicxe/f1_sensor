@@ -142,6 +142,68 @@ This field is separate from the weather provider's forecast probability and the 
 
 [Arrange columns and card width](/cards/layout#arrange-modules-in-columns), including [giving the card enough space](/cards/layout#give-the-card-enough-space). Home Assistant sets the outer width; module columns fit inside it.
 
+## Stack modules beside a taller module
+
+Choose **Independent stacks** as the card's layout to place several modules
+under each other beside a taller module. All stacks belong to the same
+**F1 Sensor** card.
+
+For example, give **Timing** three of four columns and place **Tyre history**
+and **Track map** in a stack using the remaining column. Track map starts
+directly below Tyre history, even while Timing continues beside both. An
+**Overview** stack can span the full card width above them.
+
+Open **Modules → Arrange modules** to move a module into a stack, reorder the
+modules within it or change the stack's width. You can drag from a module's
+handle into the marked position in a stack, or select the module and use
+**Move to stack**. **Undo** reverses a completed arrangement change.
+
+Each module keeps its natural height. Expanding tyre history pushes the next
+module down within its own stack. Stack groups have no visible frame in the
+finished card. Hidden modules leave no empty slot. On narrow cards, stacks
+move below each other and keep their internal order. Home Assistant still
+controls the [space available to the whole card](/cards/layout#give-the-card-enough-space).
+
+<details>
+  <summary>Optional YAML example</summary>
+
+```yaml
+type: custom:f1-sensor-card
+layout: stacks
+columns: 4
+modules:
+  - id: overview
+    type: overview
+  - id: timing
+    type: timing
+  - id: tyres
+    type: tyres
+    options:
+      content: history
+  - id: track-map
+    type: map
+stacks:
+  - id: overview-stack
+    column_span: full
+    modules:
+      - overview
+  - id: timing-stack
+    column_span: 3
+    modules:
+      - timing
+  - id: side-stack
+    column_span: 1
+    modules:
+      - tyres
+      - track-map
+```
+
+The `modules` list defines the content once. Each stack refers to those saved
+module ids in its display order. Set `column_span` on the stack to choose its
+width; all modules in that stack use that width.
+
+</details>
+
 ## Choose and lock a session
 
 [Choose or pin a session](/cards/shared-options#follow-or-pin-a-session). A pin keeps an identity; it does not load a replay or start another source.

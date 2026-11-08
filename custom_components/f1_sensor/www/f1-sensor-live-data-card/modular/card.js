@@ -1,6 +1,6 @@
 const version = new URL(import.meta.url).searchParams.get('v');
 const load = path => import(`${path}${version ? `?v=${encodeURIComponent(version)}` : ''}`);
-const [{ LitElement, html, css, repeat }, { normalizeConfig, configWarnings, resolveSelection }, { MODULES, label, moduleTitle, moduleFocusKinds }, data, { SectorStore, safeImageUrl, cardAccent, eventTimestamp }, { watchEntries, watchCardData, watchRaceControl, watchGroup, watchAnalysis, watchTrackMap, watchMinisectors, HistoryResources, callEntityService }, { sharedStyles, translatePlural, words, dateTime }, { visibilityMet, visibilityMediaQueries, hasTimeVisibility }] = await Promise.all([
+const [{ LitElement, html, css, repeat }, { normalizeConfig, configWarnings, resolveSelection, layoutStacks }, { MODULES, label, moduleTitle, moduleFocusKinds }, data, { SectorStore, safeImageUrl, cardAccent, eventTimestamp }, { watchEntries, watchCardData, watchRaceControl, watchGroup, watchAnalysis, watchTrackMap, watchMinisectors, HistoryResources, callEntityService }, { sharedStyles, translatePlural, words, dateTime }, { visibilityMet, visibilityMediaQueries, hasTimeVisibility }] = await Promise.all([
   load('../f1-lit-3.3.2.js'), load('./config.js'), load('./catalog.js'), load('./data.js'), load('./semantics.js'), load('./connection.js'), load('./view.js'), load('./visibility.js'),
 ]);
 const { makeDemo } = await load('./demo.js');
@@ -84,8 +84,8 @@ export class F1SensorCard extends LitElement {
     .modules { display:grid; gap:var(--f1-module-gap,26px); }
     .modules > f1-module-view { border-top:1px solid var(--f1-divider); padding-top:var(--f1-section-space,20px); }
     .modules > f1-module-view:first-child { border-top:0; padding-top:0; }
-    ha-card[data-layout=columns] { container:f1-modules / inline-size; }
-    .modules[data-layout=columns] {
+    ha-card:is([data-layout=columns],[data-layout=stacks]) { container:f1-modules / inline-size; }
+    .modules:is([data-layout=columns],[data-layout=stacks]) {
       --_f1-available-columns:1;
       --_f1-layout-columns:min(var(--_f1-max-columns),var(--_f1-available-columns));
       grid-template-columns:repeat(var(--_f1-layout-columns),minmax(0,1fr));
@@ -96,9 +96,12 @@ export class F1SensorCard extends LitElement {
       min-width:0; border-top:0; padding-top:0;
     }
     .modules[data-layout=columns] > f1-module-view[data-column-span=full] { grid-column:1 / -1; }
-    @container f1-modules (min-width:38rem) { .modules[data-layout=columns] { --_f1-available-columns:2; } }
-    @container f1-modules (min-width:58rem) { .modules[data-layout=columns] { --_f1-available-columns:3; } }
-    @container f1-modules (min-width:78rem) { .modules[data-layout=columns] { --_f1-available-columns:4; } }
+    @container f1-modules (min-width:38rem) { .modules:is([data-layout=columns],[data-layout=stacks]) { --_f1-available-columns:2; } }
+    @container f1-modules (min-width:58rem) { .modules:is([data-layout=columns],[data-layout=stacks]) { --_f1-available-columns:3; } }
+    @container f1-modules (min-width:78rem) { .modules:is([data-layout=columns],[data-layout=stacks]) { --_f1-available-columns:4; } }
+    .module-stack { display:flex; flex-direction:column; align-self:start; min-width:0; gap:var(--f1-module-gap,26px); grid-column:span min(var(--_f1-stack-span,1),var(--_f1-layout-columns)); }
+    .module-stack[data-column-span=full] { grid-column:1 / -1; }
+    .module-stack > f1-module-view { display:block; min-width:0; }
     nav { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:20px; }
     .frozen { padding:10px 12px; margin-bottom:16px; border:1px solid currentColor; border-radius:8px; }
     .connection-status { padding:10px 12px; margin:0 0 16px; border:1px solid currentColor; border-radius:8px; }
@@ -173,7 +176,7 @@ export class F1SensorCard extends LitElement {
       ${source === 'sample' ? html`<label><span>${this.w('modular.sample_session')}</span><select aria-label=${this.w('modular.sample_session')} .value=${scene} @change=${event => this.changePreview('scene', event.target.value)}>
         ${[['before', this.w('modular.before_a_session')], ['practice', this.w('modular.practice')], ['qualifying', this.w('modular.qualifying')], ['sprint_qualifying', this.w('modular.sprint_qualifying')], ['sprint', 'Sprint'], ['race', 'Race'], ['ended', this.w('modular.finished')], ['replay', 'Replay'], ['missing', this.w('modular.missing_data')]].map(([value, title]) => html`<option value=${value} .selected=${scene === value}>${title}</option>`)}
       </select></label>` : ''}
-      ${this.config.layout === 'columns' ? html`<p>${this.w('modular.home_assistant_limits_the_preview_width_check_the_full_column_layout_on_your_dashboard')}</p>` : ''}
+      ${['columns', 'stacks'].includes(this.config.layout) ? html`<p>${this.w('modular.home_assistant_limits_the_preview_width_check_the_full_column_layout_on_your_dashboard')}</p>` : ''}
     </div>`;
   }
   setConfig(config) { this.cancelActions(); this.choices?.clear(); this.config = normalizeConfig(config); this.syncVisibilityListeners(); }
@@ -1115,6 +1118,11 @@ export class F1SensorCard extends LitElement {
       return node;
     });
     for (const id of this.moduleNodes.keys()) if (!this.config.modules.some(module => module.id === id)) this.moduleNodes.delete(id);
+    // Placement groups contain the existing module nodes, so changing a stack
+    // never replaces a module's local state, data sources or selection.
+    const nodesById = new Map(nodes.map(node => [node.dataset.moduleId, node]));
+    const stacks = this.config.layout === 'stacks' ? layoutStacks(this.config).map(stack => ({ ...stack, nodes: stack.modules.map(id => nodesById.get(id)).filter(Boolean) })).filter(stack => stack.nodes.length) : [];
+    const content = this.config.layout === 'stacks' ? repeat(stacks, stack => stack.id, stack => html`<div class="module-stack" part="stack" data-stack-id=${stack.id} data-column-span=${String(stack.column_span)} style=${`--_f1-stack-span:${stack.column_span === 'full' ? 1 : stack.column_span}`}>${stack.nodes}</div>`) : nodes;
     return html`<ha-card data-layout=${this.config.layout} part="card" data-style=${settings.appearance.style} data-presentation=${settings.appearance.presentation} data-configured-font=${settings.configuredFont} data-font=${settings.appearance.font} data-surface=${settings.appearance.surface} data-accent=${String(accent.visible)} role="group" aria-label=${this.config.title} style=${style}>
       ${this.previewControls()}
       ${this.modelPreview ? html`<p class="demo">${this.w('modular.demo_sample_data')}</p>` : ''}
@@ -1129,7 +1137,7 @@ export class F1SensorCard extends LitElement {
       ${selectedEvent ? html`<section class="connection-status" role="region" aria-label=${this.w('modular.event_focus_selected')}><strong>${this.w('modular.event_focus_selected')}</strong><p>${selectedEvent.title}</p><p>${eventDrivers.length ? eventDrivers.join(', ') : this.w('modular.event_focus_no_driver')} · ${selectedEvent.lap_number ?? this.w('modular.event_focus_no_lap')} · ${selectedEventTime ? html`<time datetime=${selectedEventTime}>${dateTime(selectedEventTime, settings, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</time>` : this.w('modular.event_focus_no_time')}</p><p>${this.w('modular.event_focus_revision', { revision: selectedEvent.revision })} · ${selectedEvent.provider ?? this.w('modular.event_focus_no_source')}</p><p>${this.w('modular.event_focus_seek_unavailable')}</p><button @click=${this.clearEventFocus}>${this.w('modular.event_focus_clear')}</button></section>` : ''}
       <div aria-live=${settings.accessibility.announce ? 'polite' : 'off'} aria-atomic="true">${this.frozen ? html`<p class="frozen">${this.w('modular.reading_snapshot')} · ${dateTime(this.frozenAt, settings, { hour: '2-digit', minute: '2-digit', second: '2-digit' })} · ${this.w('modular.only_this_card_is_paused')}${this.frozenGeneration !== this.savedSources.viewGeneration ? html`<br>${this.w('modular.session_or_playback_settings_have_changed_this_snapshot_keeps_its_original_context_resume_to')}` : ''}${this.focus.driver !== this.frozenFocus?.driver || this.focus.team !== this.frozenFocus?.team ? html`<br>${this.w('modular.group_focus_has_changed_resume_to_follow_it')}` : ''}</p>` : ''}</div>
       ${this.config.layout === 'tabs' ? html`<nav part="tabs" aria-label=${this.w('modular.modules')}>${modules.map(module => html`<button aria-pressed=${String(active === module.id)} aria-controls=${`module-${module.id}`} @click=${() => { this.tab = module.id; }}>${module.title || models.get(module.id).title}</button>`)}</nav>` : ''}
-      ${nodes.length ? html`<div class="modules" part="modules" data-layout=${this.config.layout} style=${`--_f1-max-columns:${this.config.columns}`}>${nodes}</div>` : this.emptyCard()}
+      ${nodes.length ? html`<div class="modules" part="modules" data-layout=${this.config.layout} style=${`--_f1-max-columns:${this.config.columns}`}>${content}</div>` : this.emptyCard()}
       ${configWarnings(this.config).length ? html`<p class="muted">${this.w('modular.some_settings_need_a_newer_card_version_they_are_preserved_in_the_editor')}</p>` : ''}
     </ha-card>`;
   }

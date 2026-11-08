@@ -1943,5 +1943,19 @@
   "modular.timing_part_gap": "{part} gap",
   "modular.timing_investigation_after_session": "Investigation after the session",
   "modular.session_rain_risk": "Session rain risk",
-  "modular.rain_risk_details": "Race Control assessment for this session, separate from the weather forecast and rain detection."
+  "modular.rain_risk_details": "Race Control assessment for this session, separate from the weather forecast and rain detection.",
+  "modular.independent_stacks": "Independent stacks",
+  "modular.stack_number": "Stack {number}",
+  "modular.move_to_stack": "Move to stack",
+  "modular.new_stack": "New stack",
+  "modular.stack_width": "Stack width",
+  "modular.move_stack": "Move {stack}",
+  "modular.resize_stack": "Resize {stack}",
+  "modular.stack_drop_here": "Drop a module here",
+  "modular.stacks_arrangement_help": "Drag modules between stacks or reorder them inside a stack. Drag a stack handle to move the whole stack. Modules within each stack follow their content height.",
+  "modular.stacks_overview_help": "Each outlined group is an independent stack. Group outlines and drop areas appear only in this editor.",
+  "modular.stacks_drop_position": "Drop at position {position} in {stack}",
+  "modular.stack_position": "Stack position {position} of {length}",
+  "modular.empty_stack": "Empty stack",
+  "modular.stacks_layout_help": "Arrange modules in independent stacks inside this card. Each stack has its own width; its modules follow one another at their natural height. Fewer columns are used when the card is narrow."
 }

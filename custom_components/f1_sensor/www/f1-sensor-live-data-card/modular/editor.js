@@ -514,7 +514,7 @@ export class F1SensorCardEditor extends LitElement {
       <button @click=${() => this.setModule('options', Object.fromEntries(Object.entries(module.options).filter(([key]) => !Object.hasOwn(definition?.options ?? {}, key))))}>${this.w('modular.reset_module_options')}</button></details>
       ${this.visibilitySettings(module)}
       <div class="buttons"><button @click=${() => this.updateConfig(config => configAPI.duplicateModule(config, module.id))}>${this.w('modular.duplicate_module')}</button>
-      <button @click=${() => { const index = this.config.modules.findIndex(item => item.id === module.id); this.updateConfig(config => { config.modules = config.modules.filter(item => item.id !== module.id); return config; }); this.selected = this.config.modules[Math.min(index, this.config.modules.length - 1)]?.id ?? ''; }}>${this.w('modular.remove_module')}</button></div>
+      <button @click=${() => { const index = this.config.modules.findIndex(item => item.id === module.id); this.updateConfig(config => configAPI.removeModule(config, module.id)); this.selected = this.config.modules[Math.min(index, this.config.modules.length - 1)]?.id ?? ''; }}>${this.w('modular.remove_module')}</button></div>
     </section>`;
   }
   optionName(value) {
@@ -605,10 +605,10 @@ export class F1SensorCardEditor extends LitElement {
           ${this.input(this.w('modular.card_title'), this.config.title, value => this.updateConfig(config => ({ ...config, title: value })))}
           ${this.entries.length > 1 || this.config.f1_entry_id ? this.select(this.w('modular.f1_sensor_installation'), this.config.f1_entry_id, [['', this.w('modular.automatic_one_installation')], ...this.entries.map(entry => [entry.entry_id, entry.title])], value => this.updateConfig(config => ({ ...config, f1_entry_id: value }))) : ''}
           <details><summary>${this.w('modular.layout_and_shared_focus')}</summary>
-          ${this.select(this.w('modular.layout'), this.config.layout, [['stack', this.w('modular.stacked_modules')], ['tabs', this.w('modular.tabs')], ['columns', this.w('modular.columns')]], value => this.updateConfig(config => ({ ...config, layout: value })))}
-          ${this.config.layout === 'columns' ? html`
+          ${this.select(this.w('modular.layout'), this.config.layout, [['stack', this.w('modular.stacked_modules')], ['tabs', this.w('modular.tabs')], ['columns', this.w('modular.columns')], ['stacks', this.w('modular.independent_stacks')]], value => this.updateConfig(config => ({ ...config, layout: value })))}
+          ${['columns', 'stacks'].includes(this.config.layout) ? html`
             ${this.select(this.w('modular.maximum_columns'), String(this.config.columns), [2, 3, 4].map(count => [String(count), String(count)]), value => this.updateConfig(config => ({ ...config, columns: Number(value) })))}
-            <p class="muted">${this.w('modular.modules_flow_in_list_order_left_to_right_then_onto_the_next_row_fewer')}</p>
+            <p class="muted">${this.w(this.config.layout === 'stacks' ? 'modular.stacks_layout_help' : 'modular.modules_flow_in_list_order_left_to_right_then_onto_the_next_row_fewer')}</p>
             <p class="muted">${this.w('modular.for_a_wide_card_in_home_assistant_sections_increase_the_section_width_and_enable')}</p>
           ` : ''}
           ${this.focusPicker('driver', this.w('modular.default_driver'), this.config.context.driver, value => this.setGroup('context', 'driver', value))}
