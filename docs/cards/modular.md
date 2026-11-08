@@ -62,6 +62,32 @@ Data availability depends on the source and session. Adding a module does not cr
 
 Use the focused module guides below for options, examples, waiting states and data interpretation. Shared card settings have their own [configuration reference](/cards/shared-options).
 
+### Hide session details and explanations
+
+Select a module and open **Module options**. Turn off **Show session and event details** to hide the session or event line above its content. Each module has its own setting, so you can show the session once and hide repeated lines in the other modules.
+
+Turn off **Show explanations** to hide help text below timing tables and charts. Analysis modules that already have **Show About section** keep that setting for their explanations. Separate content legends, such as the tyre compound legend, keep their own controls. Data availability and connection messages remain visible.
+
+For **Track map**, turn off **Show experimental notice** to hide the experimental track-markings text, and **Show driver positions and status** to hide the expandable driver list. These choices keep the selected track markings and car markers on the map. **Show map status summary** controls the map's own session and status row; lap progress, track status, driver count and the source footer have separate choices.
+
+All these options are on by default. In YAML, place them under the module's `options`:
+
+```yaml
+type: custom:f1-sensor-card
+modules:
+  - id: compact-timing
+    type: timing
+    options:
+      show_context: false
+      show_explanation: false
+  - id: track-map
+    type: map
+    options:
+      show_context: false
+      show_experimental_notice: false
+      show_driver_list: false
+```
+
 ### Choose a minimal Timing view
 
 In **Timing → Module appearance**, set **Module presentation** to **Compact** for colored timing text, smaller tyre marks and lighter table decoration. Choose **Follow card** to use **Card presentation** from **Appearance**. The same card setting supports every module, including results, schedules, analysis, charts and maps. Existing cards keep their current presentation and columns.

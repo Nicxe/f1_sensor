@@ -686,7 +686,7 @@ export class F1SensorCard extends LitElement {
     model.traceMarkerContext = markerSource?.contextKey ?? null;
     model.title = this.w('modular.race_trace_title');
     model.traceContext = key; model.traceSourceContext = selected.contextKey;
-    model.notice = model.status === 'ready' ? null : this.w('modular.race_trace_notice');
+    model.notice = model.status === 'ready' || module.options.show_explanation === false ? null : this.w('modular.race_trace_notice');
     model.context = { reference: model.series.find(series => series.isReference)?.name ?? module.options.reference_driver,
       anchor: model.anchorLap, updated: selected.updatedAt ?? null, updatedKind: 'received' };
     if (model.status !== 'ready') model.blocked = this.w(`modular.race_trace_${model.reason}`);
@@ -775,7 +775,7 @@ export class F1SensorCard extends LitElement {
         Object.assign(model, season.standingsModel(viewHass, viewEntry, effective, focus));
         if (effective.options.show_mode_badge !== false) model.badge = this.w('modular.published_standings');
         if (model.projection.requested) {
-          if (model.projection.available) model.notice = this.w('modular.projected_columns_follow_the_current_session_published_positions_and_points_stay_separate');
+          if (model.projection.available) model.notice = effective.options.show_explanation === false ? null : this.w('modular.projected_columns_follow_the_current_session_published_positions_and_points_stay_separate');
           else {
             const auth = data.source(viewHass, viewEntry, 'f1tv_token_status');
             const authNeedsAttention = auth.status === 'available' && ['expired', 'invalid', 'rejected', 'refresh_failed'].includes(String(auth.state).toLowerCase());
@@ -791,7 +791,7 @@ export class F1SensorCard extends LitElement {
         Object.assign(model, season.archiveModel(effective, entry?.entry_id, query => this.modelPreview ? this.modelPreview.history?.(query) ?? { status: 'ready', data: { payload: null } } : this.history.read(query), this.modelPreview?.now ?? Date.now()));
         const archiveLabel = this.w('modular.historical_data');
         model.badge = effective.options.show_session_type_badge !== false && model.session?.name ? `${archiveLabel} · ${model.session.name}` : archiveLabel;
-        model.notice = effective.options.content === 'lap_position'
+        model.notice = effective.options.show_explanation === false ? null : effective.options.content === 'lap_position'
           ? this.w('modular.positions_are_recorded_when_each_driver_completes_a_lap_they_are_not_simultaneous_track')
           : effective.options.content === 'lap_time' ? this.w('modular.published_race_laps_may_include_pit_laps_and_neutralisations_sector_times_telemetry_and_clean') : null;
       }
@@ -827,7 +827,7 @@ export class F1SensorCard extends LitElement {
         Object.assign(model, data.lapChartModel(viewHass, viewEntry, effective, focus));
         model.title = module.options.metric === 'lap_change' ? this.w('modular.lap_changes') : this.w('modular.recorded_lap_times');
         if (model.invalidRange) model.blocked = this.w('modular.the_first_lap_is_after_the_last_lap_adjust_the_lap_range_in_the');
-        model.notice = module.options.metric === 'lap_change'
+        model.notice = effective.options.show_explanation === false ? null : module.options.metric === 'lap_change'
           ? this.w('modular.each_change_compares_the_same_driver_with_their_preceding_lap_negative_values_mean_a')
           : this.w('modular.recorded_laps_may_include_pit_laps_neutralisations_and_different_qualifying_parts_this_view_does');
       }
@@ -870,7 +870,7 @@ export class F1SensorCard extends LitElement {
           else model.blocked = this.w('modular.analysis_connection_interrupted_your_settings_are_kept');
         }
         if (model.blocked && module.unavailable === 'hide' && !this.modelPreview) model.hidden = true;
-        if (module.fields.includes('analysis_quality')) model.notice = [model.notice, this.w('modular.evidence_score_measures_support_not_probability')].filter(Boolean).join(' ');
+        if (effective.options.show_explanation !== false && module.fields.includes('analysis_quality')) model.notice = [model.notice, this.w('modular.evidence_score_measures_support_not_probability')].filter(Boolean).join(' ');
         if (module.type === 'timeline' && module.options.event_focus) {
           const source = this.eventFocusSource();
           model.eventFocusReadonly = Boolean(this.frozen || this.preview || this.modelPreview);
@@ -897,7 +897,7 @@ export class F1SensorCard extends LitElement {
         Object.assign(model, sessionData.tyresModel(viewHass, viewEntry, effective, focus));
         if (model.history) model.selectionGeneration = this.tyreHistoryGeneration();
         if (model.waiting) model.notice = this.w('modular.waiting_for_compound_information_from_timingappdata_lap_counts_alone_do_not_identify_a_tyre');
-        if (model.statistics && !model.waiting) model.notice = this.w('modular.recorded_laps_across_all_drivers_and_stints_differences_include_fuel_track_conditions_and_traffic');
+        if (effective.options.show_explanation !== false && model.statistics && !model.waiting) model.notice = this.w('modular.recorded_laps_across_all_drivers_and_stints_differences_include_fuel_track_conditions_and_traffic');
       }
       if (module.type === 'pit_stops') {
         Object.assign(model, sessionData.pitStopsModel(viewHass, viewEntry, effective, focus));
@@ -915,7 +915,7 @@ export class F1SensorCard extends LitElement {
             : this.w('modular.no_pit_records_received');
         }
         if (model.laneOnly) notices.push(this.w('modular.pit_lane_without_stationary'));
-        if (model.rows.length && module.fields.includes('pit_delta')) notices.push(this.w('modular.estimated_lap_loss_the_longer_of_the_in_out_laps_minus_the_median_reference'));
+        if (effective.options.show_explanation !== false && model.rows.length && module.fields.includes('pit_delta')) notices.push(this.w('modular.estimated_lap_loss_the_longer_of_the_in_out_laps_minus_the_median_reference'));
         model.notice = notices.join(' ');
       }
       if (module.type === 'team_radio') {
@@ -925,7 +925,7 @@ export class F1SensorCard extends LitElement {
       }
       if (module.type === 'incidents') {
         Object.assign(model, sessionData.incidentsModel(viewHass, viewEntry, effective, focus));
-        if (model.summary) model.notice = this.w('modular.only_drivers_with_recorded_track_limit_data_are_listed_a_missing_driver_is_not');
+        if (effective.options.show_explanation !== false && model.summary) model.notice = this.w('modular.only_drivers_with_recorded_track_limit_data_are_listed_a_missing_driver_is_not');
       }
       if (module.type === 'timing') {
         const minisectors = minisectorData.usesMinisectors(module, this.moduleNodes.get(module.id)?.timingExpanded?.length > 0) ? this.minisectorState(effective) : null;

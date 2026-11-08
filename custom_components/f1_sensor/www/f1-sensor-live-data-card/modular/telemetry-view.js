@@ -78,7 +78,7 @@ export class F1TelemetryView extends LitElement {
     const model = this.model, disabled = Boolean(model.readonly || !model.replay.loaded || model.loading || model.error || model.disconnected || model.selectionChanged);
     const driver = model.drivers.find(driver => driver.id === this.draftDriver), lap = driver?.laps.includes(Number(this.draftLap)) ? this.draftLap : String(driver?.laps[0] ?? '');
     const candidate = driver && lap ? `${driver.id}:${lap}` : '';
-    return html`<p><strong>${model.replay.selectedSession ?? this.w('modular.replay_session')}</strong></p>
+    return html`${this.module.options.show_context !== false ? html`<p><strong>${model.replay.selectedSession ?? this.w('modular.replay_session')}</strong></p>` : ''}
       ${!model.replay.loaded ? html`<p class="empty">${this.w('modular.load_a_replay_to_choose_recorded_laps_the_replay_status_and_player_entities_must')}</p>` : ''}
       ${model.selectionChanged ? html`<p class="empty">${this.w('modular.saved_laps_belong_to_another_replay_clear_them_before_choosing_laps_from_this_session')}</p><button ?disabled=${model.readonly} @click=${() => this.select([])}>${this.w('modular.clear_saved_laps')}</button>` : ''}
       ${model.loading ? html`<p role="status">${this.w('modular.reading_recorded_lap_list')}</p>` : model.error || model.disconnected ? html`<p class="empty">${this.w('modular.the_lap_list_is_unavailable_check_the_replay_and_f1_sensor_version')}</p>${!model.disconnected ? html`<button ?disabled=${model.readonly} @click=${() => this.send('retry')}>${this.w('modular.retry_lap_list')}</button>` : ''}` : ''}
@@ -112,7 +112,7 @@ export class F1TelemetryView extends LitElement {
     if (!this.model || !this.module) return html``;
     const model = this.model, channels = model.fields.map(id => id.replace(/^telemetry_/, '')).filter(id => CHANNELS[id]);
     const presentation = model.options.presentation, tab = model.series.find(item => item.id === this.table) ?? model.series[0];
-    return html`<p class="muted">${this.w('modular.telemetry_complete_recording_scope')}</p><details ?open=${!model.compared || this.pickerOnly}><summary>${this.w('modular.selected_laps')} · ${model.selected.length}</summary>${this.picker()}</details>${this.pickerOnly ? '' : html`
+    return html`${this.module.options.show_explanation !== false ? html`<p class="muted">${this.w('modular.telemetry_complete_recording_scope')}</p>` : ''}<details ?open=${!model.compared || this.pickerOnly}><summary>${this.w('modular.selected_laps')} · ${model.selected.length}</summary>${this.picker()}</details>${this.pickerOnly ? '' : html`
       <div class="controls"><button ?disabled=${!model.canCompare || model.readonly || model.comparing} @click=${() => this.send('compare')}>${this.w('modular.compare_selected_laps')}</button>${model.comparing ? html`<span role="status">${this.w('modular.fetching_selected_telemetry')}</span>` : ''}</div>
       ${model.compareError || model.compareDisconnected ? html`<p role="alert">${this.w('modular.the_comparison_could_not_be_loaded_for_this_session_check_the_replay_and_try')}</p>` : ''}
       ${model.compared ? html`${model.options.show_explanation !== false ? html`<details><summary>${this.w('modular.about_the_telemetry')}</summary><p class="muted">${this.w('modular.telemetry_observed_window_explanation')}</p>

@@ -1957,5 +1957,13 @@
   "modular.stacks_drop_position": "Drop at position {position} in {stack}",
   "modular.stack_position": "Stack position {position} of {length}",
   "modular.empty_stack": "Empty stack",
-  "modular.stacks_layout_help": "Arrange modules in independent stacks inside this card. Each stack has its own width; its modules follow one another at their natural height. Fewer columns are used when the card is narrow."
+  "modular.stacks_layout_help": "Arrange modules in independent stacks inside this card. Each stack has its own width; its modules follow one another at their natural height. Fewer columns are used when the card is narrow.",
+  "modular.show_session_and_event_details": "Show session and event details",
+  "modular.show_explanations": "Show explanations",
+  "modular.show_map_status_summary": "Show map status summary",
+  "modular.show_experimental_notice": "Show experimental notice",
+  "modular.show_driver_positions_and_status": "Show driver positions and status",
+  "modular.map_description_with_labels": "Labels identify each driver. A dashed outline indicates a stale position.",
+  "modular.map_description_without_labels": "Driver labels are hidden. A dashed outline indicates a stale position.",
+  "modular.map_description_driver_list": "Use the driver list below for position details and status."
 }

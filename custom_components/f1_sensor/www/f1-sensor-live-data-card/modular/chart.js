@@ -184,7 +184,7 @@ export class F1SeriesChart extends LitElement {
     return html`<label class="trace-inspector"><span>${this.w('modular.race_trace_inspect_lap')}</span><input type="range" min="0" max=${rounds.length - 1} step="1" .value=${String(index)} aria-valuetext=${description} aria-describedby="trace-help"
       @focus=${() => { if (this.inspectedLap === null) this.inspectedLap = rounds[index].id; }}
       @input=${event => { this.inspectedLap = rounds[Number(event.target.value)].id; }}
-      @keydown=${event => { if (event.key === 'Escape') { this.inspectedLap = null; event.stopPropagation(); } }}></label><p class="trace-help" id="trace-help">${this.w('modular.race_trace_keyboard_help')}</p>${this.traceDetails(series, rounds, markers)}`;
+      @keydown=${event => { if (event.key === 'Escape') { this.inspectedLap = null; event.stopPropagation(); } }}></label><p class=${this.module.options.show_explanation === false ? 'sr' : 'trace-help'} id="trace-help">${this.w('modular.race_trace_keyboard_help')}</p>${this.traceDetails(series, rounds, markers)}`;
   }
   w(source, replacements = {}) { return words(this.settings?.language, source, replacements); }
   traceValue(value) {
@@ -268,6 +268,7 @@ export class F1SeriesChart extends LitElement {
     const series = this.isTrace ? (this.model.series ?? []).map(item => ({ ...item, values: item.values.map(point => ({ ...point, value: this.pointValue(point) })) })) : this.model.series ?? [];
     if (!series.length || !rounds.length || !series.some(item => item.values.some(point => point.value !== null))) return html`<p class="empty">${this.w('modular.no_chart_data_matches_this_selection')}</p>`;
     const showTable = presentation !== 'chart' || this.tableOpen;
+    const showExplanation = this.module.options.show_explanation !== false;
     const showLegend = presentation !== 'table' && this.module.options.show_legend !== false;
     const filterable = this.module.type === 'progression' && showLegend;
     const activeSeries = filterable ? series.filter(item => !this.isSeriesHidden(item)) : series;
@@ -278,9 +279,9 @@ export class F1SeriesChart extends LitElement {
     })}</ul>` : '';
     const markers = this.markerData(series);
     const reference = series.find(item => item.id === this.model.referenceDriver);
-    return html`${this.isTrace ? html`<div class="trace-scope"><span>${this.w('modular.race_trace_reference', { driver: reference ? `${reference.name} · ${reference.id}` : this.model.referenceDriver })}</span><span>${this.w('modular.race_trace_anchor', { lap: this.model.anchorLap })}</span></div><p class="trace-help">${this.w('modular.race_trace_notice')}</p><p class="trace-help">${this.w('modular.race_trace_signs')}</p>` : ''}<div class="chart-tools"><strong>${this.metric}</strong><p class="muted">${this.w(this.isTrace ? 'modular.race_trace_gaps' : 'modular.gaps_mean_data_is_missing')}</p></div>
+    return html`${this.isTrace ? html`<div class="trace-scope"><span>${this.w('modular.race_trace_reference', { driver: reference ? `${reference.name} · ${reference.id}` : this.model.referenceDriver })}</span><span>${this.w('modular.race_trace_anchor', { lap: this.model.anchorLap })}</span></div>${showExplanation ? html`<p class="trace-help">${this.w('modular.race_trace_notice')}</p><p class="trace-help">${this.w('modular.race_trace_signs')}</p>` : ''}` : ''}<div class="chart-tools"><strong>${this.metric}</strong>${showExplanation ? html`<p class="muted">${this.w(this.isTrace ? 'modular.race_trace_gaps' : 'modular.gaps_mean_data_is_missing')}</p>` : ''}</div>
       ${presentation !== 'table' ? html`<div class="chart-layout" data-legend=${showLegend ? legendPosition : 'none'}><div class="chart-canvas">${activeSeries.length ? this.plot(activeSeries, rounds) : html`<p class="filter-empty muted" role="status">${this.w('modular.all_series_are_hidden_select_a_driver_or_team_in_the_legend_to_show')}</p>`}</div>${legend}</div>` : ''}
-      ${markers ? html`<p class="trace-help">${this.w('modular.race_trace_markers_help')}</p>${markers.message ? html`<p class="trace-help event-status" role="status">${this.w(`modular.race_trace_${markers.message}`)}</p>` : ''}${presentation !== 'table' ? this.eventTrack(rounds, markers) : ''}` : ''}
+      ${markers ? html`${showExplanation ? html`<p class="trace-help">${this.w('modular.race_trace_markers_help')}</p>` : ''}${markers.message ? html`<p class="trace-help event-status" role="status">${this.w(`modular.race_trace_${markers.message}`)}</p>` : ''}${presentation !== 'table' ? this.eventTrack(rounds, markers) : ''}` : ''}
       ${this.isTrace && presentation !== 'table' ? this.traceInspector(series, rounds, markers) : ''}
       ${presentation === 'chart' ? html`<button aria-expanded=${String(showTable)} aria-controls="progression-data" @click=${() => { this.tableOpen = !this.tableOpen; }}>${showTable ? this.w('modular.hide_data_table') : this.w('modular.show_data_table')}</button>` : ''}
       <div id="progression-data" ?hidden=${!showTable}>${showTable ? this.table(activeSeries, rounds, markers) : ''}</div>

@@ -711,6 +711,7 @@ export class F1ModuleView extends LitElement {
       ${this.model.countTotal > this.module.options.rows ? html`<button data-focus="pit-count-expand" @click=${() => this.choose('rows', 500)}>${this.w('modular.show_all')}</button>` : ''}</div>`;
   }
   strategyEvidence() {
+    if (this.module.options.show_explanation === false) return '';
     const rows = this.model.rows ?? [], content = this.module.options.content;
     if (!rows.length || content === 'pit_outcomes') return '';
     return html`<details class="strategy-evidence"><summary>${this.w('modular.strategy_method_and_supporting_laps')}</summary>
@@ -745,7 +746,7 @@ export class F1ModuleView extends LitElement {
     const valid = rows.filter(row => Number.isInteger(row.stint_first_lap) && Number.isInteger(row.stint_last_lap) && row.stint_first_lap > 0 && row.stint_last_lap >= row.stint_first_lap);
     const first = Math.min(...valid.map(row => row.stint_first_lap)), last = Math.max(...valid.map(row => row.stint_last_lap)), extent = last - first + 1;
     const showTable = presentation === 'both' || this.stintTable;
-    return html`${this.strategyEvidence()}<div class="stint-chart"><p class="muted">${this.w('modular.bars_span_the_first_to_last_observed_lap_missing_laps_can_exist_inside_a')}</p>
+    return html`${this.strategyEvidence()}<div class="stint-chart">${this.module.options.show_explanation !== false ? html`<p class="muted">${this.w('modular.bars_span_the_first_to_last_observed_lap_missing_laps_can_exist_inside_a')}</p>` : ''}
       <ol class="stint-bars" tabindex="0" aria-label=${this.w('modular.recorded_stint_ranges_and_coverage')}>${repeat(rows, row => row.id, row => {
         const drawable = valid.includes(row), compound = compoundMeta(row.tyre);
         const left = drawable ? (row.stint_first_lap - first) / extent * 100 : 0, width = drawable ? (row.stint_last_lap - row.stint_first_lap + 1) / extent * 100 : 0;
@@ -773,7 +774,7 @@ export class F1ModuleView extends LitElement {
     const newTab = this.module.options.open_new_tab;
     return html`<p class="document-summary">
       ${this.module.options.show_fia_logo ? html`<strong class="chip">FIA</strong>` : ''}
-      ${this.module.options.show_race_context && context ? html`<span>${context}</span>` : ''}
+      ${this.module.options.show_context !== false && this.module.options.show_race_context && context ? html`<span>${context}</span>` : ''}
       ${this.module.options.show_latest_badge ? html`<span class="chip">${this.w('modular.latest_first')}</span>` : ''}
       ${this.module.options.show_count ? html`<span>${this.model.total} ${this.w(this.model.total === 1 ? 'document' : 'documents')}</span>` : ''}
     </p><div class="documents-scroll" style=${!latest && this.module.options.list_max_height ? `max-height:${this.module.options.list_max_height}px;overflow:auto` : ''}><ol class="documents">${repeat(rows, row => row.id, row => html`<li class=${this.module.options.document_coloring ? `tone-${documentTone(row.document_title)}` : ''}>
@@ -845,7 +846,7 @@ export class F1ModuleView extends LitElement {
     const actionSymbol = { refresh: '↻', load: '↓', play: '▶', pause: 'Ⅱ', stop: '■' };
     const actionLabel = sourceText => html`<span class=${options.show_button_labels ? '' : 'sr'}>${this.w(sourceText)}</span>`;
     const send = (action, sourceText, symbol = actionSymbol[action]) => html`<button class=${options.show_button_labels ? '' : 'icon-only'} data-focus=${`replay-${action}`} aria-label=${this.w(sourceText)} title=${this.w(sourceText)} ?disabled=${disabled || !model.allowed[action]} @click=${() => this.replayAction(action)}><span aria-hidden="true">${symbol}</span>${actionLabel(sourceText)}</button>`;
-    return html`<p><strong>${model.selectedSession ?? this.w('modular.choose_a_recorded_session')}</strong><br><span class="chip">${this.w(stateNames[model.replayState])}</span></p>
+    return html`<p>${options.show_context !== false ? html`<strong>${model.selectedSession ?? this.w('modular.choose_a_recorded_session')}</strong><br>` : ''}<span class="chip">${this.w(stateNames[model.replayState])}</span></p>
       ${showStatus ? html`<p class="muted replay-scope">${this.w('modular.controls_replay_for_scope_changes_affect_every_dashboard_and_the_integration_s_automation_data', { scope: model.scope })}</p>` : ''}
       ${(fields.includes('replay_transport') || fields.includes('replay_progress')) && model.playerStatus !== 'available' ? html`<p class="muted">${model.playerStatus === 'disabled' ? this.w('modular.enable_the_replay_player_entity_in_f1_sensor_to_use_playback_controls') : this.w('modular.playback_controls_are_unavailable_because_the_replay_player_has_no_usable_state')}</p>` : ''}
       ${model.readonly ? html`<p class="muted">${model.frozen ? this.w('modular.resume_the_view_to_use_replay_controls') : this.w('modular.replay_controls_are_disabled_in_previews')}</p>` : ''}
@@ -1160,7 +1161,7 @@ export class F1ModuleView extends LitElement {
   }
   timingLegend(fields = []) {
     const hasMinisectors = fields.some(id => /^minisector_[123]$|^sector_[123]_with_minisectors$/.test(id));
-    if (this.module.type === 'minisectors' && this.module.options.show_legend === false) return '';
+    if (this.module.options.show_explanation === false || this.module.type === 'minisectors' && this.module.options.show_legend === false) return '';
     const meanings = {
       overall: ['Fastest in the relevant session or qualifying part.', 'Snabbast i relevant session eller kvaldel.'],
       personal: ["This driver's best in the relevant comparison."],
