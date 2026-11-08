@@ -450,7 +450,7 @@ export class F1SensorCardEditor extends LitElement {
             qualifying_focus: [['all', 'modular.timing_qualifying_all'], ['current', 'modular.timing_qualifying_current'], ['q1', 'modular.timing_qualifying_q1'], ['q2', 'modular.timing_qualifying_q2'], ['q3', 'modular.timing_qualifying_q3']],
           };
           const help = {
-            presentation: 'modular.timing_presentation_help', narrow_layout: 'modular.timing_narrow_layout_help',
+            presentation: 'modular.timing_presentation_help', narrow_layout: 'modular.timing_overview_rows_help',
             gap_display: 'modular.timing_gap_display_help',
             driver_badges: 'modular.timing_driver_badges_help', dim_retired: 'modular.timing_dim_retired_help',
             tyre_age_inline: 'modular.timing_tyre_age_inline_help', qualifying_focus: 'modular.timing_qualifying_focus_help',

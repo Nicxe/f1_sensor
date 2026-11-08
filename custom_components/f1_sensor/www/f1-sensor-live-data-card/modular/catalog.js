@@ -260,7 +260,7 @@ export const MODULES = {
   timing: module('timing', 'Timing', TIMING_FIELDS.map(field => field.id), {
     profile: { type: 'enum', values: ['custom', 'auto', 'practice', 'qualifying', 'sprint_qualifying', 'sprint', 'race'], default: 'custom', label: 'Column profile' },
     presentation: { type: 'enum', values: ['current', 'minimal'], default: 'current', label: 'modular.timing_presentation' },
-    narrow_layout: { type: 'boolean', default: false, label: 'modular.timing_narrow_layout' },
+    narrow_layout: { type: 'boolean', default: false, label: 'modular.timing_overview_rows' },
     gap_display: { type: 'enum', values: ['separate', 'combined'], default: 'separate', label: 'modular.timing_gap_display' },
     gap_primary: { type: 'enum', values: ['interval', 'gap'], default: 'interval', label: 'modular.timing_gap_primary' },
     // Kept for validating and migrating saved configurations; the editor uses fields.

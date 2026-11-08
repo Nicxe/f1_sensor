@@ -47,7 +47,7 @@ The card title and outer spacing are shared by the whole card. A module's
 Compact presentation uses lighter headings, smaller identity and tyre marks,
 and quieter table and message decoration. It keeps the selected columns,
 filters, source choices and module options. The weather layout, combined
-INT/GAP values, narrow timing rows and tyre content remain separate choices.
+INT/GAP values, timing overview rows and tyre content remain separate choices.
 Touch controls keep larger targets even when the surrounding content is compact.
 Main module text stays at least 14 px and scales with larger base fonts, so a
 smaller Home Assistant font setting does not shrink the data a second time.
@@ -71,16 +71,16 @@ spacing with the current timing presentation.
 
 | Setting | Default | What it changes |
 | --- | --- | --- |
-| **Module presentation** | Follow card | Compact uses colored timing text, smaller tyre marks and lighter decoration. It keeps timing symbols or text and the meaning of each color. Existing saved Timing presentation choices remain explicit module choices. |
-| **Use overview rows on narrow cards** | Off | Shows the main values together on a narrow card. Open a driver to read the remaining selected fields. |
+| **Module presentation** | Follow card | Compact uses colored timing text, smaller tyre marks and lighter decoration. It retains your chosen columns, timing symbols or text and the meaning of each color. Existing saved Timing presentation choices remain explicit module choices. |
+| **Overview rows with expandable details** | Off | Shows the main race or qualifying values and combines GAP/INT in fewer columns at any card width. Open a driver for the remaining selected fields and recent laps. |
 | **GAP and INT columns** | Separate columns | Combined shows INT to the car ahead and GAP to the leader in one column. |
-| **Primary value in combined GAP / INT** | INT | Choose which value appears first. This is an editor setting; combined and narrow views add no GAP/INT switch to the card. |
+| **Primary value in combined GAP / INT** | INT | Choose which value appears first. This is an editor setting; combined columns and overview rows add no GAP/INT switch to the card. |
 | **Show driver status badges** | Off | Adds recorded penalty, investigation and pit or retirement status beside the driver. |
 | **Dim retired drivers** | Off | Reduces emphasis on drivers marked as retired. Pit out and stopped remain distinct statuses. |
 | **Show tyre age beside the compound** | Off | Combines the compound and its recorded tyre age in one cell. Age numbers line up beside the tyre marks. |
 | **Qualifying times to show** | All selected qualifying parts | Follow the current Q/SQ part or choose one part. Saved Q1–Q3/SQ1–SQ3 column choices remain available. |
 
-Existing saved cards keep their current presentation. The separate-column **Show live gap toggle** remains available for those layouts. Compact presentation does not remove selected columns; the narrow overview and qualifying focus are separate choices.
+Existing saved cards keep their current presentation. The separate-column **Show live gap toggle** remains available for those layouts. Compact only changes presentation and retains your chosen columns. Overview rows move secondary fields into expandable details; qualifying focus remains a separate choice.
 
 Under **Content and columns**, choose **Position** for the position alone or **Position + change** to include places gained or lost from the confirmed starting grid for the same race or sprint. Selecting either column replaces the other in the same location. **Position** remains the default. Existing saved position-change choices keep their column location. The same alternatives are available under **Driver details**.
 

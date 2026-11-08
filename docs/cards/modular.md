@@ -66,9 +66,9 @@ Use the focused module guides below for options, examples, waiting states and da
 
 In **Timing → Module appearance**, set **Module presentation** to **Compact** for colored timing text, smaller tyre marks and lighter table decoration. Choose **Follow card** to use **Card presentation** from **Appearance**. The same card setting supports every module, including results, schedules, analysis, charts and maps. Existing cards keep their current presentation and columns.
 
-Under **Module options**, turn on **Use overview rows on narrow cards** for a concise view with the remaining selected fields available when you open a driver.
+Under **Module options**, turn on **Overview rows with expandable details** to show the main race or qualifying values in fewer columns and combine GAP/INT. Open a driver for the remaining selected fields and recent laps. Overview rows apply at any card width. **Compact** only changes presentation and retains your chosen columns.
 
-Choose **Combined column** to show INT and GAP together. Set the primary value in the editor when building the layout; the combined and narrow views do not add a GAP/INT switch to the card. **Qualifying times to show** can follow the current Q/SQ part or show a chosen part while keeping your saved column choices.
+Choose **Combined column** to show INT and GAP together. Set the primary value in the editor when building the layout; combined columns and overview rows do not add a GAP/INT switch to the card. **Qualifying times to show** can follow the current Q/SQ part or show a chosen part while keeping your saved column choices.
 
 Under **Content and columns**, choose **Position** for the position alone or **Position + change** for the position and places gained or lost from the confirmed starting grid for the same session. The default is **Position**. Driver status badges, dimmed retired rows and tyre age beside the compound remain separate choices. Penalty badges follow recorded decisions; a pit visit alone does not prove that a penalty was served. See [compact Timing options](/cards/modular-styling#choose-a-minimal-timing-presentation) for the settings and defaults.
 
