@@ -121,6 +121,10 @@ class LiveProjectionModel(StreamStateMixin, ProjectionModel):
     def _schedule_stale_check(self, *args, **kwargs):
         """Freshness is evaluated by the runtime owner's single clock."""
 
+    def _snapshot_primary_input(self):
+        """Return the primary data compared before refreshing the projection."""
+        return self.coordinator.data
+
     def snapshot(self):
         reg = entry_runtime_registry(self.hass, self._entry_id)
         for attribute, key in self.context_bindings.items():
@@ -138,7 +142,7 @@ class LiveProjectionModel(StreamStateMixin, ProjectionModel):
         )
         # Race Control keeps incremental messages separately from its latest row.
         inputs["messages"] = getattr(self.coordinator, "data_list", None)
-        inputs["primary"] = self.coordinator.data
+        inputs["primary"] = self._snapshot_primary_input()
         live_state = reg.get("live_state")
         inputs["availability"] = (
             getattr(live_state, "is_live", False),
@@ -2323,6 +2327,16 @@ class DriverListModel(LiveProjectionModel):
         self._attr_native_value = None
         self._attr_extra_state_attributes = {"drivers": []}
 
+    def _snapshot_primary_input(self):
+        data = self.coordinator.data
+        drivers = data.get("drivers") if isinstance(data, dict) else None
+        if not isinstance(drivers, dict):
+            return drivers
+        return {
+            rn: info.get("identity") if isinstance(info, dict) else None
+            for rn, info in drivers.items()
+        }
+
     def refresh_data(self) -> None:
         previous = (self._attr_native_value, self._attr_extra_state_attributes)
         updated = self._update_from_coordinator()
@@ -2495,6 +2509,35 @@ class CurrentTyresModel(CoordinatorStreamProjection):
             "lap_total": None,
         }
 
+    def _snapshot_primary_input(self):
+        data = self.coordinator.data
+        if not isinstance(data, dict):
+            return None
+        drivers = data.get("drivers")
+        if not isinstance(drivers, dict):
+            return drivers
+        return (
+            data.get("lap_current"),
+            data.get("lap_total"),
+            {
+                rn: (
+                    info.get("identity"),
+                    info.get("tyres"),
+                    info.get("tyre_history"),
+                    self._snapshot_timing_input(info.get("timing")),
+                )
+                if isinstance(info, dict)
+                else None
+                for rn, info in drivers.items()
+            },
+        )
+
+    @staticmethod
+    def _snapshot_timing_input(timing):
+        if not isinstance(timing, dict):
+            return None
+        return timing.get("position"), timing.get("retired"), timing.get("in_pit")
+
     def _update_from_coordinator(self) -> bool:
         data = self.coordinator.data or {}
         if not isinstance(data, dict):
@@ -2598,6 +2641,27 @@ class TyreStatisticsModel(CoordinatorStreamProjection):
         super().__init__(coordinator, unique_id, entry_id, device_name)
         self._attr_native_value = None
         self._attr_extra_state_attributes = {}
+
+    def _snapshot_primary_input(self):
+        data = self.coordinator.data
+        if not isinstance(data, dict):
+            return None
+        tyre_stats = data.get("tyre_statistics")
+        compounds = (
+            tyre_stats.get("compounds") if isinstance(tyre_stats, dict) else None
+        )
+        if isinstance(compounds, dict) and compounds:
+            return tyre_stats
+        # Waiting attributes also depend on partial TimingAppData driver rows.
+        drivers = data.get("drivers")
+        if not isinstance(drivers, dict):
+            return tyre_stats, drivers
+        return tyre_stats, {
+            rn: (info.get("tyres"), info.get("tyre_history"))
+            if isinstance(info, dict)
+            else None
+            for rn, info in drivers.items()
+        }
 
     @staticmethod
     def _compound_from_tyre_history(info: dict) -> str | None:
@@ -2803,6 +2867,47 @@ class DriverPositionsModel(LiveProjectionModel):
         self._session_info_coordinator = None
         self._session_status_coordinator = None
 
+    def snapshot(self):
+        """Project current context once, including statuses that expire with time."""
+        self._refresh_snapshot()
+        return DataSnapshot(self.state, deepcopy(self.extra_state_attributes))
+
+    def _snapshot_for_owner(self):
+        """Give CardDataStore stable owned branches; it must copy before exposure."""
+        self._refresh_snapshot()
+        # History copies belong to this model and are replaced, never updated.
+        # Everything else is copied here so no coordinator data can mutate an
+        # envelope retained by the store or its pending persistence callback.
+        memo = {
+            id(branch): branch
+            for history in getattr(self, "_driver_history_cache", {}).values()
+            for branch in history.values()
+        }
+        return DataSnapshot(self.state, deepcopy(self.extra_state_attributes, memo))
+
+    def _refresh_snapshot(self):
+        reg = entry_runtime_registry(self.hass, self._entry_id)
+        for attribute, key in self.context_bindings.items():
+            setattr(self, attribute, reg.get(key))
+        # Unlike incremental message projections, driver rows are rebuilt from
+        # the complete coordinator state. There is no need to copy that state
+        # for change detection or project it again for each context binding.
+        self.refresh_data()
+
+    def _owned_lap_history(self, rn: str, history: dict) -> dict:
+        """Reuse protected history until its contents change, including corrections."""
+        cache = getattr(self, "_driver_history_cache", None)
+        if cache is None:
+            cache = self._driver_history_cache = {}
+        owned = cache.setdefault(rn, {})
+        for key in ("laps", "lap_metadata"):
+            incoming = history.get(key, {})
+            # Compare against an owned copy, never a mutable source reference.
+            # Replacing a branch preserves previously published attributes.
+            if key not in owned or incoming != owned[key]:
+                owned[key] = deepcopy(incoming)
+        return owned
+
     def refresh_data(self) -> None:
         prev_state = self._attr_native_value
         prev_attrs = self._attr_extra_state_attributes
@@ -2995,6 +3100,11 @@ class DriverPositionsModel(LiveProjectionModel):
         if not isinstance(data, dict):
             return False
         drivers_raw = data.get("drivers", {})
+        if not isinstance(drivers_raw, dict):
+            drivers_raw = {}
+        history_cache = getattr(self, "_driver_history_cache", {})
+        for rn in history_cache.keys() - drivers_raw.keys():
+            del history_cache[rn]
         if not drivers_raw:
             # Legacy history may remain visible after a stream stops, but it is
             # not evidence for the newly delivered session or replay position.
@@ -3031,6 +3141,9 @@ class DriverPositionsModel(LiveProjectionModel):
         for rn, info in drivers_raw.items():
             identity = info.get("identity", {})
             lap_history = info.get("lap_history", {})
+            owned_history = DriverPositionsModel._owned_lap_history(
+                self, rn, lap_history
+            )
             timing = info.get("timing", {})
             last_lap_status = timing.get("last_lap_status")
             if not isinstance(last_lap_status, dict):
@@ -3170,8 +3283,8 @@ class DriverPositionsModel(LiveProjectionModel):
                 "team_color_rgb": _hex_to_rgb(team_color),
                 "grid_position": lap_history.get("grid_position"),
                 "current_position": _extract_driver_position(info),
-                "laps": lap_history.get("laps", {}),
-                "lap_metadata": deepcopy(lap_history.get("lap_metadata", {})),
+                "laps": owned_history["laps"],
+                "lap_metadata": owned_history["lap_metadata"],
                 "completed_laps": lap_history.get(
                     "completed_laps", lap_history.get("last_recorded_lap", 0)
                 ),
@@ -3358,6 +3471,7 @@ class DriverPositionsModel(LiveProjectionModel):
         )
 
     def _clear_state(self) -> None:
+        getattr(self, "_driver_history_cache", {}).clear()
         self._attr_native_value = None
         self._attr_extra_state_attributes = {
             "drivers": [],

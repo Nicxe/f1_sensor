@@ -126,7 +126,8 @@ async def test_return_to_live_clears_replay_analysis_for_same_session(
 @pytest.mark.asyncio
 @pytest.mark.parametrize("delay", [0, 30])
 @pytest.mark.parametrize(
-    "action", ["pause", "resume", "stop", "stop_pending", "natural"]
+    "action",
+    ["pause", "resume", "stop", "stop_pending", "stop_blocked", "seek", "natural"],
 )
 async def test_existing_websocket_receives_replay_control_without_timing_frames(
     hass,
@@ -139,8 +140,9 @@ async def test_existing_websocket_receives_replay_control_without_timing_frames(
     action,
 ):
     """A retained HA socket must receive control/reset updates after entry reload."""
-    pending_frame = action == "stop_pending"
-    if pending_frame:
+    blocked_transition = action in {"stop_blocked", "seek"}
+    pending_frame = action in {"stop_pending", "stop_blocked", "seek"}
+    if action in {"stop_pending", "stop_blocked"}:
         action = "stop"
     aioclient_mock.get(
         re.compile(r"https://.*"),
@@ -223,7 +225,7 @@ async def test_existing_websocket_receives_replay_control_without_timing_frames(
         await controller.async_play()
         if action != "pause":
             await controller.async_pause()
-        if action == "stop":
+        if action in {"stop", "seek"}:
             await controller.async_seek_to_ms(10_000)
         listener_count = len(controller.session_manager._listeners)
         initial = await subscribe(2)
@@ -241,7 +243,59 @@ async def test_existing_websocket_receives_replay_control_without_timing_frames(
             # timer is waiting to incidentally publish the new state.
             await asyncio.sleep(0.11)
 
-        if action == "natural":
+        if blocked_transition:
+            bus = entry.runtime_data.live.bus
+            original_close = bus.async_close
+            closing = asyncio.Event()
+            release_close = asyncio.Event()
+
+            async def blocked_close():
+                closing.set()
+                await release_close.wait()
+                await original_close()
+
+            with monkeypatch.context() as patch:
+                patch.setattr(bus, "async_close", blocked_close)
+                if action == "seek":
+                    assert initial["replay"]["position_ms"] == 1_001
+                    transition = controller.async_seek_to_ms(0)
+                    blocked_state = ReplayState.SEEKING
+                else:
+                    transition = controller.async_stop()
+                    blocked_state = ReplayState.IDLE
+                task = asyncio.create_task(transition)
+                try:
+                    await asyncio.wait_for(closing.wait(), 1)
+                    assert controller.state is blocked_state
+                    assert controller.replay_active is (action == "seek")
+                    while True:
+                        message = await asyncio.wait_for(client.receive_json(), 1)
+                        assert message["id"] == 2 and message["type"] == "event"
+                        during = message["event"]
+                        if during["replay"]["state"] == blocked_state.value:
+                            break
+                    assert during["session_id"] == "B:Practice 1"
+                    assert during["provider"] == "replay"
+                    assert during["timing"]
+                    if action == "seek":
+                        assert during["replay"]["position_ms"] is None
+                    await client.send_json(
+                        {
+                            "id": 4,
+                            "type": "f1_sensor/analysis/get",
+                            "entry_id": entry.entry_id,
+                        }
+                    )
+                    response = await asyncio.wait_for(client.receive_json(), 1)
+                    assert response["id"] == 4 and response["success"]
+                    assert response["result"]["provider"] == "replay"
+                    assert response["result"]["session_id"] == "B:Practice 1"
+                    if action == "seek":
+                        assert response["result"]["replay"]["position_ms"] is None
+                finally:
+                    release_close.set()
+                    await task
+        elif action == "natural":
             # Advance only the actual transport's playback clock. The real disk
             # reader then delivers its final Heartbeat and reaches natural EOF.
             monkeypatch.setattr(
@@ -252,7 +306,9 @@ async def test_existing_websocket_receives_replay_control_without_timing_frames(
         else:
             await getattr(controller, f"async_{action}")()
 
-        expected_state = {"pause": "paused", "resume": "playing"}.get(action, "idle")
+        expected_state = {"pause": "paused", "resume": "playing", "seek": "paused"}.get(
+            action, "idle"
+        )
 
         async def receive_control_update():
             while True:
@@ -276,6 +332,9 @@ async def test_existing_websocket_receives_replay_control_without_timing_frames(
         else:
             assert update["session_id"] == "B:Practice 1"
             assert update["replay"]["paused"] is (expected_state == "paused")
+            if action == "seek":
+                assert update["provider"] == "replay"
+                assert update["replay"]["position_ms"] == 0
         assert retired_hub_listeners.isdisjoint(retired_manager._listeners)
         # A pending pre-Stop snapshot must never reappear after the clear.
         try:
@@ -290,11 +349,10 @@ async def test_existing_websocket_receives_replay_control_without_timing_frames(
         except TimeoutError:
             pass
         await client.send_json(
-            {"id": 3, "type": "unsubscribe_events", "subscription": 2}
+            {"id": 5, "type": "unsubscribe_events", "subscription": 2}
         )
         acknowledgment = await client.receive_json()
-        assert acknowledgment["id"] == 3 and acknowledgment["success"]
-        await hass.async_block_till_done()
+        assert acknowledgment["id"] == 5 and acknowledgment["success"]
         assert len(controller.session_manager._listeners) == listener_count
     finally:
         await client.close()

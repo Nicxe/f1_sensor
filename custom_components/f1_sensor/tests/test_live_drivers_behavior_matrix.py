@@ -86,6 +86,34 @@ async def test_driver_identity_merge_fastest_link_and_subscription_cleanup(
     assert all(remover.called for remover in bus.removers)
 
 
+async def test_driver_race_info_keeps_bootstrap_and_pit_fallback_without_reprocessing_gaps(
+    hass, monkeypatch
+) -> None:
+    coordinator = LiveDriversCoordinator(hass, SimpleNamespace(data={}))
+    publish = Mock()
+    monkeypatch.setattr(coordinator, "_schedule_deliver", publish)
+    coordinator._on_driver_race_info({"1": {"GapToLeader": "+1.0"}})
+    assert "1" in coordinator._state["drivers"]
+    publish.assert_not_called()
+
+    class KnownDriver(dict):
+        def setdefault(self, *args, **kwargs):
+            raise AssertionError(
+                "An unrelated delta must leave known driver state alone"
+            )
+
+    row = coordinator._state["drivers"]["1"]
+    coordinator._state["drivers"]["1"] = KnownDriver(row)
+    coordinator._on_driver_race_info({"1": {"GapToLeader": "+2.0"}})
+    publish.assert_not_called()
+
+    coordinator._state["drivers"]["1"] = row
+    coordinator._on_driver_race_info({"1": {"PitStops": 2}, "2": {"Position": 3}})
+    assert row["timing"]["pit_stops"] == 2
+    assert coordinator._state["drivers"]["2"]["lap_history"]["grid_position"] == "3"
+    publish.assert_called_once()
+
+
 async def test_live_driver_parsers_history_fastest_and_live_reset(
     hass, monkeypatch
 ) -> None:

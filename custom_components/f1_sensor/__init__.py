@@ -82,6 +82,9 @@ from .const import (
     DEFAULT_LIVE_DELAY_REFERENCE,
     DEFAULT_OPERATION_MODE,
     DEFAULT_REPLAY_START_REFERENCE,
+    DELAY_DRAIN_MAX_ITEMS,
+    DELAY_DRAIN_MAX_SECONDS,
+    DELAY_DRAIN_YIELD_SECONDS,
     DOMAIN,
     DRIVER_STANDINGS_URL,
     FIA_DOCS_FETCH_TIMEOUT,
@@ -958,6 +961,7 @@ def _init_delayed_ingest_state(instance: Any) -> None:
     instance._delay_queue_generation = 0
     instance._delay_queue_dropped = 0
     instance._delay_queue_last_drop_log = 0.0
+    instance._delay_queue_resume_at = 0.0
 
 
 def _clear_delayed_ingest_state(instance: Any) -> None:
@@ -971,6 +975,7 @@ def _clear_delayed_ingest_state(instance: Any) -> None:
         queue.clear()
     instance._delay_queue_dropped = 0
     instance._delay_queue_last_drop_log = 0.0
+    instance._delay_queue_resume_at = 0.0
 
 
 def _close_delayed_ingest_state(instance: Any) -> None:
@@ -989,9 +994,10 @@ def _arm_delayed_ingest_queue(instance: Any) -> None:
         if bool(getattr(instance, "_replay_mode", False))
         else max(0, int(getattr(instance, "_delay", 0) or 0))
     )
-    wait = 0.0
+    now_mono = time.monotonic()
+    wait = max(0.0, getattr(instance, "_delay_queue_resume_at", 0.0) - now_mono)
     if delay > 0:
-        wait = max(0.0, queue[0][0] + delay - time.monotonic())
+        wait = max(wait, queue[0][0] + delay - now_mono)
     instance._delay_queue_handle = _schedule_deliver_handle(
         instance.hass.loop,
         getattr(instance, "_delay_queue_handle", None),
@@ -1007,6 +1013,9 @@ def _drain_delayed_ingest_queue(instance: Any) -> None:
     queue = getattr(instance, "_delay_queue", None)
     if not isinstance(queue, deque):
         return
+    generation = int(getattr(instance, "_delay_queue_generation", 0) or 0)
+    deadline = time.monotonic() + DELAY_DRAIN_MAX_SECONDS
+    processed = 0
     while queue:
         delay = (
             0
@@ -1022,6 +1031,15 @@ def _drain_delayed_ingest_queue(instance: Any) -> None:
             callback()
         except Exception:  # noqa: BLE001
             _LOGGER.debug("Delayed ingest callback failed", exc_info=True)
+        if generation != int(getattr(instance, "_delay_queue_generation", 0) or 0):
+            break
+        processed += 1
+        now_mono = time.monotonic()
+        if processed >= DELAY_DRAIN_MAX_ITEMS or now_mono >= deadline:
+            # A short timer also gives socket polling and due timers a turn.
+            # New arrivals must not rearm this continuation ahead of the yield.
+            instance._delay_queue_resume_at = now_mono + DELAY_DRAIN_YIELD_SECONDS
+            break
     _arm_delayed_ingest_queue(instance)
 
 
@@ -1038,13 +1056,13 @@ def _queue_delayed_ingest(instance: Any, callback: Callable[[], None]) -> None:
             if bool(getattr(instance, "_replay_mode", False))
             else max(0, int(getattr(instance, "_delay", 0) or 0))
         )
-        if delay <= 0:
+        queue = getattr(instance, "_delay_queue", None)
+        if delay <= 0 and not queue:
             try:
                 callback()
             except Exception:  # noqa: BLE001
                 _LOGGER.debug("Immediate delayed-ingest callback failed", exc_info=True)
             return
-        queue = getattr(instance, "_delay_queue", None)
         if not isinstance(queue, deque):
             _init_delayed_ingest_state(instance)
             queue = instance._delay_queue
@@ -6088,6 +6106,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         entry_id = config_entry.entry_id if config_entry is not None else None
         self._minisectors = MiniSectorStateStore(entry_id=entry_id)
         self._push_laps = PushLapTracker()
+        self._push_lap_publication_keys: dict[str, tuple] = {}
         if delay_controller is not None:
             self._delay_listener = delay_controller.add_listener(self.set_delay)
         self.available = True
@@ -6275,15 +6294,34 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
     def _publish_push_laps(self, *, update_stream_time: bool = True) -> bool:
         """Update the bounded effort projection alongside existing driver timing."""
         changed = False
-        for rn, driver in self._state.get("drivers", {}).items():
+        drivers = self._state.get("drivers", {})
+        keys = self._push_lap_publication_keys
+        if len(keys) > len(drivers):
+            for rn in keys.keys() - drivers.keys():
+                del keys[rn]
+        for rn, driver in drivers.items():
+            key = self._push_laps.publication_key(rn)
+            if (
+                keys.get(rn) == key
+                and "push_lap" in driver
+                and "push_lap_delta" in driver
+            ):
+                continue
             value = self._push_laps.driver_snapshot(rn)
-            if driver.get("push_lap", empty_push_lap()) != value:
+            previous = driver["push_lap"] if "push_lap" in driver else empty_push_lap()
+            if previous != value:
                 changed = True
             driver["push_lap"] = value
             delta = self._push_laps.delta_snapshot(rn)
-            if driver.get("push_lap_delta", empty_push_lap_delta()) != delta:
+            previous = (
+                driver["push_lap_delta"]
+                if "push_lap_delta" in driver
+                else empty_push_lap_delta()
+            )
+            if previous != delta:
                 changed = True
             driver["push_lap_delta"] = delta
+            keys[rn] = key
         status = self._push_laps.status if self.available else "unavailable"
         values = {"push_laps_status": status}
         if update_stream_time:
@@ -8261,6 +8299,14 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         changed = False
         for rn, info in payload.items():
             if not isinstance(info, dict):
+                continue
+            # Apply the filter in delivery order, after any queued session reset.
+            # An otherwise unused row can still introduce a new driver.
+            if (
+                rn in drivers
+                and "PitStops" not in info
+                and info.get("Position") is None
+            ):
                 continue
 
             entry = drivers.setdefault(rn, {})

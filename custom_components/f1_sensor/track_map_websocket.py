@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable
 from contextlib import suppress
+from copy import deepcopy
 from itertools import count
 from typing import Any
 
@@ -334,6 +335,7 @@ class _TrackMapBroadcastHub:
         self._runtime = runtime_from_hass(hass, store.entry_id)
         self._subscribers: set[_TrackMapSnapshotSubscription] = set()
         self._snapshot = store.snapshot()
+        self._v2_geometry = store.geometry
         self._annotation_generation = next(_ANNOTATION_GENERATIONS)
         self._replay_identity = _annotation_mode(store, self._snapshot)
         self._session_start_date = (
@@ -353,6 +355,8 @@ class _TrackMapBroadcastHub:
         """Add a client and return its shared-hub unsubscribe callback."""
         first_subscriber = not self._subscribers
         self._subscribers.add(subscription)
+        if subscription._protocol_version != TRACK_MAP_PROTOCOL_V2:
+            self._v2_geometry = None
         if first_subscriber:
             self._set_track_map_demand(active=True)
 
@@ -479,7 +483,17 @@ class _TrackMapBroadcastHub:
             return
         previous = self._snapshot
         previous_v2 = self._v2_snapshot
-        current = self._store.snapshot()
+        subscribers = tuple(self._subscribers)
+        needs_v1 = any(
+            subscriber._protocol_version != TRACK_MAP_PROTOCOL_V2
+            for subscriber in subscribers
+        )
+        geometry = self._store.geometry
+        if not needs_v1 and geometry is not None and geometry is self._v2_geometry:
+            current = self._store._snapshot_with_geometry(previous["track"])
+        else:
+            current = self._store.snapshot()
+        self._v2_geometry = None if needs_v1 else geometry
         replay_identity = _annotation_mode(self._store, current)
         start_date = (
             self._store.session.start_date if self._store.session is not None else None
@@ -508,7 +522,7 @@ class _TrackMapBroadcastHub:
                 "annotations": previous_v2["annotations"],
             }
         )
-        v1_payload = _v1_payload(self._store, current)
+        v1_payload = _v1_payload(self._store, current) if needs_v1 else None
         v2_payload = _v2_delta_payload(
             self._store,
             previous_v2,
@@ -516,7 +530,7 @@ class _TrackMapBroadcastHub:
             self._sequence,
             self._geometry_revision,
         )
-        for subscriber in tuple(self._subscribers):
+        for subscriber in subscribers:
             subscriber.receive(v1_payload, v2_payload)
 
 
@@ -552,7 +566,7 @@ class _TrackMapSnapshotSubscription:
     @callback
     def receive(
         self,
-        v1_payload: dict[str, Any],
+        v1_payload: dict[str, Any] | None,
         v2_payload: dict[str, Any],
     ) -> None:
         """Receive the already-built shared payload for this protocol."""
@@ -635,7 +649,7 @@ def _v2_snapshot_payload(
         "sequence": sequence,
         "geometry_revision": geometry_revision,
         "status": _snapshot_api_status(snapshot),
-        "snapshot": snapshot,
+        "snapshot": {**snapshot, "track": deepcopy(snapshot.get("track"))},
     }
 
 
@@ -667,6 +681,8 @@ def _v2_delta_payload(
         for key, value in current.items()
         if key != "drivers" and previous.get(key) != value
     }
+    if "track" in patch:
+        patch["track"] = deepcopy(patch["track"])
     return {
         "protocol_version": TRACK_MAP_PROTOCOL_V2,
         "type": "delta",

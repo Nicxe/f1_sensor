@@ -71,6 +71,8 @@ HUB_DATA = '[{"name":"Streaming"}]'
 CORE_NEGOTIATE_URL = "https://livetiming.formula1.com/signalrcore/negotiate"
 CORE_CONNECT_URL = "wss://livetiming.formula1.com/signalrcore"
 RECORD_SEP = "\x1e"
+_LIVE_RECEIVE_BATCH_MAX_ITEMS = 64
+_LIVE_RECEIVE_BATCH_MAX_SECONDS = 0.005
 
 # Capability matrix for the current SignalR live implementation.
 # Public live streams are always subscribed during live sessions. Auth-gated
@@ -846,11 +848,34 @@ class LiveBus:
                     if self._expect_heartbeat:
                         self._last_heartbeat_at = self._monotonic()
                     await client.ensure_connection()
+                    processed = 0
+                    deadline = self._monotonic() + _LIVE_RECEIVE_BATCH_MAX_SECONDS
                     async for payload in client.messages():
                         if not self._client_source_is_current(client_source):
                             break
                         if self._process_payload(payload):
                             self._mark_connection_live()
+                        processed += 1
+                        if (
+                            processed >= _LIVE_RECEIVE_BATCH_MAX_ITEMS
+                            or self._monotonic() >= deadline
+                        ):
+                            # Buffered websocket reads may return without yielding.
+                            # Finish each feed/snapshot before letting other work run.
+                            await asyncio.sleep(0)
+                            if not self._running or not self._client_source_is_current(
+                                client_source
+                            ):
+                                return
+                            if self._client is None:
+                                # The heartbeat guard closed this transport to retry.
+                                break
+                            if self._client is not client:
+                                return
+                            processed = 0
+                            deadline = (
+                                self._monotonic() + _LIVE_RECEIVE_BATCH_MAX_SECONDS
+                            )
                 except SignalRAuthenticationError:
                     retry_reason = "authorization was rejected"
                     if self._auth_enabled:
@@ -1026,7 +1051,8 @@ class LiveBus:
         if not _LOGGER.isEnabledFor(logging.DEBUG):
             return
         now = self._monotonic()
-        if (now - self._last_logged) < self._log_interval:
+        elapsed = now - self._last_logged
+        if elapsed < self._log_interval:
             return
         self._last_logged = now
         with suppress(Exception):
@@ -1049,8 +1075,8 @@ class LiveBus:
                     parts.append(f"{stream}:{count}/{total} (none)")
             if parts:
                 _LOGGER.debug(
-                    "LiveBus summary (last %.0fs): %s",
-                    self._log_interval,
+                    "LiveBus summary (last %.1fs): %s",
+                    elapsed,
                     ", ".join(parts),
                 )
             # Reset window counters

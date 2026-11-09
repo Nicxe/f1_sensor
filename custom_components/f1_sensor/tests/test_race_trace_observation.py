@@ -1,11 +1,13 @@
 """Race Trace provenance belongs to the received frame, never its publisher."""
 
 from copy import deepcopy
+import hashlib
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from custom_components.f1_sensor import race_trace_observation
 from custom_components.f1_sensor.live_delay import LiveDelayController
 from custom_components.f1_sensor.race_trace_observation import (
     RaceTraceObservationSource,
@@ -70,6 +72,27 @@ def _stamp(stamper, stream="TimingData", payload=None, **changes):
         payload or {"_f1_source_time": 100.0, "_f1_source_domain": "utc"},
         **options,
     )
+
+
+def test_context_hash_is_reused_while_each_observation_owns_its_context(monkeypatch):
+    sha256 = Mock(wraps=hashlib.sha256)
+    monkeypatch.setattr(
+        race_trace_observation, "hashlib", SimpleNamespace(sha256=sha256)
+    )
+    source = RaceTraceObservationSource("entry-a")
+    _stamp(source, "SessionInfo", {"Key": 123})
+    first = _stamp(source)["_f1_observation"]
+    token = first["context"]["token"]
+    first["context"]["session_id"] = "mutated"
+    second = _stamp(source)["_f1_observation"]
+    assert sha256.call_count == 1
+    assert second["context"]["session_id"] == "123"
+    assert second["context"]["token"] == token
+    assert second["cursor"]["sequence"] == first["cursor"]["sequence"] + 1
+
+    delayed = _stamp(source, delay_epoch=1, delay_seconds=40)["_f1_observation"]
+    assert sha256.call_count == 2
+    assert delayed["context"]["token"] != token
 
 
 def test_received_context_is_stable_across_late_consumption_and_cached_delivery():

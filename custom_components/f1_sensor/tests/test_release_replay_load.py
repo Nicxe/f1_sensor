@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from custom_components.f1_sensor import _DelayedAnalysisBus
 from custom_components.f1_sensor.analysis import (
     MAX_STRATEGY_LAPS,
     MAX_TIMELINE_EVENTS,
@@ -122,8 +123,11 @@ async def test_two_race_length_disk_replays_seek_pause_and_release_memory(
     )
     assert disk_bytes <= BUDGET["fixture_disk_mib"] * MIB
     bus = LiveBus(hass, AsyncMock())
-    laps = LapAnalysisStore(bus, source_provider=lambda: "replay")
-    analysis = Phase4AnalysisStore(bus, laps, source_provider=lambda: "replay")
+    # Use the same ordered consumer bus as integration setup. Raw LiveBus
+    # provenance requires an explicit delay; the analysis adapter supplies it.
+    analysis_bus = _DelayedAnalysisBus(hass, bus, 0, None, None)
+    laps = LapAnalysisStore(analysis_bus, source_provider=lambda: "replay")
+    analysis = Phase4AnalysisStore(analysis_bus, laps, source_provider=lambda: "replay")
     transports = []
     retained = []
     timings = []
@@ -187,6 +191,7 @@ async def test_two_race_length_disk_replays_seek_pause_and_release_memory(
             await seek_iterator.aclose()
             laps.reset_for_replay()
             analysis.reset_for_replay()
+            analysis_bus.reset_for_replay()
             gc.collect()
             current, peak = tracemalloc.get_traced_memory()
             retained.append(current)
@@ -208,9 +213,11 @@ async def test_two_race_length_disk_replays_seek_pause_and_release_memory(
             assert peak <= BUDGET["peak_python_allocation_mib"] * MIB
         await analysis.async_close()
         await laps.async_close()
+        await analysis_bus.async_close()
         await bus.async_close()
         assert not analysis._unsubs
         assert not laps._unsubs
+        assert not analysis_bus._stream_unsubs
         gc.collect()
         after_unload = tracemalloc.get_traced_memory()[0]
         assert retained[-1] - retained[0] <= BUDGET["retained_growth_mib"] * MIB
@@ -221,5 +228,36 @@ async def test_two_race_length_disk_replays_seek_pause_and_release_memory(
                 await transport.close()
         await analysis.async_close()
         await laps.async_close()
+        await analysis_bus.async_close()
         await bus.async_close()
         tracemalloc.stop()
+
+
+async def test_disk_replay_populates_strategy_with_consumed_laps(
+    hass, tmp_path, monkeypatch
+) -> None:
+    """Keep the load fixture's analysis wiring exercised by the regular suite."""
+    monkeypatch.setitem(BUDGET, "duration_seconds", 180)
+    index = await hass.async_add_executor_job(
+        _write_session, tmp_path / "short-session", "short-session"
+    )
+    bus = LiveBus(hass, AsyncMock())
+    analysis_bus = _DelayedAnalysisBus(hass, bus, 0, None, None)
+    laps = LapAnalysisStore(analysis_bus, source_provider=lambda: "replay")
+    analysis = Phase4AnalysisStore(analysis_bus, laps, source_provider=lambda: "replay")
+    transport = ReplayTransport(hass, index)
+    monkeypatch.setattr(transport, "_get_elapsed_playback_time", lambda: 181)
+    try:
+        async for message in transport.messages():
+            bus._process_payload(message)
+        snapshot = analysis.snapshot()
+        expected_laps = 2 * BUDGET["drivers"]
+        assert laps.diagnostics()["laps"] == expected_laps
+        assert snapshot["strategy"]["coverage"]["raw_laps"] == expected_laps
+        assert snapshot["session_status"] == "Finished"
+    finally:
+        await transport.close()
+        await analysis.async_close()
+        await laps.async_close()
+        await analysis_bus.async_close()
+        await bus.async_close()

@@ -159,27 +159,163 @@ def test_runtime_resolution_and_not_loaded_payload(hass, monkeypatch) -> None:
     }
 
 
-def test_subscription_coalesces_sends_and_cancels_pending(hass) -> None:
-    connection = _Connection()
-    hub = SimpleNamespace(
-        add=Mock(return_value=Mock()), payload=Mock(return_value={"initial": True})
+class _LoopClock:
+    """Advance the publication clock without real waits or transport work."""
+
+    def __init__(self) -> None:
+        self.now = 100.0
+        self.timers = []
+
+    def time(self) -> float:
+        return self.now
+
+    def call_at(self, deadline, callback):
+        handle = SimpleNamespace(when=lambda: deadline, cancel=Mock())
+        self.timers.append((deadline, callback, handle))
+        return handle
+
+    def call_later(self, delay, callback):
+        return self.call_at(self.now + delay, callback)
+
+    def advance(self, seconds) -> None:
+        self.now += seconds
+        while self.timers:
+            entry = min(self.timers, key=lambda item: item[0])
+            deadline, callback, handle = entry
+            if deadline > self.now:
+                return
+            self.timers.remove(entry)
+            if not handle.cancel.called:
+                callback()
+
+
+def _analysis_publication(monkeypatch):
+    clock = _LoopClock()
+    hass = SimpleNamespace(loop=clock)
+    state = {"session_id": "first"}
+    build = Mock(side_effect=lambda _runtime: dict(state))
+    monkeypatch.setattr(ws, "_analysis_payload", build)
+    store = Mock(
+        add_listener=Mock(return_value=Mock()),
+        add_close_listener=Mock(return_value=Mock()),
     )
-    subscription = ws._AnalysisSubscription(hass, connection, 5, hub, 1.0)
-    subscription.async_send_initial()
-    assert connection.events[-1] == (5, {"initial": True})
+    manager = SimpleNamespace(add_listener=Mock(return_value=Mock()))
+    runtime = SimpleNamespace(
+        live=None,
+        replay=SimpleNamespace(controller=SimpleNamespace(session_manager=manager)),
+    )
+    hub = ws._AnalysisBroadcastHub(hass, runtime, store)
+    return hass, clock, state, build, hub, store, manager
 
-    subscription.receive({"value": 1})
-    subscription.receive({"value": 2})
-    assert subscription._pending_handle is not None
-    subscription._pending_handle.cancel()
-    subscription._send_pending()
-    assert connection.events[-1] == (5, {"value": 2})
 
-    handle = Mock()
-    subscription._pending_handle = handle
-    subscription.unsubscribe()
-    handle.cancel.assert_called_once()
-    hub.add.return_value.assert_called_once()
+def test_analysis_builds_only_for_due_subscribers_and_shares_the_payload(
+    monkeypatch,
+) -> None:
+    hass, clock, state, build, hub, store, _manager = _analysis_publication(monkeypatch)
+    connection = _Connection()
+    subscriptions = [
+        ws._AnalysisSubscription(hass, connection, message_id, hub, interval)
+        for message_id, interval in ((1, 1.0), (2, 1.0), (3, 2.0))
+    ]
+    try:
+        for subscription in subscriptions:
+            subscription.async_send_initial()
+        assert connection.events == [
+            (index, {"session_id": "first"}) for index in (1, 2, 3)
+        ]
+        build.reset_mock()
+        publish = store.add_listener.call_args.args[0]
+        for index in range(20):
+            state["session_id"] = str(index)
+            publish()
+        build.assert_not_called()
+
+        clock.advance(1.0)
+        build.assert_called_once()
+        assert {message_id for message_id, _payload in connection.events[3:]} == {1, 2}
+        assert connection.events[-1][1] is connection.events[-2][1]
+        assert connection.events[-1][1]["session_id"] == "19"
+
+        state["session_id"] = "latest"
+        publish()
+        clock.advance(1.0)
+        assert build.call_count == 2
+        assert {message_id for message_id, _payload in connection.events[5:]} == {
+            1,
+            2,
+            3,
+        }
+        assert all(
+            payload["session_id"] == "latest" for _, payload in connection.events[5:]
+        )
+        publish()
+    finally:
+        for subscription in subscriptions:
+            subscription.unsubscribe()
+    clock.advance(5.0)
+    assert build.call_count == 2
+    store.add_listener.return_value.assert_called_once()
+
+
+def test_analysis_shares_a_snapshot_with_clients_due_while_it_is_built(monkeypatch):
+    hass, clock, state, build, hub, store, _manager = _analysis_publication(monkeypatch)
+    connection = _Connection()
+    first = ws._AnalysisSubscription(hass, connection, 1, hub, 1.0)
+    second = ws._AnalysisSubscription(hass, connection, 2, hub, 1.0)
+    try:
+        first.async_send_initial()
+        clock.advance(0.125)
+        second.async_send_initial()
+        build.reset_mock()
+
+        def build_snapshot(_runtime):
+            clock.now += 0.25
+            return dict(state)
+
+        build.side_effect = build_snapshot
+        store.add_listener.call_args.args[0]()
+        clock.advance(0.875)
+        build.assert_called_once()
+        assert {message_id for message_id, _payload in connection.events[2:]} == {1, 2}
+    finally:
+        first.unsubscribe()
+        second.unsubscribe()
+
+
+async def test_analysis_due_send_uses_current_replay_context_and_closes_pending_work(
+    monkeypatch,
+) -> None:
+    hass, clock, state, build, hub, store, manager = _analysis_publication(monkeypatch)
+    connection = _Connection()
+    subscription = ws._AnalysisSubscription(hass, connection, 1, hub, 1.0)
+    connection.subscriptions[1] = subscription.unsubscribe
+    try:
+        subscription.async_send_initial()
+        publish = store.add_listener.call_args.args[0]
+        publish()
+        state["session_id"] = "new-replay"
+        manager.add_listener.call_args.args[0]({})
+        assert build.call_count == 1
+        clock.advance(1.0)
+        assert connection.events[-1] == (1, {"session_id": "new-replay"})
+        publish()
+        state["session_id"] = None
+        await hub.async_close()
+        assert connection.events[-1] == (
+            1,
+            {
+                "session_id": None,
+                "status": "closed",
+                "retryable": True,
+                "reason": "entry_unloaded",
+            },
+        )
+        assert not connection.subscriptions
+        clock.advance(5.0)
+        assert build.call_count == len(connection.events) == 3
+        manager.add_listener.return_value.assert_called_once()
+    finally:
+        subscription.unsubscribe()
 
 
 @pytest.mark.asyncio

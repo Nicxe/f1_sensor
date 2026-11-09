@@ -403,47 +403,22 @@ def _compound_crossover_indications(
     return indications
 
 
-def _position_at(
-    laps: Sequence[Mapping[str, Any]], driver: int, lap_number: int
-) -> int | None:
-    return next(
-        (
-            position
-            for item in laps
-            if _as_int(item.get("driver_number")) == driver
-            and _as_int(item.get("lap_number")) == lap_number
-            and (position := _as_int(item.get("position"))) is not None
-        ),
-        None,
-    )
-
-
 def _strategy_outcomes(
-    laps: Sequence[Mapping[str, Any]],
+    lap_stints: Mapping[int, Sequence[tuple[int, int]]],
+    positions: Mapping[tuple[int, int], int],
     driver_meta: Mapping[str, Mapping[str, Any]],
 ) -> list[dict[str, Any]]:
     """Classify teammate pit-cycle outcomes when order is observable."""
-    driver_laps: dict[int, list[Mapping[str, Any]]] = {}
-    for item in laps:
-        driver = _as_int(item.get("driver_number"))
-        lap_number = _as_int(item.get("lap_number"))
-        if driver is not None and lap_number is not None:
-            driver_laps.setdefault(driver, []).append(item)
-    for values in driver_laps.values():
-        values.sort(key=lambda item: _as_int(item.get("lap_number")) or 0)
-
     transitions: dict[int, list[int]] = {}
-    for driver, values in driver_laps.items():
+    for driver, values in lap_stints.items():
         previous_stint: int | None = None
-        for item in values:
-            stint = _as_int(item.get("stint_index")) or 0
-            lap_number = _as_int(item.get("lap_number"))
+        for lap_number, stint in sorted(values, key=lambda value: value[0]):
             if previous_stint is not None and stint > previous_stint and lap_number:
                 transitions.setdefault(driver, []).append(lap_number)
             previous_stint = stint
 
     teams: dict[str, list[int]] = {}
-    for driver in driver_laps:
+    for driver in lap_stints:
         team = _text(driver_meta.get(str(driver), {}).get("team"))
         if team:
             teams.setdefault(team, []).append(driver)
@@ -474,10 +449,10 @@ def _strategy_outcomes(
             )
             before_lap = min(first_stop, second_stop) - 1
             after_lap = max(first_stop, second_stop) + 1
-            earlier_before = _position_at(laps, earlier_driver, before_lap)
-            later_before = _position_at(laps, later_driver, before_lap)
-            earlier_after = _position_at(laps, earlier_driver, after_lap)
-            later_after = _position_at(laps, later_driver, after_lap)
+            earlier_before = positions.get((earlier_driver, before_lap))
+            later_before = positions.get((later_driver, before_lap))
+            earlier_after = positions.get((earlier_driver, after_lap))
+            later_after = positions.get((later_driver, after_lap))
             if None in (earlier_before, later_before, earlier_after, later_after):
                 continue
             before_order = earlier_before < later_before
@@ -700,28 +675,25 @@ def _lap_time_trend(
 
 
 def _stint_change_estimate(
-    stint: Mapping[str, Any], laps: Sequence[Mapping[str, Any]]
+    stint: Mapping[str, Any],
+    first: Mapping[str, Any],
+    context_stint_laps: Mapping[
+        tuple[int, int], Sequence[tuple[int, Mapping[str, Any]]]
+    ],
 ) -> dict[str, Any]:
-    first = next(
-        (
-            lap
-            for lap in laps
-            if _as_int(lap.get("driver_number")) == stint["driver_number"]
-            and _as_int(lap.get("lap_number")) == stint["first_lap"]
-        ),
-        {},
-    )
     context = _mapping(first.get("strategy_context"))
     previous_index = _as_int(context.get("previous_stint_index"))
-    previous_laps = [
-        lap
-        for lap in laps
-        if _as_int(lap.get("driver_number")) == stint["driver_number"]
-        and _as_int(_mapping(lap.get("strategy_context")).get("stint_index"))
-        == previous_index
-        and previous_index is not None
-        and (_as_int(lap.get("lap_number")) or 0) < stint["first_lap"]
-    ]
+    previous_laps = (
+        [
+            lap
+            for number, lap in context_stint_laps.get(
+                (stint["driver_number"], previous_index), ()
+            )
+            if number < stint["first_lap"]
+        ]
+        if previous_index is not None
+        else []
+    )
     phase = _latest_green_phase(previous_laps)
     baseline = [
         lap
@@ -775,16 +747,33 @@ def analyze_strategy(
     driver_meta = drivers or {}
     grouped: dict[tuple[int, int], list[Mapping[str, Any]]] = {}
     driver_laps: dict[int, list[Mapping[str, Any]]] = {}
+    first_laps: dict[tuple[int, int], Mapping[str, Any]] = {}
+    positions: dict[tuple[int, int], int] = {}
+    lap_stints: dict[int, list[tuple[int, int]]] = {}
+    context_stint_laps: dict[tuple[int, int], list[tuple[int, Mapping[str, Any]]]] = {}
     for lap in laps:
         driver = _as_int(lap.get("driver_number"))
         lap_number = _as_int(lap.get("lap_number"))
-        duration = _as_float(lap.get("lap_duration"))
-        if driver is not None and lap_number is not None:
-            driver_laps.setdefault(driver, []).append(lap)
-        if driver is None or lap_number is None or duration is None:
+        if driver is None or lap_number is None:
             continue
         stint_index = _as_int(lap.get("stint_index")) or 0
-        grouped.setdefault((driver, stint_index), []).append(lap)
+        driver_laps.setdefault(driver, []).append(lap)
+        key = (driver, lap_number)
+        # Keep the first row for stint estimates, and the first valid position
+        # for pit-cycle comparisons. They may come from different duplicate rows.
+        first_laps.setdefault(key, lap)
+        if (position := _as_int(lap.get("position"))) is not None:
+            positions.setdefault(key, position)
+        lap_stints.setdefault(driver, []).append((lap_number, stint_index))
+        context_stint = _as_int(
+            _mapping(lap.get("strategy_context")).get("stint_index")
+        )
+        if context_stint is not None:
+            context_stint_laps.setdefault((driver, context_stint), []).append(
+                (lap_number, lap)
+            )
+        if _as_float(lap.get("lap_duration")) is not None:
+            grouped.setdefault((driver, stint_index), []).append(lap)
 
     stints: list[dict[str, Any]] = []
     driver_adjusted: dict[int, list[float]] = {}
@@ -886,24 +875,12 @@ def analyze_strategy(
             }
         )
 
-    for index, stint in enumerate(stints):
-        previous = next(
-            (
-                candidate
-                for candidate in reversed(stints[:index])
-                if candidate["driver_number"] == stint["driver_number"]
-            ),
-            None,
-        )
-        first_lap = next(
-            (
-                lap
-                for lap in driver_laps[stint["driver_number"]]
-                if _as_int(lap.get("driver_number")) == stint["driver_number"]
-                and _as_int(lap.get("lap_number")) == stint["first_lap"]
-            ),
-            None,
-        )
+    previous_stints: dict[int, dict[str, Any]] = {}
+    for stint in stints:
+        driver = stint["driver_number"]
+        previous = previous_stints.get(driver)
+        first_lap = first_laps.get((driver, stint["first_lap"]))
+        previous_stints[driver] = stint
         first_duration = _as_float(first_lap.get("lap_duration")) if first_lap else None
         previous_pace = previous.get("adjusted_median_clean_pace") if previous else None
         stint["pit_loss_seconds"] = (
@@ -912,7 +889,7 @@ def analyze_strategy(
             else None
         )
         stint["stint_change_estimate"] = _stint_change_estimate(
-            stint, driver_laps[stint["driver_number"]]
+            stint, first_lap or {}, context_stint_laps
         )
 
     compound_comparison = [
@@ -994,7 +971,9 @@ def analyze_strategy(
             compound_age_samples
         ),
         "teammate_comparisons": teammate_comparisons,
-        "undercut_overcut_outcomes": _strategy_outcomes(laps, driver_meta),
+        "undercut_overcut_outcomes": _strategy_outcomes(
+            lap_stints, positions, driver_meta
+        ),
         "assumptions": [
             "Clean laps exclude pit in/out, deleted or inaccurate laps, missing sectors, SC/VSC and the first relevant post-SC lap",
             "Pace and degradation are local estimates, not official strategy or predictions",
@@ -1015,6 +994,7 @@ class Phase4AnalysisStore:
         self._bus = bus
         self._lap_analysis = lap_analysis
         self._source_provider = source_provider
+        self._data_provider: str | None = None
         self._timeline = UnifiedTimelineStore()
         self._race_control_identities: dict[
             tuple[str | None, ...], _RaceControlIdentity
@@ -1091,6 +1071,10 @@ class Phase4AnalysisStore:
     ) -> None:
         if self.closed:
             return
+        if self._data_provider is None:
+            # The controller can change source before transport teardown and
+            # the corresponding store reset have completed.
+            self._data_provider = self._source_provider()
         self._observed_streams.add(stream)
         if stream in OBSERVATION_STREAMS and stream not in {
             "SessionInfo",
@@ -1131,7 +1115,7 @@ class Phase4AnalysisStore:
         return _unsubscribe
 
     def _provider(self) -> str:
-        return self._source_provider()
+        return self._data_provider or self._source_provider()
 
     def _event(
         self,
@@ -1306,6 +1290,7 @@ class Phase4AnalysisStore:
     def reset_for_replay(self) -> None:
         """Reset all accumulated state before replay playback is rebuilt."""
         self._reset_session()
+        self._data_provider = None
         self._session_id = None
         self._session_name = None
         self._session_info = {}
@@ -1506,8 +1491,9 @@ class Phase4AnalysisStore:
                 self._observe_strategy_tyres(driver)
                 updated_drivers.append(driver)
         self._capture_strategy_laps(updated_drivers)
-        self._detect_position_exchanges()
-        self._detect_battles()
+        positions = self._position_snapshot()
+        self._detect_position_exchanges(positions)
+        self._detect_battles(positions)
 
     def _current_stint(self, driver: int) -> tuple[int, Mapping[str, Any]]:
         app = self._timing_app.get(str(driver), {})
@@ -1912,8 +1898,7 @@ class Phase4AnalysisStore:
             for context_lap in context.get(driver, ())
         )
 
-    def _detect_position_exchanges(self) -> None:
-        current = self._position_snapshot()
+    def _detect_position_exchanges(self, current: dict[int, int]) -> None:
         if len(set(current.values())) != len(current):
             return
         if len(current) < 2:
@@ -2069,20 +2054,15 @@ class Phase4AnalysisStore:
             ),
         )
 
-    def _detect_battles(self) -> None:
-        positions = self._position_snapshot()
+    def _detect_battles(self, positions: Mapping[int, int]) -> None:
         ordered = sorted(positions, key=positions.get)
+        first_driver_at_position: dict[int, int] = {}
+        for driver, position in positions.items():
+            first_driver_at_position.setdefault(position, driver)
         close_pairs: set[tuple[int, int]] = set()
         for behind in ordered[1:]:
             ahead_position = positions[behind] - 1
-            ahead = next(
-                (
-                    driver
-                    for driver, position in positions.items()
-                    if position == ahead_position
-                ),
-                None,
-            )
+            ahead = first_driver_at_position.get(ahead_position)
             gap = self._gap_to_ahead(behind)
             behind_laps = _as_int(self._timing.get(str(behind), {}).get("NumberOfLaps"))
             ahead_laps = _as_int(self._timing.get(str(ahead), {}).get("NumberOfLaps"))
@@ -2191,6 +2171,7 @@ class Phase4AnalysisStore:
     def snapshot(self) -> dict[str, Any]:
         """Return the bounded Phase 4 dashboard product."""
         strategy = analyze_strategy(list(self._strategy_laps.values()), self._drivers)
+        events = self._timeline.snapshot()
         active_battles = [dict(item) for item in self._active_battles.values()]
         return {
             "protocol_version": 1,
@@ -2202,8 +2183,8 @@ class Phase4AnalysisStore:
             "drivers": list(self._drivers.values()),
             "timing": self._timing_snapshot(),
             "timeline": {
-                "events": self._timeline.snapshot(),
-                "count": len(self._timeline.snapshot()),
+                "events": events,
+                "count": len(events),
             },
             "strategy": strategy,
             "race_trace_markers": self._race_trace_snapshot(),
@@ -2217,9 +2198,7 @@ class Phase4AnalysisStore:
             },
             "capabilities": {
                 "observed_streams": sorted(self._observed_streams),
-                "timeline": "ready"
-                if self._timeline.snapshot()
-                else "waiting_for_events",
+                "timeline": "ready" if events else "waiting_for_events",
                 "strategy": strategy["status"],
                 "position_exchanges": "ready"
                 if self._previous_positions
