@@ -30,6 +30,31 @@ LAP_ANALYSIS_STREAMS = frozenset(
     {"RaceControlMessages", "SessionInfo", "TimingData", "TrackStatus"}
 )
 DISRUPTED_TRACK_STATUSES = frozenset({"4", "5", "6", "7"})
+# The driver fields read by normalize_lap_record. Identity and observed track
+# and Race Control context are added by the store for each completed lap.
+_LAP_TIMING_FIELDS = frozenset(
+    {
+        "NumberOfLaps",
+        "LapNumber",
+        "LastLapTime",
+        "LapTime",
+        "Sectors",
+        "Speeds",
+        "IsPitOutLap",
+        "is_pit_out_lap",
+        "IsPitInLap",
+        "is_pit_in_lap",
+        "track_status",
+        "deleted",
+        "Deleted",
+        "deletion_reason",
+        "DeletedReason",
+        "reinstated",
+        "Reinstated",
+        "inferred",
+        "Inferred",
+    }
+)
 
 
 def _as_int(value: object) -> int | None:
@@ -760,7 +785,10 @@ class LapAnalysisStore:
                 )
             track_status, previous_track_status = self._lap_track_context[key]
             current_lap = self._laps.get(key)
-            normalized_payload = deepcopy(state)
+            provider = self._source_provider()
+            normalized_payload = {
+                field: state[field] for field in _LAP_TIMING_FIELDS if field in state
+            }
             normalized_payload["RacingNumber"] = str(driver)
             normalized_payload["TrackStatus"] = track_status
             normalized_payload["RaceControlObserved"] = (
@@ -774,9 +802,15 @@ class LapAnalysisStore:
                 for field in ("deleted", "deletion_reason", "reinstated"):
                     if field in current_lap.source_payload:
                         normalized_payload[field] = current_lap.source_payload[field]
+                if (
+                    provider == current_lap.provider
+                    and _LAP_TIMING_FIELDS.isdisjoint(delta)
+                    and normalized_payload == current_lap.source_payload
+                ):
+                    continue
             lap = normalize_lap_record(
-                normalized_payload,
-                provider=self._source_provider(),
+                deepcopy(normalized_payload),
+                provider=provider,
                 session_type=self._effective_session_type(),
                 previous_track_status=previous_track_status,
             )

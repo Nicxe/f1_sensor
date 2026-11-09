@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 from aiohttp import ClientResponseError
+import pytest
 
 from custom_components.f1_sensor import const
 from custom_components.f1_sensor.signalr import (
@@ -96,6 +99,157 @@ def test_live_bus_dispatch_subscription_activity_and_diagnostics(hass) -> None:
     assert bus._retry_reason(ValueError("bad")) == "ValueError"
     remove()
     remove()
+
+
+def test_live_bus_summary_reports_elapsed_window_after_a_processing_gap(hass, caplog):
+    now = [100.0]
+    bus = LiveBus(hass, AsyncMock(), monotonic=lambda: now[0])
+    with caplog.at_level(logging.DEBUG, logger="custom_components.f1_sensor.signalr"):
+        bus._dispatch("Position.z", "sample")
+        bus._dispatch("Heartbeat", {"Utc": "sample"})
+        now[0] += 40.0
+        bus._dispatch("TimingData", {"Lines": {}})
+
+    summary = next(
+        record.message
+        for record in caplog.records
+        if "LiveBus summary" in record.message
+    )
+    assert "last 40.0s" in summary
+    assert "Position.z:1/1 (last 40.0s)" in summary
+    assert "TimingData:1/1 (last 0.0s)" in summary
+    assert bus._cnt["Position.z"] == 0
+
+
+@pytest.mark.parametrize("callback_cost", [0.0, 0.003, 0.010])
+async def test_live_bus_buffered_transport_yields_and_preserves_order(
+    hass, monkeypatch, callback_cost
+) -> None:
+    now = [100.0]
+    bus = LiveBus(hass, AsyncMock(), monotonic=lambda: now[0])
+    received = []
+    observations = []
+
+    async def messages():
+        yield {"R": {"TimingData": {"index": 0}, "SessionInfo": {"Key": 123}}}
+        for index in range(1, 200):
+            yield {"M": [{"M": "feed", "A": ["TimingData", {"index": index}]}]}
+        bus._running = False
+
+    def receive(payload):
+        received.append(payload["index"])
+        now[0] += callback_cost
+        if payload["index"] == 0:
+            hass.loop.call_soon(lambda: observations.append(len(received)))
+            hass.loop.call_later(0, lambda: observations.append(len(received)))
+
+    client = SimpleNamespace(
+        ensure_connection=AsyncMock(), messages=messages, close=AsyncMock()
+    )
+    monkeypatch.setattr(bus, "_create_client", lambda: client)
+    bus.subscribe("SessionInfo", lambda _payload: received.append("session"))
+    bus.subscribe("TimingData", receive)
+    bus._running = True
+
+    await bus._run()
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+    assert received == ["session", *range(200)]
+    assert len(observations) == 2
+    assert all(1 < count < len(received) for count in observations)
+    if callback_cost == 0.010:
+        assert observations[0] == 2
+    client.close.assert_awaited_once()
+
+
+@pytest.mark.parametrize("retire", ["source", "client", "running"])
+async def test_live_bus_buffered_reader_stops_when_yield_retires_ownership(
+    hass, monkeypatch, retire
+) -> None:
+    source = ["live"]
+    now = [100.0]
+    bus = LiveBus(hass, AsyncMock(), monotonic=lambda: now[0])
+    bus.configure_observations(
+        "entry", None, lambda: None, source_provider=lambda: source[0]
+    )
+    received = []
+    replacement = object()
+
+    def retire_transport():
+        if retire == "source":
+            source[0] = "replay"
+        elif retire == "client":
+            bus._client = replacement
+        else:
+            bus._running = False
+
+    async def messages():
+        for index in range(200):
+            yield {"M": [{"M": "feed", "A": ["TimingData", {"index": index}]}]}
+        bus._running = False
+
+    def receive(payload):
+        received.append(payload["index"])
+        now[0] += 0.003
+        if payload["index"] == 0:
+            hass.loop.call_soon(retire_transport)
+
+    client = SimpleNamespace(
+        ensure_connection=AsyncMock(), messages=messages, close=AsyncMock()
+    )
+    monkeypatch.setattr(bus, "_create_client", lambda: client)
+    bus.subscribe("TimingData", receive)
+    bus._running = True
+
+    await bus._run()
+    await asyncio.sleep(0)
+    assert received == list(range(len(received)))
+    assert 0 < len(received) < 200
+    if retire == "client":
+        assert bus._client is replacement
+    client.close.assert_awaited_once()
+
+
+async def test_live_bus_reconnects_when_heartbeat_closes_client_during_yield(
+    hass, monkeypatch
+) -> None:
+    now = [100.0]
+    bus = LiveBus(hass, AsyncMock(), monotonic=lambda: now[0])
+    bus.set_heartbeat_expectation(True)
+    bus._heartbeat_check_interval = 0
+    received = []
+    bus.subscribe("TrackStatus", received.append)
+
+    async def inactive_messages():
+        now[0] += bus._heartbeat_timeout + 1
+        yield {"R": {}}
+        yield {"R": {"TrackStatus": {"Status": "stale"}}}
+        bus._running = False
+
+    async def recovered_messages():
+        yield {"R": {"TrackStatus": {"Status": "1"}}}
+        bus._running = False
+
+    inactive_client = SimpleNamespace(
+        ensure_connection=AsyncMock(), messages=inactive_messages, close=AsyncMock()
+    )
+    recovered_client = SimpleNamespace(
+        ensure_connection=AsyncMock(), messages=recovered_messages, close=AsyncMock()
+    )
+    clients = iter((inactive_client, recovered_client))
+    retry = AsyncMock()
+    monkeypatch.setattr(bus, "_create_client", lambda: next(clients))
+    monkeypatch.setattr(bus, "_wait_before_retry", retry)
+    bus._running = True
+    heartbeat_guard = asyncio.create_task(bus._monitor_heartbeat())
+    await asyncio.sleep(0)
+
+    await bus._run()
+    await heartbeat_guard
+
+    retry.assert_awaited_once_with("connection closed")
+    recovered_client.ensure_connection.assert_awaited_once()
+    assert received == [{"Status": "1", "_f1_snapshot": True}]
 
 
 async def test_live_bus_stream_updates_and_transport_swap(hass) -> None:

@@ -289,6 +289,10 @@ class CardDataStore:
 
     def snapshot(self, key: str) -> dict[str, Any]:
         """Read a protected projection without acquiring any background demand."""
+        return deepcopy(self._snapshot(key))
+
+    def _snapshot(self, key: str) -> dict[str, Any]:
+        """Retain an owned envelope internally; copy it before calling consumers."""
         context_token = self._check_context()
         manager = self.hass.data.get(DOMAIN, {}).get("no_spoiler_manager")
         is_qualifying, qualifying_part = _session_status_mapping_context(
@@ -347,13 +351,34 @@ class CardDataStore:
                         model.hass = self.hass
                         self._models[key] = model
                     self._hydrate(key, model)
-                    projection = model.snapshot()
+                    projection = (
+                        model._snapshot_for_owner()
+                        if key == "driver_positions"
+                        else model.snapshot()
+                    )
                 else:
                     projection = projector(coordinator.data)
                 payload = {
                     "state": projection.value,
                     "attributes": projection.attributes,
                 }
+                if key == "driver_positions":
+                    # This additive reference belongs only to modular card data;
+                    # shared models and sensor attributes retain their contract.
+                    reference = getattr(
+                        coordinator, "modular_starting_grid_reference", None
+                    )
+                    info = getattr(
+                        self.data.get("session_info_coordinator"), "data", None
+                    )
+                    session_key = info.get("Key") if isinstance(info, dict) else None
+                    payload["attributes"]["starting_grid_reference"] = (
+                        deepcopy(reference)
+                        if reference is not None
+                        and session_key is not None
+                        and reference["session_key"] == str(session_key)
+                        else None
+                    )
                 if key in LIVE_PRODUCTS and not model.available:
                     status, reason, payload = "unavailable", "source_inactive", None
                 elif not getattr(coordinator, "last_update_success", True):
@@ -401,7 +426,9 @@ class CardDataStore:
             if payload is not None and not self.closed:
                 self._persisted[key] = {
                     "context": list(context_token),
-                    "payload": deepcopy(payload),
+                    "payload": payload
+                    if key == "driver_positions"
+                    else deepcopy(payload),
                     "model_state": (
                         self._models[key].export_state()
                         if key in self._models
@@ -413,7 +440,7 @@ class CardDataStore:
                     self._storage.async_delay_save(
                         lambda: {"products": self._persisted}, 30
                     )
-        return deepcopy(self._snapshots[key])
+        return self._snapshots[key]
 
     @callback
     def subscribe(self, keys: Iterable[str], listener: Callable) -> Callable:
@@ -503,7 +530,7 @@ class CardDataStore:
         if cancel := self._delayed.pop(key, None):
             cancel()
         self._last_sent[key] = monotonic()
-        message = self.snapshot(key)
+        message = self._snapshot(key)
         identity = (message["generation"], message["revision"])
         if self._published.get(key) == identity:
             return

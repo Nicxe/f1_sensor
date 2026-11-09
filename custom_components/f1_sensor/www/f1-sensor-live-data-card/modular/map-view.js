@@ -2,7 +2,7 @@ const version = new URL(import.meta.url).searchParams.get('v');
 const load = path => import(`${path}${version ? `?v=${encodeURIComponent(version)}` : ''}`);
 const [{ LitElement, html, svg, css, repeat }, { sharedStyles, words, dateTime }, { displayTrack }] = await Promise.all([load('../f1-lit-3.3.2.js'), load('./view.js'), load('./map-geometry.js')]);
 class F1TrackMapView extends LitElement {
-  static properties = { model: { attribute: false }, module: { attribute: false }, settings: { attribute: false }, width: { state: true }, selected: { state: true }, listOpen: { state: true } };
+  static properties = { presentation: { type: String, reflect: true }, model: { attribute: false }, module: { attribute: false }, settings: { attribute: false }, width: { state: true }, selected: { state: true }, listOpen: { state: true } };
   static styles = [sharedStyles, css`
     .map-frame { border:1px solid var(--f1-border); border-radius:10px; background:var(--f1-panel); }
     .map-shell { display:grid; gap:12px; }
@@ -45,17 +45,43 @@ class F1TrackMapView extends LitElement {
     .driver-list { display:grid; gap:6px; list-style:none; margin:14px 0 0; padding:0; }
     .driver-list button { width:100%; display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:6px 12px; text-align:left; }
     .driver-list small { display:block; font-size:.8em; }
+    :host([presentation=compact]) { container:f1-map / inline-size; font-size:max(.875rem,14px); --_f1-component-caption:max(.75rem,12px); }
+    :host([presentation=compact]) .map-shell { gap:8px; }
+    :host([presentation=compact]) .map-frame { border-color:var(--f1-divider); border-radius:6px; }
+    :host([presentation=compact]) .map-meta,:host([presentation=compact]) .map-footer { gap:6px 12px; font-size:var(--_f1-component-caption); }
+    :host([presentation=compact]) .map-meta strong { font-weight:500; }
+    :host([presentation=compact]) .map-status { min-height:24px; padding:0 2px; border:0; border-radius:0; }
+    :host([presentation=compact]) .map-badges { gap:5px 10px; }
+    :host([presentation=compact]) .map-footer { padding-top:6px; }
+    :host([presentation=compact]) .annotation-summary,:host([presentation=compact]) .annotation-note,:host([presentation=compact]) .annotation-unavailable,:host([presentation=compact]) .annotation-experimental { font-size:var(--_f1-component-caption); }
+    :host([presentation=compact]) .annotation-experimental { font-weight:500; }
+    :host([presentation=compact]) .driver-list { margin-top:8px; gap:2px; }
+    :host([presentation=compact]) .driver-list button { min-height:32px; padding:4px 6px; border-color:var(--f1-divider); border-radius:4px; font-weight:400; }
+    :host([presentation=compact]) .driver-list small { font-size:var(--_f1-component-caption); }
+    @media(pointer:coarse) { :host([presentation=compact]) .driver-list button { min-height:44px; } }
     @media(forced-colors:active) { .track,.marker circle,.annotation-line,.annotation-feature-tick,.annotation-leader { stroke:CanvasText!important; } .marker text,.annotation-number,.annotation-feature-text,.annotation-tag-text { fill:CanvasText!important; stroke:Canvas!important; } .marker .team { display:none; } }
   `];
   constructor() {
-    super(); this.width = 400; this.selected = ''; this.listOpen = false;
+    super(); this.presentation = 'current'; this.resizeFrame = 0; this.width = 400; this.selected = ''; this.listOpen = false;
     this.motions = new Map(); this.motionFrame = 0; this.tickCache = new WeakMap(); this.geometryCache = new WeakMap();
   }
   connectedCallback() {
-    super.connectedCallback(); this.observer = new ResizeObserver(entries => { this.width = Math.max(200, entries[0].contentRect.width); }); this.observer.observe(this);
+    super.connectedCallback();
+    const measure = () => {
+      this.resizeFrame = 0;
+      if (this.isConnected) this.width = Math.max(200, this.pendingWidth);
+    };
+    this.observer = new ResizeObserver(entries => {
+      this.pendingWidth = entries[0].contentRect.width;
+      // Geometry writes run in the next frame, outside ResizeObserver's
+      // delivery cycle. Current and compact keep their own final dimensions.
+      if (!this.resizeFrame) this.resizeFrame = requestAnimationFrame(measure);
+    }); this.observer.observe(this);
   }
   disconnectedCallback() {
     super.disconnectedCallback(); this.observer?.disconnect();
+    if (this.resizeFrame) cancelAnimationFrame(this.resizeFrame);
+    this.resizeFrame = 0;
     if (this.motionFrame) cancelAnimationFrame(this.motionFrame);
     this.motionFrame = 0;
   }
@@ -270,24 +296,26 @@ class F1TrackMapView extends LitElement {
     const markingCount = annotations.lines.length + annotations.corners.length + featurePoints.length;
     const annotationsSelected = this.module.fields.some(field => ['map_start_finish', 'map_corners', 'map_sectors', 'map_speed_traps', 'map_detection_zones'].includes(field));
     const showMap = this.module.fields.includes('track_map') || this.module.fields.some(field => field.startsWith('map_') && field !== 'map_drivers');
-    const showList = this.module.fields.includes('map_drivers');
+    const showList = this.module.options.show_driver_list !== false && (this.module.fields.includes('map_drivers') || showMap);
     const options = this.module.options, showLabels = options.labels !== 'off';
     const status = this.statusInfo(), session = [this.model.context?.meeting, this.model.context?.session].filter(Boolean).join(' · ');
     const lap = this.model.lap === null || this.model.lap === undefined ? null : `${this.w('modular.lap')} ${this.model.lap}${this.model.totalLaps ? ` / ${this.model.totalLaps}` : ''}`;
+    const showSession = options.show_context !== false;
+    const showMeta = options.show_session_info && (showSession || options.show_track_status && status || options.show_lap_progress && lap || options.show_driver_count);
     const layout = options.layout_mode === 'auto' ? '' : options.layout_mode;
     const source = this.model.sourceMode === 'replay' ? this.w('modular.recorded_replay_positions') : this.w('modular.live_positions');
     const lineMode = options.track_status_line_mode ?? 'accent';
     if (!showMap && !showList) return html`<p class="empty">${this.w('modular.choose_map_content_in_the_editor')}</p>`;
     return html`<div class="map-shell ${layout}" style=${`--track-status-color:${status?.tone ?? '#8a94a6'}`}>
       ${this.model.freshness?.stale ? html`<p class="chip">${this.w('modular.saved_positions_updates_delayed')}</p>` : ''}
-      ${options.show_session_info ? html`<div class="map-meta"><strong>${session || this.w('modular.session_information_unavailable')}</strong><div class="map-badges">
+      ${showMeta ? html`<div class="map-meta">${showSession ? html`<strong>${session || this.w('modular.session_information_unavailable')}</strong>` : ''}<div class="map-badges">
         ${options.show_track_status && status ? html`<span class="map-status">${this.w('modular.track')}: ${status.value}</span>` : ''}
         ${options.show_lap_progress && lap ? html`<span class="map-status">${lap}</span>` : ''}
         ${options.show_driver_count ? html`<span class="map-status">${rows.length} ${this.w(rows.length === 1 ? 'driver' : 'drivers')}</span>` : ''}
       </div></div>` : ''}
       ${showMap ? this.model.points ? html`<div class="map-frame"><svg viewBox="0 0 100 100" role="img" aria-labelledby="map-title map-description">
         <title id="map-title">${this.w('modular.driver_positions_on_the_track')}</title>
-        <desc id="map-description">${showLabels ? this.w('modular.labels_identify_each_driver_a_dashed_outline_indicates_a_stale_position_use_the_driver') : this.w('modular.driver_labels_are_hidden_a_dashed_outline_indicates_a_stale_position_use_the_driver')} ${markingCount ? this.w('modular.track_markings_are_listed_below_the_map') : ''} ${status ? `${this.w('modular.track_status')}: ${status.value}.` : ''}</desc>
+        <desc id="map-description">${this.w(showLabels ? 'modular.map_description_with_labels' : 'modular.map_description_without_labels')} ${showList ? this.w('modular.map_description_driver_list') : ''} ${markingCount ? this.w('modular.track_markings_are_listed_below_the_map') : ''} ${status ? `${this.w('modular.track_status')}: ${status.value}.` : ''}</desc>
         ${lineMode === 'accent' && status ? svg`<path class="track-status-accent" d=${this.path()}></path>` : ''}
         <path class="track ${lineMode === 'full' && status ? 'status-full' : ''}" d=${this.path()}></path>
         ${repeat(annotations.lines, line => line.id, line => {
@@ -311,10 +339,10 @@ class F1TrackMapView extends LitElement {
           return svg`<g class="annotation-feature-group" aria-hidden="true"><title>${this.featureDescription(point)}</title><line class="annotation-feature-tick ${/^SM A[1-5] L$/.test(point.label) ? 'low-grip' : ''}" x1=${tick[0]} y1=${tick[1]} x2=${tick[2]} y2=${tick[3]}></line>${caption && label ? svg`<line class="annotation-leader" x1=${point.point[0]} y1=${point.point[1]} x2=${label.x} y2=${label.y}></line><text class="annotation-feature-text" x=${label.x} y=${label.y} text-anchor=${label.anchor} dominant-baseline="middle" font-size=${Math.max(1.8, font * .55)}>${caption}</text>` : ''}</g>`;
         })}
       </svg></div>` : html`<p class="empty">${this.w('modular.track_geometry_is_not_available_for_this_session_yet')}</p>` : ''}
-      ${annotationsSelected ? html`<div class="annotation-heading"><span class="annotation-experimental">${this.w('modular.experimental')}</span><span class="annotation-note">${this.w('modular.track_markings_experimental_note')}</span>${annotations.previousSeasonBaseline ? html`<span class="annotation-note">${this.w('modular.track_markings_previous_season_baseline')}</span>` : ''}</div>` : ''}
+      ${annotationsSelected && (options.show_experimental_notice !== false || annotations.previousSeasonBaseline) ? html`<div class="annotation-heading">${options.show_experimental_notice !== false ? html`<span class="annotation-experimental">${this.w('modular.experimental')}</span><span class="annotation-note">${this.w('modular.track_markings_experimental_note')}</span>` : ''}${annotations.previousSeasonBaseline ? html`<span class="annotation-note">${this.w('modular.track_markings_previous_season_baseline')}</span>` : ''}</div>` : ''}
       ${markingCount ? html`<div class="annotation-summary"><details><summary>${this.w('modular.track_markings')} · ${markingCount}</summary><ul>${annotations.lines.map(line => html`<li>${line.layer === 'sectors' ? `${this.annotationName('map_sectors')} ${line.label}/${this.sectorStart(line)}` : this.annotationName('map_start_finish')}</li>`)}${annotations.corners.map(corner => html`<li>${this.w('modular.corner')} ${corner.label}</li>`)}${featurePoints.map(point => html`<li>${this.featureDescription(point)}</li>`)}</ul></details></div>` : ''}
       ${annotations.unavailable.length ? html`<p class="annotation-unavailable">${annotations.unavailable.map(field => this.annotationName(field)).join(', ')}: ${this.w('modular.no_verified_markings_for_this_session')}</p>` : ''}
-      ${showList || showMap ? html`<details class="map-list" .open=${this.listOpen} @toggle=${event => { this.listOpen = event.target.open; }}><summary>${this.w('modular.driver_positions_and_status')}${this.module.options.show_driver_count === false ? '' : ` · ${rows.length}`}</summary>
+      ${showList ? html`<details class="map-list" .open=${this.listOpen} @toggle=${event => { this.listOpen = event.target.open; }}><summary>${this.w('modular.driver_positions_and_status')}${this.module.options.show_driver_count === false ? '' : ` · ${rows.length}`}</summary>
         ${rows.length ? html`<ul class="driver-list">${repeat(rows, row => row.id, row => html`<li><button aria-pressed=${String(this.selected === row.id)} @click=${() => { this.selected = this.selected === row.id ? '' : row.id; }}><span>${row.id} · ${this.settings.appearance.full_names ? row.name : row.driver}<small>${row.team ?? ''}</small></span><span><span>${this.state(row)}</span><small>${dateTime(row.timestamp, this.settings, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</small></span></button></li>`)}</ul>` : html`<p class="empty">${this.w('modular.no_driver_positions_are_available_live_positioning_needs_f1tv_access_and_a_supported_session')}</p>`}
       </details>` : ''}
       ${options.show_footer ? html`<div class="map-footer"><span>${source}</span><span>${this.model.context?.updated ? dateTime(this.model.context.updated, this.settings, { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : this.w('modular.update_time_unavailable')}</span></div>` : ''}

@@ -187,15 +187,15 @@ test('position arrows use only the matching confirmed grid and become unknown fo
     };
     window.fixtureCard.hass = { ...demo.hass };
   });
-  await expect(row(page, '16').locator('[data-field="position"]')).toContainText(/↑\s*4/);
-  await expect(row(page, '4').locator('[data-field="position"]')).toContainText(/↓\s*1/);
+  await expect(row(page, '16').locator('[data-field="position_with_change"]')).toContainText(/▲\s*4/);
+  await expect(row(page, '4').locator('[data-field="position_with_change"]')).toContainText(/▼\s*1/);
   await page.evaluate(() => {
     const demo = window.fixtureDemo, entry = demo.preview.entries[0];
     demo.hass.states[entry.entities.starting_grid].attributes.status = 'provisional';
     window.fixtureCard.hass = { ...demo.hass };
   });
-  await expect(row(page, '16').locator('[data-field="position"]')).not.toContainText(/↑\s*4/);
-  await expect(row(page, '4').locator('[data-field="position"]')).not.toContainText(/↓\s*1/);
+  await expect(row(page, '16').locator('[data-field="position_with_change"]')).not.toContainText(/▲\s*4/);
+  await expect(row(page, '4').locator('[data-field="position_with_change"]')).not.toContainText(/▼\s*1/);
 });
 
 test('dimmed retired rows preserve the current timing badges foreground and background contrast', async ({ page }) => {

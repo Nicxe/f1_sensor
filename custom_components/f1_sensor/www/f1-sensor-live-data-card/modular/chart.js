@@ -13,7 +13,7 @@ const eventKinds = ['pit', 'sc', 'vsc', 'red_flag'];
 const eventSymbols = { pit: '●', sc: '■', vsc: '▲', red_flag: '◆' };
 const eventLabels = { pit: 'P', sc: 'SC', vsc: 'VSC', red_flag: 'RF' };
 export class F1SeriesChart extends LitElement {
-  static properties = { model: { attribute: false }, module: { attribute: false }, settings: { attribute: false }, tableOpen: { state: true }, chartWidth: { state: true }, textSize: { state: true }, hiddenSeriesKeys: { state: true }, inspectedLap: { state: true } };
+  static properties = { presentation: { type: String, reflect: true }, model: { attribute: false }, module: { attribute: false }, settings: { attribute: false }, tableOpen: { state: true }, chartWidth: { state: true }, textSize: { state: true }, hiddenSeriesKeys: { state: true }, inspectedLap: { state: true } };
   static styles = [sharedStyles, css`
     .plot { width:100%; height:auto; display:block; overflow:visible; margin:4px 0 12px; }
     .axis { font-size:.8em; fill:var(--f1-muted); }
@@ -56,20 +56,51 @@ export class F1SeriesChart extends LitElement {
     .chart-tools { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
     .chart-tools p { font-size:.85em; }
     @media(max-width:600px) { .chart-layout[data-legend=left],.chart-layout[data-legend=right] { flex-direction:column; gap:0; } .chart-layout[data-legend=left] .chart-legend,.chart-layout[data-legend=right] .chart-legend { flex-basis:auto; flex-direction:row; flex-wrap:wrap; } }
+    :host([presentation=compact]) { container:f1-series / inline-size; font-size:max(.875rem,14px); --_f1-component-caption:max(.75rem,12px); }
+    :host([presentation=compact]) .plot { margin:2px 0 8px; }
+    :host([presentation=compact]) .axis,:host([presentation=compact]) .trace-help,:host([presentation=compact]) .point-reason,:host([presentation=compact]) .chart-tools p,:host([presentation=compact]) .event-cell { font-size:var(--_f1-component-caption); }
+    :host([presentation=compact]) .chart-tools { gap:6px 12px; margin-bottom:8px; }
+    :host([presentation=compact]) .chart-tools strong { font-weight:500; }
+    :host([presentation=compact]) .chart-legend { margin:8px 0; gap:6px 12px; }
+    :host([presentation=compact]) .legend-toggle { min-height:32px; padding:3px 4px; border-color:transparent; border-radius:4px; background:transparent; font-size:var(--_f1-component-caption); }
+    :host([presentation=compact]) .legend-toggle:focus-visible { outline:3px solid var(--f1-focus); outline-offset:2px; }
+    :host([presentation=compact]) .legend-toggle[data-hidden=true] { opacity:1; color:var(--f1-muted); }
+    :host([presentation=compact]) .trace-scope { gap:6px 14px; margin:6px 0; font-weight:500; }
+    :host([presentation=compact]) .trace-inspector { margin:8px 0; }
+    :host([presentation=compact]) .trace-details { padding:8px; border-radius:4px; }
+    :host([presentation=compact]) .trace-details ul { gap:6px 16px; }
+    :host([presentation=compact]) .table-scroll { border:0; border-radius:0; }
+    :host([presentation=compact]) th,:host([presentation=compact]) td { padding:6px 8px; }
+    :host([presentation=compact]) th { font-size:var(--_f1-component-caption); background:transparent; }
+    :host([presentation=compact]) .empty { padding:12px 10px; border-radius:6px; }
+    @container f1-series (max-width:600px) {
+      :host([presentation=compact]) .chart-layout[data-legend=left],:host([presentation=compact]) .chart-layout[data-legend=right] { flex-direction:column; gap:0; }
+      :host([presentation=compact]) .chart-layout[data-legend=left] .chart-legend,:host([presentation=compact]) .chart-layout[data-legend=right] .chart-legend { flex-basis:auto; flex-direction:row; flex-wrap:wrap; }
+    }
+    @media(pointer:coarse) { :host([presentation=compact]) .legend-toggle { min-height:44px; } }
     @media(forced-colors:active) { .series-line,.marker { stroke:CanvasText!important; } .marker { fill:Canvas!important; } .series-hit { stroke:transparent!important; } .legend-toggle { border-color:ButtonText; background:ButtonFace; color:ButtonText; } .legend-toggle:focus-visible { outline:2px solid Highlight; } .axis,.event-point { fill:CanvasText; } .event-lane { stroke:GrayText; } .grid-line { stroke:GrayText; } }
   `];
-  constructor() { super(); this.tableOpen = false; this.chartWidth = 620; this.textSize = 16; this.hiddenSeriesKeys = new Set(); this.inspectedLap = null; }
+  constructor() { super(); this.presentation = 'current'; this.resizeFrame = 0; this.tableOpen = false; this.chartWidth = 620; this.textSize = 16; this.hiddenSeriesKeys = new Set(); this.inspectedLap = null; }
   connectedCallback() {
     super.connectedCallback();
-    this.observer = new ResizeObserver(entries => {
-      const width = Math.round(entries[0]?.contentRect.width ?? 0);
-      if (width > 0) this.chartWidth = Math.max(300, width);
+    const measure = () => {
+      this.resizeFrame = 0;
+      if (!this.isConnected) return;
+      if (this.pendingWidth > 0) this.chartWidth = Math.max(this.presentation === 'compact' ? 200 : 300, this.pendingWidth);
       this.textSize = parseFloat(getComputedStyle(this).fontSize) || 16;
+    };
+    this.observer = new ResizeObserver(entries => {
+      this.pendingWidth = Math.round(entries[0]?.contentRect.width ?? 0);
+      // Geometry writes run in the next frame, outside ResizeObserver's
+      // delivery cycle. Current and compact keep their own final dimensions.
+      if (!this.resizeFrame) this.resizeFrame = requestAnimationFrame(measure);
     });
-    this.observer.observe(this);
+    this.observer.observe(this); this.observedWidthTarget = this;
   }
   disconnectedCallback() {
     super.disconnectedCallback(); this.observer?.disconnect(); this.inspectedLap = null;
+    if (this.resizeFrame) cancelAnimationFrame(this.resizeFrame);
+    this.resizeFrame = 0;
     // A removed Race Trace must not retain protected values in the reused node.
     if (this.isTrace) { this.model = null; this.tableOpen = false; }
   }
@@ -84,6 +115,15 @@ export class F1SeriesChart extends LitElement {
       this.lastEventFocusKey = focus?.key;
     }
     if (this.inspectedLap !== null && !this.model?.rounds?.some(round => round.id === this.inspectedLap)) this.inspectedLap = null;
+  }
+  updated() {
+    // A side legend changes the actual plot width. Compact charts measure that
+    // canvas, so axes remain readable even in a narrow dashboard module.
+    const target = this.presentation === 'compact' ? this.shadowRoot?.querySelector('.chart-canvas') ?? this : this;
+    if (this.observer && target !== this.observedWidthTarget) {
+      if (this.observedWidthTarget) this.observer.unobserve(this.observedWidthTarget);
+      this.observer.observe(target); this.observedWidthTarget = target;
+    }
   }
   get isTrace() { return this.model?.metric === 'cumulative_lap_delta'; }
   pointValue(point) { return this.isTrace ? Number.isSafeInteger(point?.delta_ms) ? point.delta_ms / 1000 : null : point?.value; }
@@ -144,7 +184,7 @@ export class F1SeriesChart extends LitElement {
     return html`<label class="trace-inspector"><span>${this.w('modular.race_trace_inspect_lap')}</span><input type="range" min="0" max=${rounds.length - 1} step="1" .value=${String(index)} aria-valuetext=${description} aria-describedby="trace-help"
       @focus=${() => { if (this.inspectedLap === null) this.inspectedLap = rounds[index].id; }}
       @input=${event => { this.inspectedLap = rounds[Number(event.target.value)].id; }}
-      @keydown=${event => { if (event.key === 'Escape') { this.inspectedLap = null; event.stopPropagation(); } }}></label><p class="trace-help" id="trace-help">${this.w('modular.race_trace_keyboard_help')}</p>${this.traceDetails(series, rounds, markers)}`;
+      @keydown=${event => { if (event.key === 'Escape') { this.inspectedLap = null; event.stopPropagation(); } }}></label><p class=${this.module.options.show_explanation === false ? 'sr' : 'trace-help'} id="trace-help">${this.w('modular.race_trace_keyboard_help')}</p>${this.traceDetails(series, rounds, markers)}`;
   }
   w(source, replacements = {}) { return words(this.settings?.language, source, replacements); }
   traceValue(value) {
@@ -228,6 +268,7 @@ export class F1SeriesChart extends LitElement {
     const series = this.isTrace ? (this.model.series ?? []).map(item => ({ ...item, values: item.values.map(point => ({ ...point, value: this.pointValue(point) })) })) : this.model.series ?? [];
     if (!series.length || !rounds.length || !series.some(item => item.values.some(point => point.value !== null))) return html`<p class="empty">${this.w('modular.no_chart_data_matches_this_selection')}</p>`;
     const showTable = presentation !== 'chart' || this.tableOpen;
+    const showExplanation = this.module.options.show_explanation !== false;
     const showLegend = presentation !== 'table' && this.module.options.show_legend !== false;
     const filterable = this.module.type === 'progression' && showLegend;
     const activeSeries = filterable ? series.filter(item => !this.isSeriesHidden(item)) : series;
@@ -238,9 +279,9 @@ export class F1SeriesChart extends LitElement {
     })}</ul>` : '';
     const markers = this.markerData(series);
     const reference = series.find(item => item.id === this.model.referenceDriver);
-    return html`${this.isTrace ? html`<div class="trace-scope"><span>${this.w('modular.race_trace_reference', { driver: reference ? `${reference.name} · ${reference.id}` : this.model.referenceDriver })}</span><span>${this.w('modular.race_trace_anchor', { lap: this.model.anchorLap })}</span></div><p class="trace-help">${this.w('modular.race_trace_notice')}</p><p class="trace-help">${this.w('modular.race_trace_signs')}</p>` : ''}<div class="chart-tools"><strong>${this.metric}</strong><p class="muted">${this.w(this.isTrace ? 'modular.race_trace_gaps' : 'modular.gaps_mean_data_is_missing')}</p></div>
+    return html`${this.isTrace ? html`<div class="trace-scope"><span>${this.w('modular.race_trace_reference', { driver: reference ? `${reference.name} · ${reference.id}` : this.model.referenceDriver })}</span><span>${this.w('modular.race_trace_anchor', { lap: this.model.anchorLap })}</span></div>${showExplanation ? html`<p class="trace-help">${this.w('modular.race_trace_notice')}</p><p class="trace-help">${this.w('modular.race_trace_signs')}</p>` : ''}` : ''}<div class="chart-tools"><strong>${this.metric}</strong>${showExplanation ? html`<p class="muted">${this.w(this.isTrace ? 'modular.race_trace_gaps' : 'modular.gaps_mean_data_is_missing')}</p>` : ''}</div>
       ${presentation !== 'table' ? html`<div class="chart-layout" data-legend=${showLegend ? legendPosition : 'none'}><div class="chart-canvas">${activeSeries.length ? this.plot(activeSeries, rounds) : html`<p class="filter-empty muted" role="status">${this.w('modular.all_series_are_hidden_select_a_driver_or_team_in_the_legend_to_show')}</p>`}</div>${legend}</div>` : ''}
-      ${markers ? html`<p class="trace-help">${this.w('modular.race_trace_markers_help')}</p>${markers.message ? html`<p class="trace-help event-status" role="status">${this.w(`modular.race_trace_${markers.message}`)}</p>` : ''}${presentation !== 'table' ? this.eventTrack(rounds, markers) : ''}` : ''}
+      ${markers ? html`${showExplanation ? html`<p class="trace-help">${this.w('modular.race_trace_markers_help')}</p>` : ''}${markers.message ? html`<p class="trace-help event-status" role="status">${this.w(`modular.race_trace_${markers.message}`)}</p>` : ''}${presentation !== 'table' ? this.eventTrack(rounds, markers) : ''}` : ''}
       ${this.isTrace && presentation !== 'table' ? this.traceInspector(series, rounds, markers) : ''}
       ${presentation === 'chart' ? html`<button aria-expanded=${String(showTable)} aria-controls="progression-data" @click=${() => { this.tableOpen = !this.tableOpen; }}>${showTable ? this.w('modular.hide_data_table') : this.w('modular.show_data_table')}</button>` : ''}
       <div id="progression-data" ?hidden=${!showTable}>${showTable ? this.table(activeSeries, rounds, markers) : ''}</div>

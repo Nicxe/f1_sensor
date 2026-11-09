@@ -1,8 +1,8 @@
 const version = new URL(import.meta.url).searchParams.get('v');
 const load = path => import(`${path}${version ? `?v=${encodeURIComponent(version)}` : ''}`);
 let chartLoading, mapLoading, telemetryLoading, teamRadioLoading, tyreHistoryLoading;
-const [{ LitElement, html, css, repeat }, { FIELDS, fieldDefinition, moduleFields, moduleFocusKinds, INCIDENT_SIGNALS, label, translatePlural, words }, { formatTime, formatTimingGap, formatDelta, timingStatus, SIGNALS, statusColors, safeImageUrl, compoundMeta, trackSignal, logoDimensions }, { getTeamLogoMeta }] = await Promise.all([
-  load('../f1-lit-3.3.2.js'), load('./catalog.js'), load('./semantics.js'), load('../platform/branding.js'),
+const [{ LitElement, html, css, repeat }, { FIELDS, fieldDefinition, moduleFields, moduleFocusKinds, INCIDENT_SIGNALS, label, translatePlural, words }, { formatTime, formatTimingGap, formatDelta, timingStatus, SIGNALS, statusColors, safeImageUrl, compoundMeta, trackSignal, logoDimensions }, { getTeamLogoMeta }, { resolvePresentation }] = await Promise.all([
+  load('../f1-lit-3.3.2.js'), load('./catalog.js'), load('./semantics.js'), load('../platform/branding.js'), load('./config.js'),
 ]);
 
 export { translatePlural, words };
@@ -227,7 +227,7 @@ export const sharedStyles = css`
   .timing-detail dd { margin:2px 0 0; overflow-wrap:anywhere; }
   .timing-detail ol { margin:6px 0 0; padding-left:22px; }
   .timing-position { display:inline-flex; align-items:center; gap:7px; }
-  .position-change { display:inline-block; min-width:2.5em; font-size:.8em; color:var(--f1-muted); }
+  .position-change { display:inline-block; min-width:2.5em; font-size:1em; color:var(--f1-muted); }
   .position-change.gain { color:var(--f1-gain,#176b36); }
   .position-change.loss { color:var(--f1-loss,#ab2424); }
   :host([data-mode=dark]) { --f1-gain:#75dc94; --f1-loss:#ffb3b3; }
@@ -249,15 +249,24 @@ export const sharedStyles = css`
   .driver-disclosure { --mdc-icon-size:16px; flex:0 0 16px; }
   .tyre-inline { display:inline-grid; width:100%; grid-template-columns:minmax(max-content,1fr) minmax(2ch,max-content); align-items:center; gap:5px; font-variant-numeric:tabular-nums; }
   .tyre-inline > :last-child { text-align:end; }
-  :host([data-presentation=minimal]) { font-size:.875rem; }
+  :host([data-presentation=minimal]) { font-size:max(.875rem,14px); }
+  :host([data-presentation=minimal]) h2 { font-size:1.07em; font-weight:600; }
+  :host([data-presentation=minimal][data-auto-font=true]) h2 { font-family:var(--ha-font-family-heading,var(--ha-font-family-body,inherit)); text-transform:none; }
   :host([data-presentation=minimal]) .section-head { margin-bottom:8px; }
+  :host([data-presentation=minimal]) .module-context { margin-bottom:8px; }
+  :host([data-presentation=minimal]) .empty { padding:12px 10px; border-radius:6px; }
   :host([data-presentation=minimal]) .chip { border:0; padding:0; color:var(--f1-muted); }
   :host([data-presentation=minimal]) .table-scroll { border:0; border-radius:0; scrollbar-gutter:auto; }
   :host([data-presentation=minimal]) th { background:transparent; }
+  :host([data-presentation=minimal]) th,:host([data-presentation=minimal]) .provenance { font-size:.857em; }
   :host([data-presentation=minimal]) th,:host([data-presentation=minimal]) td { padding:4px 8px; }
   :host([data-presentation=minimal]) [data-field] { text-align:right; }
-  :host([data-presentation=minimal]) [data-field=driver],:host([data-presentation=minimal]) [data-field=position],:host([data-presentation=minimal]) [data-field=team] { text-align:left; }
+  :host([data-presentation=minimal]) [data-field=driver],:host([data-presentation=minimal]) [data-field=position],:host([data-presentation=minimal]) [data-field=position_with_change],:host([data-presentation=minimal]) [data-field=team] { text-align:left; }
   :host([data-presentation=minimal]) .cell-stack { align-items:flex-end; gap:0; }
+  :host([data-presentation=minimal]) :is([data-field-type=text],[data-field-type=status],[data-field-type=battle_status],[data-field-type=incident_status],[data-field-type=strategy_outcome],[data-field-type=exchange_positions],[data-field-type=reason_counts],[data-field-type=driver_paces],[data-field-type=driver_laps],[data-field-type=penalty_summary],[data-field-type=warning_indicator]) { text-align:left; }
+  :host([data-presentation=minimal]) :is([data-field-type=text],[data-field-type=status],[data-field-type=battle_status],[data-field-type=incident_status],[data-field-type=strategy_outcome],[data-field-type=penalty_summary]) { white-space:normal; overflow-wrap:anywhere; }
+  :host([data-presentation=minimal]) :is([data-field-type=text],[data-field-type=status],[data-field-type=incident_status]) .cell-stack { align-items:flex-start; }
+
   :host([data-presentation=minimal]) .compact-minisectors td[data-field] { vertical-align:top; }
   :host([data-presentation=minimal]) .minisector-cell { margin-inline-start:auto; gap:2px; }
   :host([data-presentation=minimal]) .minisector-cell .signal { justify-content:flex-end; }
@@ -267,7 +276,7 @@ export const sharedStyles = css`
   :host([data-presentation=minimal]) .minisector-empty { display:block; min-height:6px; line-height:6px; font-size:.75em; text-align:end; }
   :host([data-presentation=minimal]) .signal { border:0; padding:0; border-radius:0; gap:3px; }
   :host([data-presentation=minimal]) .signal > span[aria-hidden] { font-size:.7em; }
-  :host([data-presentation=minimal]) .driver { min-height:28px; min-width:0; gap:6px; padding:0 5px; }
+  :host([data-presentation=minimal]) .driver { min-height:28px; min-width:0; gap:6px; padding:0 5px; font-weight:500; }
   :host([data-presentation=minimal]) .compound,:host([data-presentation=minimal]) .compound img { width:20px; height:20px; }
   :host([data-presentation=minimal]) .compound { flex-basis:20px; border-width:2px; font-size:.75em; }
   :host([data-presentation=minimal]) .driver-headshot { width:22px; height:22px; }
@@ -275,11 +284,78 @@ export const sharedStyles = css`
   :host([data-presentation=minimal]) .timing-detail { padding:10px 8px; border-left-width:2px; }
   :host([data-presentation=minimal]) .timing-detail dl { gap:8px; }
   :host([data-presentation=minimal]) .timing-detail-heading { margin-bottom:6px; }
+  :host([data-presentation=minimal]) .overview { gap:8px 16px; }
+  :host([data-presentation=minimal]) .metric.weather-item dt { font-size:.857em; margin-bottom:3px; }
+  :host([data-presentation=minimal]) .metric.weather-item dd { font-size:1em; line-height:1.45; font-weight:500; }
+  :host([data-presentation=minimal]) .metric.weather-item .provenance { font-size:.857em; }
+  :host([data-presentation=minimal]) .weather-item dd { font-weight:500; }
+  :host([data-presentation=minimal]) .weather-list .weather-item { padding:6px 0; gap:4px 14px; }
+  :host([data-presentation=minimal]) .analysis-explanation { margin-top:8px; }
+  :host([data-presentation=minimal]) .analysis-explanation summary { min-height:28px; padding:4px 0; }
+  :host([data-presentation=minimal]) h3 { font-weight:600; }
+  :host([data-presentation=minimal]) .metric small { font-size:.857em; margin-bottom:2px; }
+  :host([data-presentation=minimal]) .metric strong { font-size:1.07em; line-height:1.4; font-weight:500; }
+  :host([data-presentation=minimal]) .metric.hero strong { font-size:1.15rem; letter-spacing:0; }
+  :host([data-presentation=minimal]) .metric-value { gap:8px; }
+  :host([data-presentation=minimal]) .metric.hero:has(.flag:not([hidden])) > small { margin-inline-start:36px; }
+  :host([data-presentation=minimal]) .flag { width:28px; height:19px; flex-basis:28px; margin-top:2px; }
+  :host([data-presentation=minimal]) .circuit-panel { gap:8px; }
+  :host([data-presentation=minimal]) .history-item { padding:7px 8px; border-radius:4px; }
+  :host([data-presentation=minimal]) .track-signal { font-size:1em; gap:6px; }
+  :host([data-presentation=minimal]) .track-symbol { min-width:22px; padding:0 3px; font-size:.857em; }
+  :host([data-presentation=minimal]) .schedule li { gap:6px 12px; padding:7px 0; }
+  :host([data-presentation=minimal]) .schedule-identity { gap:8px; }
+  :host([data-presentation=minimal]) .schedule strong,:host([data-presentation=minimal]) .schedule time { font-weight:500; }
+  :host([data-presentation=minimal]) .result-grid { gap:8px; }
+  :host([data-presentation=minimal]) .result-grid li { border:0; border-bottom:1px solid var(--f1-divider); border-radius:0; padding:8px; }
+  :host([data-presentation=minimal]) .result-grid dl { gap:4px 8px; }
+  :host([data-presentation=minimal]) .result-grid dt { font-size:.857em; }
+  :host([data-presentation=minimal]) .details { padding:8px; }
+  :host([data-presentation=minimal]) .details dl { gap:8px; }
+  :host([data-presentation=minimal]) .details dt { font-size:.857em; color:var(--f1-muted); }
+  :host([data-presentation=minimal]) .incident-list li { border-left:0; border-bottom:1px solid var(--f1-divider); margin:0; padding:8px 0; }
+  :host([data-presentation=minimal]) .incident-list dl { gap:4px 16px; }
+  :host([data-presentation=minimal]) .incident-list dt { font-size:.857em; }
+  :host([data-presentation=minimal]) .stint-chart { margin-bottom:8px; }
+  :host([data-presentation=minimal]) .stint-chart > p { margin-bottom:8px; }
+  :host([data-presentation=minimal]) .stint-bars li { margin-bottom:8px; padding:8px; border:0; border-bottom:1px solid var(--f1-divider); border-radius:0; }
+  :host([data-presentation=minimal]) .stint-meta strong { font-weight:500; }
+  :host([data-presentation=minimal]) .stint-axis { font-size:.857em; }
+  :host([data-presentation=minimal]) .strategy-evidence { margin-bottom:8px; font-size:1em; }
+  :host([data-presentation=minimal]) .strategy-evidence summary { min-height:28px; padding:4px 0; cursor:pointer; }
+  :host([data-presentation=minimal]) .strategy-evidence summary:focus-visible { outline:3px solid var(--f1-focus); outline-offset:3px; }
+  :host([data-presentation=minimal]) .documents li { padding:7px 0; }
+  :host([data-presentation=minimal]) .documents li[class^="tone-"] { padding-left:8px; }
+  :host([data-presentation=minimal]) .documents a,:host([data-presentation=minimal]) .documents strong { font-weight:500; }
+  :host([data-presentation=minimal]) .documents small { font-size:.857em; }
+  :host([data-presentation=minimal]) .documents .document-type { font-size:.857em; font-weight:500; border:0; padding:0; border-radius:0; }
+  :host([data-presentation=minimal]) .document-summary { gap:4px 10px; margin-bottom:4px; font-size:.857em; }
+  :host([data-presentation=minimal]) .module-picker { margin-bottom:8px; }
+  :host([data-presentation=minimal]) .archive-pickers { gap:0 8px; }
+  :host([data-presentation=minimal]) .replay-scope { margin:6px 0 8px; }
+  :host([data-presentation=minimal]) .replay-controls { gap:6px; margin:8px 0; }
+  :host([data-presentation=minimal]) .replay-controls button { padding:6px 10px; }
+  :host([data-presentation=minimal]) .replay-picker { gap:8px; margin:8px 0; }
+  :host([data-presentation=minimal]) .replay-progress { gap:4px; }
+  .compact-events > li { display:grid; grid-template-columns:minmax(0,1fr); gap:6px 10px; border-left:0; border-bottom:1px solid var(--f1-divider); margin:0; padding:7px 0; }
+  .compact-events > li.has-time { grid-template-columns:5.2em minmax(0,1fr); }
+  .compact-events > li:last-child { border-bottom:0; }
+  .compact-event-time { color:var(--f1-muted); font-size:.857em; font-variant-numeric:tabular-nums; padding-top:1px; }
+  .compact-event-content { min-width:0; }
+  .compact-event-message { font-weight:400; line-height:1.45; overflow-wrap:anywhere; }
+  .compact-event-meta { display:flex; flex-wrap:wrap; align-items:baseline; gap:3px 8px; margin-top:3px; font-size:.857em; color:var(--f1-muted); }
+  .compact-event-meta .track-signal { font-size:1em; gap:5px; }
+  .compact-event-meta .track-symbol { min-width:20px; padding:0 3px; }
+  .compact-event-details summary { cursor:pointer; min-height:24px; padding:0; color:var(--f1-focus); }
+  .compact-event-details summary:focus-visible { outline:3px solid var(--f1-focus); outline-offset:3px; }
+  .compact-event-timestamp { display:block; margin:3px 0; color:var(--f1-muted); }
   .timing-summary th,.timing-summary td { padding:4px 6px; }
   .timing-summary .driver { min-height:36px; }
   .timing-summary .driver-badges { max-width:8em; }
   @media (pointer:coarse) {
     :host([data-presentation=minimal]) .driver,.timing-summary .driver { min-height:44px; }
+    :host([data-presentation=minimal]) button.driver,.timing-summary button.driver { min-width:44px; }
+    :host([data-presentation=minimal]) .analysis-explanation summary,:host([data-presentation=minimal]) .strategy-evidence summary,.compact-event-details summary { min-height:44px; padding-block:10px; }
   }
   @media (forced-colors:active) {
     .driver-badge { color:CanvasText!important; background:Canvas!important; border-color:CanvasText; }
@@ -303,7 +379,8 @@ export class F1ModuleView extends LitElement {
     });
   }
   get language() { return this.settings?.language ?? 'en'; }
-  get minimalTiming() { return this.module?.type === 'timing' && this.module.options?.presentation === 'minimal'; }
+  get compactPresentation() { return resolvePresentation(this.settings?.appearance, this.module) === 'compact'; }
+  get minimalTiming() { return ['timing', 'minisectors'].includes(this.module?.type) && this.compactPresentation; }
   w(source, replacements = {}) { return words(this.language, source, replacements); }
   willUpdate() {
     if (this.seekDraft && this.seekDraft.context !== this.model?.controlContext) this.seekDraft = null;
@@ -333,7 +410,8 @@ export class F1ModuleView extends LitElement {
     }
     this.syncRaceControlMessage();
     this.setAttribute('density', this.settings?.appearance?.density ?? 'comfortable');
-    this.setAttribute('data-presentation', this.minimalTiming ? 'minimal' : 'current');
+    this.setAttribute('data-presentation', this.compactPresentation ? 'minimal' : 'current');
+    this.setAttribute('data-auto-font', String(this.settings?.configuredFont === 'auto'));
     this.setAttribute('data-mode', this.settings?.mode ?? 'dark');
     const focused = this.shadowRoot?.activeElement;
     this.focusKey = focused?.dataset?.focus ?? null;
@@ -424,6 +502,7 @@ export class F1ModuleView extends LitElement {
     }
     if (this.tyreHistoryError) return this.empty(this.w('modular.this_module_needs_a_newer_card_version_its_settings_are_preserved'));
     this.tyreHistoryNode.module = this.module; this.tyreHistoryNode.model = this.model; this.tyreHistoryNode.settings = this.settings;
+    this.tyreHistoryNode.presentation = this.compactPresentation ? 'compact' : 'current';
     return this.tyreHistoryNode;
   }
   map() {
@@ -435,6 +514,7 @@ export class F1ModuleView extends LitElement {
     }
     if (this.mapError) return this.empty(this.w('modular.the_map_could_not_be_loaded_reload_this_dashboard_to_try_again'));
     this.mapNode.model = this.model; this.mapNode.module = this.module; this.mapNode.settings = this.settings;
+    this.mapNode.presentation = this.compactPresentation ? 'compact' : 'current';
     return this.mapNode;
   }
   chart() {
@@ -447,6 +527,7 @@ export class F1ModuleView extends LitElement {
     }
     if (this.chartError) return this.empty(this.w('modular.the_chart_could_not_be_loaded_reload_this_dashboard_to_try_again'));
     this.chartNode.model = this.model; this.chartNode.module = this.module; this.chartNode.settings = this.settings;
+    this.chartNode.presentation = this.compactPresentation ? 'compact' : 'current';
     return this.chartNode;
   }
   telemetry() {
@@ -458,6 +539,7 @@ export class F1ModuleView extends LitElement {
     }
     if (this.telemetryError) return this.empty(this.w('modular.telemetry_view_could_not_be_loaded_reload_the_dashboard'));
     this.telemetryNode.model = this.model; this.telemetryNode.module = this.module; this.telemetryNode.settings = this.settings;
+    this.telemetryNode.presentation = this.compactPresentation ? 'compact' : 'current';
     return this.telemetryNode;
   }
   teamRadio() {
@@ -469,6 +551,7 @@ export class F1ModuleView extends LitElement {
     }
     if (this.teamRadioError) return this.empty(this.w('modular.team_radio_view_could_not_be_loaded_reload_the_dashboard'));
     this.teamRadioNode.model = this.model; this.teamRadioNode.module = this.module; this.teamRadioNode.settings = this.settings;
+    this.teamRadioNode.presentation = this.compactPresentation ? 'compact' : 'current';
     return this.teamRadioNode;
   }
   archive() {
@@ -585,12 +668,12 @@ export class F1ModuleView extends LitElement {
   tableHeader(fields, labels = {}) {
     const hidden = this.module.show_table_header === false;
     // Keep native column relationships when only the visible labels are hidden.
-    return html`<thead part="table-header" class=${hidden ? 'labels-hidden' : ''}><tr part="table-row">${repeat(fields, id => id, id => html`<th part="table-cell" scope="col"><span class=${hidden ? 'sr' : ''}>${labels[id] ?? label(this.field(id), this.language)}</span></th>`)}</tr></thead>`;
+    return html`<thead part="table-header" class=${hidden ? 'labels-hidden' : ''}><tr part="table-row">${repeat(fields, id => id, id => html`<th part="table-cell" data-field=${id} data-field-type=${this.field(id)?.type ?? ''} scope="col"><span class=${hidden ? 'sr' : ''}>${labels[id] ?? label(this.field(id), this.language)}</span></th>`)}</tr></thead>`;
   }
   timingHeader(fields, laps) {
     const hidden = this.module.show_table_header === false;
     return html`<thead part="table-header" class=${hidden ? 'labels-hidden' : ''}><tr part="table-row">
-      ${repeat(fields, id => id, id => html`<th part="table-cell" data-field=${id} scope="col"><span class=${hidden ? 'sr' : ''}>${id === 'timing_gap' ? this.timingGapHeader() : this.timingFieldLabel(id)}</span></th>`)}
+      ${repeat(fields, id => id, id => html`<th part="table-cell" data-field=${id} data-field-type=${this.field(id)?.type ?? ''} scope="col"><span class=${hidden ? 'sr' : ''}>${id === 'timing_gap' ? this.timingGapHeader() : this.timingFieldLabel(id)}</span></th>`)}
       ${repeat(laps, lap => lap, (lap, index) => html`<th part="table-cell" scope="col" class=${`recent-lap ${index === 0 ? 'lap-start' : ''}`}><span class=${hidden ? 'sr' : ''}>${this.w('modular.lap')} ${lap}</span></th>`)}
     </tr></thead>`;
   }
@@ -609,7 +692,7 @@ export class F1ModuleView extends LitElement {
     if (this.module.type === 'results' && this.module.options.presentation === 'grid') return html`${selector}<ol class="result-grid" part="result-grid" aria-label=${this.module.title || this.model.title}>${repeat(rows, row => `${this.model.context?.season}:${this.model.context?.round}:${this.model.context?.session}:${row.id}`, row => html`<li part="result-card" data-driver=${row.id}><dl>${repeat(fields, id => id, id => html`<div><dt>${label(this.field(id), this.language)}</dt><dd>${this.resultCell(row, id)}</dd></div>`)}</dl></li>`)}</ol><p class="muted" style="margin-top:10px">${rows.length} ${this.w('modular.of')} ${this.model.total} ${this.w('modular.competitors')}</p>`;
     return html`${selector}${countSummary}${this.model.countRows?.length ? html`<h3>${this.w('modular.recorded_stop_details')}</h3>` : ''}<div class="table-scroll" part="table-container" tabindex="0" role="region" aria-label=${`${this.module.title || this.model.title} · ${this.w('modular.scroll_horizontally_for_more_columns')}`}><table part="table">
       <caption class="sr">${this.module.title || this.model.title}</caption>${this.tableHeader(fields)}
-      <tbody>${repeat(rows, row => `${this.model.context?.season}:${this.model.context?.round}:${this.model.context?.session}:${row.id}`, row => html`<tr part="table-row" data-driver=${row.id}>${repeat(fields, id => id, id => html`<td part="table-cell">${row.derived && id === fields[0] ? html`<span class="provenance">${this.w('modular.derived_estimate')}</span>` : ''}${this.module.type === 'pit_stops' && row.source === 'PitLaneTimeCollection' && id === fields[0] ? html`<span class="provenance">${this.w('modular.pit_lane_timing_only')}</span>` : ''}${this.resultCell(row, id)}${id === fields[0] ? this.eventFocusButton(row) : ''}</td>`)}</tr>
+      <tbody>${repeat(rows, row => `${this.model.context?.season}:${this.model.context?.round}:${this.model.context?.session}:${row.id}`, row => html`<tr part="table-row" data-driver=${row.id}>${repeat(fields, id => id, id => html`<td part="table-cell" data-field=${id} data-field-type=${this.field(id)?.type ?? ''}>${row.derived && id === fields[0] ? html`<span class="provenance">${this.w('modular.derived_estimate')}</span>` : ''}${this.module.type === 'pit_stops' && row.source === 'PitLaneTimeCollection' && id === fields[0] ? html`<span class="provenance">${this.w('modular.pit_lane_timing_only')}</span>` : ''}${this.resultCell(row, id)}${id === fields[0] ? this.eventFocusButton(row) : ''}</td>`)}</tr>
       ${this.expanded === row.id ? html`<tr part="table-row"><td part="table-cell" class="details" colspan=${fields.length}><h3>${row.name} · ${row.team ?? '—'}</h3><dl>${fields.filter(id => !['driver', 'team'].includes(id)).map(id => html`<div><dt>${label(this.field(id), this.language)}</dt><dd>${this.resultCell(row, id)}</dd></div>`)}</dl></td></tr>` : ''}`)}</tbody>
     </table></div><div class="section-head" style="margin:10px 0 0"><span class="muted">${rows.length} ${this.w('modular.of')} ${this.model.total} ${this.model.countKind === 'stints' ? this.w('modular.stints') : this.model.countKind === 'stops' ? this.w('modular.stops') : this.model.countKind === 'compounds' ? this.w('modular.compounds') : this.model.countKind === 'comparisons' ? this.w('modular.comparisons') : this.model.countKind === 'events' ? this.w('modular.events') : this.w('modular.competitors')}</span>
       ${this.model.total > this.module.options.rows ? html`<button data-focus="result-count" @click=${() => this.choose('rows', rows.length < this.model.total ? (['pit_stops', 'incidents', 'timeline', 'strategy', 'battles'].includes(this.module.type) ? 500 : 100) : this.module.options.rows)}>${rows.length < this.model.total ? this.w('modular.show_all') : this.w('modular.show_fewer')}</button>` : ''}</div>`;
@@ -623,11 +706,12 @@ export class F1ModuleView extends LitElement {
     const title = this.w('modular.reported_pit_visits');
     return html`<h3>${title}</h3><div class="table-scroll" part="table-container" tabindex="0" role="region" aria-label=${title}><table part="table" class="pit-count-summary">
       <caption class="sr">${title}</caption>${this.tableHeader(fields, { pit_count: title })}
-      <tbody>${repeat(rows, row => `${this.model.context?.key}:${row.id}`, row => html`<tr part="table-row" data-count-driver=${row.id}>${repeat(fields, id => id, id => html`<td part="table-cell">${this.resultCell(row, id)}</td>`)}</tr>`)}</tbody>
+      <tbody>${repeat(rows, row => `${this.model.context?.key}:${row.id}`, row => html`<tr part="table-row" data-count-driver=${row.id}>${repeat(fields, id => id, id => html`<td part="table-cell" data-field=${id} data-field-type=${this.field(id)?.type ?? ''}>${this.resultCell(row, id)}</td>`)}</tr>`)}</tbody>
     </table></div><div class="section-head" style="margin:10px 0"><span class="muted">${rows.length} ${this.w('modular.of')} ${this.model.countTotal} ${this.w('modular.competitors')}</span>
       ${this.model.countTotal > this.module.options.rows ? html`<button data-focus="pit-count-expand" @click=${() => this.choose('rows', 500)}>${this.w('modular.show_all')}</button>` : ''}</div>`;
   }
   strategyEvidence() {
+    if (this.module.options.show_explanation === false) return '';
     const rows = this.model.rows ?? [], content = this.module.options.content;
     if (!rows.length || content === 'pit_outcomes') return '';
     return html`<details class="strategy-evidence"><summary>${this.w('modular.strategy_method_and_supporting_laps')}</summary>
@@ -662,7 +746,7 @@ export class F1ModuleView extends LitElement {
     const valid = rows.filter(row => Number.isInteger(row.stint_first_lap) && Number.isInteger(row.stint_last_lap) && row.stint_first_lap > 0 && row.stint_last_lap >= row.stint_first_lap);
     const first = Math.min(...valid.map(row => row.stint_first_lap)), last = Math.max(...valid.map(row => row.stint_last_lap)), extent = last - first + 1;
     const showTable = presentation === 'both' || this.stintTable;
-    return html`${this.strategyEvidence()}<div class="stint-chart"><p class="muted">${this.w('modular.bars_span_the_first_to_last_observed_lap_missing_laps_can_exist_inside_a')}</p>
+    return html`${this.strategyEvidence()}<div class="stint-chart">${this.module.options.show_explanation !== false ? html`<p class="muted">${this.w('modular.bars_span_the_first_to_last_observed_lap_missing_laps_can_exist_inside_a')}</p>` : ''}
       <ol class="stint-bars" tabindex="0" aria-label=${this.w('modular.recorded_stint_ranges_and_coverage')}>${repeat(rows, row => row.id, row => {
         const drawable = valid.includes(row), compound = compoundMeta(row.tyre);
         const left = drawable ? (row.stint_first_lap - first) / extent * 100 : 0, width = drawable ? (row.stint_last_lap - row.stint_first_lap + 1) / extent * 100 : 0;
@@ -690,7 +774,7 @@ export class F1ModuleView extends LitElement {
     const newTab = this.module.options.open_new_tab;
     return html`<p class="document-summary">
       ${this.module.options.show_fia_logo ? html`<strong class="chip">FIA</strong>` : ''}
-      ${this.module.options.show_race_context && context ? html`<span>${context}</span>` : ''}
+      ${this.module.options.show_context !== false && this.module.options.show_race_context && context ? html`<span>${context}</span>` : ''}
       ${this.module.options.show_latest_badge ? html`<span class="chip">${this.w('modular.latest_first')}</span>` : ''}
       ${this.module.options.show_count ? html`<span>${this.model.total} ${this.w(this.model.total === 1 ? 'document' : 'documents')}</span>` : ''}
     </p><div class="documents-scroll" style=${!latest && this.module.options.list_max_height ? `max-height:${this.module.options.list_max_height}px;overflow:auto` : ''}><ol class="documents">${repeat(rows, row => row.id, row => html`<li class=${this.module.options.document_coloring ? `tone-${documentTone(row.document_title)}` : ''}>
@@ -762,7 +846,7 @@ export class F1ModuleView extends LitElement {
     const actionSymbol = { refresh: '↻', load: '↓', play: '▶', pause: 'Ⅱ', stop: '■' };
     const actionLabel = sourceText => html`<span class=${options.show_button_labels ? '' : 'sr'}>${this.w(sourceText)}</span>`;
     const send = (action, sourceText, symbol = actionSymbol[action]) => html`<button class=${options.show_button_labels ? '' : 'icon-only'} data-focus=${`replay-${action}`} aria-label=${this.w(sourceText)} title=${this.w(sourceText)} ?disabled=${disabled || !model.allowed[action]} @click=${() => this.replayAction(action)}><span aria-hidden="true">${symbol}</span>${actionLabel(sourceText)}</button>`;
-    return html`<p><strong>${model.selectedSession ?? this.w('modular.choose_a_recorded_session')}</strong><br><span class="chip">${this.w(stateNames[model.replayState])}</span></p>
+    return html`<p>${options.show_context !== false ? html`<strong>${model.selectedSession ?? this.w('modular.choose_a_recorded_session')}</strong><br>` : ''}<span class="chip">${this.w(stateNames[model.replayState])}</span></p>
       ${showStatus ? html`<p class="muted replay-scope">${this.w('modular.controls_replay_for_scope_changes_affect_every_dashboard_and_the_integration_s_automation_data', { scope: model.scope })}</p>` : ''}
       ${(fields.includes('replay_transport') || fields.includes('replay_progress')) && model.playerStatus !== 'available' ? html`<p class="muted">${model.playerStatus === 'disabled' ? this.w('modular.enable_the_replay_player_entity_in_f1_sensor_to_use_playback_controls') : this.w('modular.playback_controls_are_unavailable_because_the_replay_player_has_no_usable_state')}</p>` : ''}
       ${model.readonly ? html`<p class="muted">${model.frozen ? this.w('modular.resume_the_view_to_use_replay_controls') : this.w('modular.replay_controls_are_disabled_in_previews')}</p>` : ''}
@@ -848,6 +932,7 @@ export class F1ModuleView extends LitElement {
     return /^q[123]$/.test(focus) ? Number(focus.at(-1)) : focus === 'current' ? this.model.qualifying_part ?? this.model.currentPart ?? null : null;
   }
   timingFieldLabel(id) {
+    if (id === 'position_with_change') return html`<span aria-hidden="true">${label(this.field('position'), this.language)} Δ</span><span class="sr">${label(this.field(id), this.language)}</span>`;
     const sector = this.minimalTiming && /^sector_([123])_with_minisectors$/.exec(id);
     if (sector) return html`<span aria-hidden="true">${label(this.field(`sector_${sector[1]}`), this.language)}</span><span class="sr">${label(this.field(id), this.language)}</span>`;
     const part = id === 'qualifying_gap' ? this.qualifyingFocusPart() : null;
@@ -866,10 +951,10 @@ export class F1ModuleView extends LitElement {
     return html`<span class="gap-stack" part="timing-gap"><span data-gap=${primary}><span class="sr">${name(primary)}: </span>${value(primary)}</span><span class="secondary" data-gap=${secondary}><span class="sr">${name(secondary)}: </span>${value(secondary)}</span></span>`;
   }
   timingPosition(row) {
-    if (this.module.options.position_change !== 'grid') return row.position ?? '—';
     const change = row.position_change;
     const description = change ? `${this.w('modular.timing_position_reference')} · ${Math.abs(change.value)} ${this.w(({ gain: 'places gained', loss: 'places lost', equal: 'unchanged' })[change.status])}` : this.w('modular.timing_position_unknown');
-    return html`<span class="timing-position"><span>${row.position ?? '—'}</span><span class="position-change ${change?.status ?? 'unknown'}" title=${description}><span aria-hidden="true">${change?.value ? `${change.symbol}${Math.abs(change.value)}` : '—'}</span><span class="sr">${description}</span></span></span>`;
+    const value = change?.value ? `${change.value > 0 ? '▲' : '▼'}${Math.abs(change.value)}` : '—';
+    return html`<span class="timing-position"><span>${row.position ?? '—'}</span><span class="position-change ${change?.status ?? 'unknown'}" title=${description}><span aria-hidden="true">${value}</span><span class="sr">${description}</span></span></span>`;
   }
   timingBadge(badge) {
     const codes = { penalty: 'penalty', drive_through: 'drive_through', stop_go: 'stop_go', under_investigation: 'investigation', noted: 'noted', in_pit: 'pit', pit_out: 'pit_out', retired: 'retired', stopped: 'stopped' };
@@ -895,7 +980,7 @@ export class F1ModuleView extends LitElement {
   timeCell(value) {
     const status = timingStatus(value), signal = SIGNALS[status], colors = statusColors(status, this.settings.mode, this.settings.appearance.palette);
     const signals = this.settings.accessibility.signals, contextClass = this.module.options.show_time_context !== false ? 'provenance' : 'sr';
-    return html`<div class="cell-stack"><span class="signal ${status}" style=${this.minimalTiming ? `background:transparent;color:${colors.background}` : `background:${colors.background};color:${colors.color}`}>
+    return html`<div class="cell-stack"><span class="signal ${status}" style=${this.compactPresentation ? `background:transparent;color:${colors.background}` : `background:${colors.background};color:${colors.color}`}>
       ${this.module.options.show_time_status_icon !== false && signals !== 'text' && status !== 'unknown' ? html`<span aria-hidden="true">${signal.symbol}</span>` : ''}
       <span class="time">${formatTime(value?.time)}</span>
       <span class=${signals === 'shape' ? 'sr' : ''}>${label(signal, this.language)}</span>
@@ -903,7 +988,7 @@ export class F1ModuleView extends LitElement {
   }
   driverCell(row) {
     const appearance = this.settings.appearance;
-    const dimensions = this.minimalTiming ? { frame: 22, image: 18 } : logoDimensions(appearance.logo_size);
+    const dimensions = this.compactPresentation ? { frame: 22, image: 18 } : logoDimensions(appearance.logo_size);
     const color = appearance.team_colors && /^#[0-9a-f]{6}$/i.test(row.team_color) ? row.team_color : 'transparent';
     const headshot = appearance.logos && !this.model.teams && this.module.options?.driver_image_type === 'headshot' ? safeImageUrl(row.headshot) : null;
     const interactive = this.module.type !== 'timing' || this.timingDetailRows?.has(row.id);
@@ -984,7 +1069,7 @@ export class F1ModuleView extends LitElement {
   }
   cell(row, id) {
     if (id === 'driver') return this.driverCell(row);
-    if (id === 'position' && this.module.type === 'timing') return this.timingPosition(row);
+    if (id === 'position_with_change' && this.module.type === 'timing') return this.timingPosition(row);
     if (id === 'timing_gap') return this.combinedGapCell(row);
     if (id === 'gap' || id === 'interval') return formatTimingGap(row[id], this.w('modular.lap'));
     if (this.field(id)?.type === 'seconds_delta') {
@@ -1035,7 +1120,7 @@ export class F1ModuleView extends LitElement {
     if (narrow) {
       // Summary is an explicit layout choice. Keep all saved timing columns in
       // the expandable driver details rather than changing the saved fields.
-      fields = ['position', 'driver', ...fields.filter(id => ['timing_gap', 'qualifying_gap', 'best_lap_gap', 'tyre'].includes(id))];
+      fields = [...fields.filter(id => ['position', 'position_with_change'].includes(id)), 'driver', ...fields.filter(id => ['timing_gap', 'qualifying_gap', 'best_lap_gap', 'tyre'].includes(id))];
     }
     if (!rows.length) {
       if (this.model.pushMode === 'only') {
@@ -1063,7 +1148,7 @@ export class F1ModuleView extends LitElement {
     return html`${focusContext}${gapToggle}${closeAll}<div class=${`table-scroll ${narrow ? 'timing-summary' : ''} ${this.minimalTiming && fields.some(id => /^sector_[123]_with_minisectors$|^minisector_[123]$/.test(id)) ? 'compact-minisectors' : ''}`} part="table-container" tabindex="0" role="region" aria-label=${this.w(narrow ? 'modular.timing_summary_label' : 'modular.timing_table_scroll_horizontally_for_more_columns')}><table part="table">
       <caption class="sr">${this.module.title || this.model.title}</caption>
       ${this.timingHeader(fields, lapNumbers)}
-      <tbody>${repeat(rows, row => row.id, (row, index) => html`${this.model.pushMode !== 'off' && row.push_group && (index === 0 || row.push_group !== rows[index - 1].push_group) ? html`<tr class="push-group" data-group=${row.push_group}><th colspan=${fields.length + lapNumbers.length} scope="colgroup">${this.w(({ active: 'modular.push_laps', completed: 'modular.completed_attempts', other: 'modular.other_drivers' })[row.push_group])}${row.push_group === 'active' ? html`<span class="provenance">${this.w(this.model.pushOrderUnknown ? 'modular.push_laps_order_incomplete' : 'modular.push_laps_order')}</span>` : ''}</th></tr>` : ''}<tr part="table-row" data-driver=${row.id} data-push-group=${row.push_group ?? ''} data-retired=${String(options.dim_retired === true && row.retired === true)}>${repeat(fields, id => id, id => html`<td part="table-cell" data-field=${id}>${this.cell(row, id)}${!fields.includes('driver') && id === fields[0] ? this.pushLapMarker(row) : ''}</td>`)}${repeat(lapNumbers, lap => lap, (lap, index) => {
+      <tbody>${repeat(rows, row => row.id, (row, index) => html`${this.model.pushMode !== 'off' && row.push_group && (index === 0 || row.push_group !== rows[index - 1].push_group) ? html`<tr class="push-group" data-group=${row.push_group}><th colspan=${fields.length + lapNumbers.length} scope="colgroup">${this.w(({ active: 'modular.push_laps', completed: 'modular.completed_attempts', other: 'modular.other_drivers' })[row.push_group])}${row.push_group === 'active' ? html`<span class="provenance">${this.w(this.model.pushOrderUnknown ? 'modular.push_laps_order_incomplete' : 'modular.push_laps_order')}</span>` : ''}</th></tr>` : ''}<tr part="table-row" data-driver=${row.id} data-push-group=${row.push_group ?? ''} data-retired=${String(options.dim_retired === true && row.retired === true)}>${repeat(fields, id => id, id => html`<td part="table-cell" data-field=${id} data-field-type=${this.field(id)?.type ?? ''}>${this.cell(row, id)}${!fields.includes('driver') && id === fields[0] ? this.pushLapMarker(row) : ''}</td>`)}${repeat(lapNumbers, lap => lap, (lap, index) => {
         const value = (row.history ?? []).find(item => item.lap === lap);
         return html`<td part="table-cell" class=${`recent-lap ${index === 0 ? 'lap-start' : ''}`}>${this.timeCell(value ? { ...value, source: 'completed_lap', previous_lap: true } : { time: null, lap })}</td>`;
       })}</tr>
@@ -1076,7 +1161,7 @@ export class F1ModuleView extends LitElement {
   }
   timingLegend(fields = []) {
     const hasMinisectors = fields.some(id => /^minisector_[123]$|^sector_[123]_with_minisectors$/.test(id));
-    if (this.module.type === 'minisectors' && this.module.options.show_legend === false) return '';
+    if (this.module.options.show_explanation === false || this.module.type === 'minisectors' && this.module.options.show_legend === false) return '';
     const meanings = {
       overall: ['Fastest in the relevant session or qualifying part.', 'Snabbast i relevant session eller kvaldel.'],
       personal: ["This driver's best in the relevant comparison."],
@@ -1106,11 +1191,27 @@ export class F1ModuleView extends LitElement {
     const controls = canClear ? html`<div class="replay-controls" part="controls"><button data-focus="race-control-clear" ?disabled=${this.model.readonly || request?.pending} @click=${this.clearRaceControl}>${request?.pending ? this.w('modular.clearing') : this.clearConfirm ? this.w('modular.confirm_clear') : this.w('modular.clear_saved_messages')}</button></div>
       ${request?.busy ? html`<p class="muted">${this.w('modular.another_race_control_action_is_already_running')}</p>` : request?.error ? html`<p class="muted">${this.w('modular.saved_messages_could_not_be_cleared')}</p>` : ''}` : '';
     if (!rows.length) return html`${this.module.options.show_fia_logo ? html`<p class="document-summary"><strong class="chip">FIA</strong></p>` : ''}${this.empty(this.w('modular.no_matching_messages_yet'))}${controls}`;
+    if (this.compactPresentation) return html`${this.module.options.show_fia_logo ? html`<p class="document-summary"><strong class="chip">FIA</strong></p>` : ''}${this.compactEvents(rows, height)}${controls}`;
     return html`${this.module.options.show_fia_logo ? html`<p class="document-summary"><strong class="chip">FIA</strong></p>` : ''}<ol class="events" style=${height ? `max-height:${height}px` : ''} tabindex="0" aria-label="Race Control">${repeat(rows, row => row.id, row => html`<li data-event=${row.id}>
       <div class="event-meta">${this.module.fields.includes('event_time') ? html`<time datetime=${row.utc ?? ''}>${dateTime(row.utc ?? row.received_at, this.settings, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</time>` : ''}
       ${row.flag ? this.flagCell(row.flag) : ''}${row.car_number ? html`<span>${this.w('modular.car')} ${row.car_number}</span>` : ''}<span>${row.category}</span></div>
       ${this.module.fields.includes('message') ? html`<p>${row.message}</p>` : ''}
     </li>`)}</ol>${controls}`;
+  }
+  compactEvents(rows, height) {
+    const showTime = this.module.fields.includes('event_time'), showMessage = this.module.fields.includes('message');
+    return html`<ol class="events compact-events" style=${height ? `max-height:${height}px` : ''} tabindex="0" aria-label="Race Control">${repeat(rows, row => row.id, row => {
+      const timestamp = row.utc ?? row.received_at;
+      const knownTime = timestamp !== null && timestamp !== undefined && timestamp !== '' && Number.isFinite(new Date(timestamp).getTime());
+      return html`<li class=${showTime ? 'has-time' : ''} data-event=${row.id}>
+        ${showTime ? html`<time class="compact-event-time" datetime=${row.utc ?? ''}>${dateTime(timestamp, this.settings, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</time>` : ''}
+        <div class="compact-event-content">${showMessage ? html`<p class="compact-event-message">${row.message}</p>` : ''}
+          <div class="compact-event-meta">${row.flag ? this.flagCell(row.flag) : ''}${row.car_number ? html`<span>${this.w('modular.car')} ${row.car_number}</span>` : ''}<span>${row.category}</span>
+            ${showTime && knownTime ? html`<details class="compact-event-details"><summary data-focus=${`race-control-details-${row.id}`}>${this.w('modular.details')}</summary><time class="compact-event-timestamp" datetime=${timestamp}>${dateTime(timestamp, this.settings, { dateStyle: 'medium', timeStyle: 'long' })}</time></details>` : ''}
+          </div>
+        </div>
+      </li>`;
+    })}</ol>`;
   }
 }
 if (!customElements.get('f1-module-view')) customElements.define('f1-module-view', F1ModuleView);

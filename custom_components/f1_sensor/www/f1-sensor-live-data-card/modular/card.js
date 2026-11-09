@@ -1,6 +1,6 @@
 const version = new URL(import.meta.url).searchParams.get('v');
 const load = path => import(`${path}${version ? `?v=${encodeURIComponent(version)}` : ''}`);
-const [{ LitElement, html, css, repeat }, { normalizeConfig, configWarnings, resolveSelection }, { MODULES, label, moduleTitle, moduleFocusKinds }, data, { SectorStore, safeImageUrl, cardAccent, eventTimestamp }, { watchEntries, watchCardData, watchRaceControl, watchGroup, watchAnalysis, watchTrackMap, watchMinisectors, HistoryResources, callEntityService }, { sharedStyles, translatePlural, words, dateTime }, { visibilityMet, visibilityMediaQueries, hasTimeVisibility }] = await Promise.all([
+const [{ LitElement, html, css, repeat }, { normalizeConfig, configWarnings, resolveSelection, layoutStacks }, { MODULES, label, moduleTitle, moduleFocusKinds }, data, { SectorStore, safeImageUrl, cardAccent, eventTimestamp }, { watchEntries, watchCardData, watchRaceControl, watchGroup, watchAnalysis, watchTrackMap, watchMinisectors, HistoryResources, callEntityService }, { sharedStyles, translatePlural, words, dateTime }, { visibilityMet, visibilityMediaQueries, hasTimeVisibility }] = await Promise.all([
   load('../f1-lit-3.3.2.js'), load('./config.js'), load('./catalog.js'), load('./data.js'), load('./semantics.js'), load('./connection.js'), load('./view.js'), load('./visibility.js'),
 ]);
 const { makeDemo } = await load('./demo.js');
@@ -64,6 +64,10 @@ export class F1SensorCard extends LitElement {
       display:block; padding:var(--f1-card-padding); border:1px solid var(--f1-border); border-radius:var(--f1-card-radius); background:var(--f1-surface); color:var(--f1-text); overflow:hidden;
     }
     ha-card[data-style=minimal] { border-color:transparent; box-shadow:none; padding:var(--f1-minimal-padding,12px); }
+    ha-card[data-presentation=compact] .heading strong { font-size:1rem; font-weight:600; letter-spacing:0; }
+    ha-card[data-presentation=compact] .heading small { font-size:.75rem; }
+    ha-card[data-presentation=compact][data-font=f1] .heading strong { font-size:1.2rem; font-weight:700; }
+    ha-card[data-presentation=compact][data-configured-font=auto] .heading strong { font-family:var(--ha-font-family-heading,var(--ha-font-family-body,inherit)); font-size:1rem; font-weight:600; text-transform:none; letter-spacing:0; }
     ha-card[data-surface=framed] { border:1px solid var(--f1-border); box-shadow:none; }
     ha-card[data-surface=soft] { border:1px solid var(--f1-divider); box-shadow:none; }
     ha-card[data-surface=flat] { border:0; box-shadow:none; }
@@ -80,8 +84,8 @@ export class F1SensorCard extends LitElement {
     .modules { display:grid; gap:var(--f1-module-gap,26px); }
     .modules > f1-module-view { border-top:1px solid var(--f1-divider); padding-top:var(--f1-section-space,20px); }
     .modules > f1-module-view:first-child { border-top:0; padding-top:0; }
-    ha-card[data-layout=columns] { container:f1-modules / inline-size; }
-    .modules[data-layout=columns] {
+    ha-card:is([data-layout=columns],[data-layout=stacks]) { container:f1-modules / inline-size; }
+    .modules:is([data-layout=columns],[data-layout=stacks]) {
       --_f1-available-columns:1;
       --_f1-layout-columns:min(var(--_f1-max-columns),var(--_f1-available-columns));
       grid-template-columns:repeat(var(--_f1-layout-columns),minmax(0,1fr));
@@ -92,9 +96,12 @@ export class F1SensorCard extends LitElement {
       min-width:0; border-top:0; padding-top:0;
     }
     .modules[data-layout=columns] > f1-module-view[data-column-span=full] { grid-column:1 / -1; }
-    @container f1-modules (min-width:38rem) { .modules[data-layout=columns] { --_f1-available-columns:2; } }
-    @container f1-modules (min-width:58rem) { .modules[data-layout=columns] { --_f1-available-columns:3; } }
-    @container f1-modules (min-width:78rem) { .modules[data-layout=columns] { --_f1-available-columns:4; } }
+    @container f1-modules (min-width:38rem) { .modules:is([data-layout=columns],[data-layout=stacks]) { --_f1-available-columns:2; } }
+    @container f1-modules (min-width:58rem) { .modules:is([data-layout=columns],[data-layout=stacks]) { --_f1-available-columns:3; } }
+    @container f1-modules (min-width:78rem) { .modules:is([data-layout=columns],[data-layout=stacks]) { --_f1-available-columns:4; } }
+    .module-stack { display:flex; flex-direction:column; align-self:start; min-width:0; gap:var(--f1-module-gap,26px); grid-column:span min(var(--_f1-stack-span,1),var(--_f1-layout-columns)); }
+    .module-stack[data-column-span=full] { grid-column:1 / -1; }
+    .module-stack > f1-module-view { display:block; min-width:0; }
     nav { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:20px; }
     .frozen { padding:10px 12px; margin-bottom:16px; border:1px solid currentColor; border-radius:8px; }
     .connection-status { padding:10px 12px; margin:0 0 16px; border:1px solid currentColor; border-radius:8px; }
@@ -169,7 +176,7 @@ export class F1SensorCard extends LitElement {
       ${source === 'sample' ? html`<label><span>${this.w('modular.sample_session')}</span><select aria-label=${this.w('modular.sample_session')} .value=${scene} @change=${event => this.changePreview('scene', event.target.value)}>
         ${[['before', this.w('modular.before_a_session')], ['practice', this.w('modular.practice')], ['qualifying', this.w('modular.qualifying')], ['sprint_qualifying', this.w('modular.sprint_qualifying')], ['sprint', 'Sprint'], ['race', 'Race'], ['ended', this.w('modular.finished')], ['replay', 'Replay'], ['missing', this.w('modular.missing_data')]].map(([value, title]) => html`<option value=${value} .selected=${scene === value}>${title}</option>`)}
       </select></label>` : ''}
-      ${this.config.layout === 'columns' ? html`<p>${this.w('modular.home_assistant_limits_the_preview_width_check_the_full_column_layout_on_your_dashboard')}</p>` : ''}
+      ${['columns', 'stacks'].includes(this.config.layout) ? html`<p>${this.w('modular.home_assistant_limits_the_preview_width_check_the_full_column_layout_on_your_dashboard')}</p>` : ''}
     </div>`;
   }
   setConfig(config) { this.cancelActions(); this.choices?.clear(); this.config = normalizeConfig(config); this.syncVisibilityListeners(); }
@@ -300,7 +307,7 @@ export class F1SensorCard extends LitElement {
     const timePreference = this.sourceHass?.locale?.time_zone;
     const timezone = timePreference === 'local' ? Intl.DateTimeFormat().resolvedOptions().timeZone
       : timePreference && timePreference !== 'server' ? timePreference : this.sourceHass?.config?.time_zone ?? 'UTC';
-    return { appearance, accessibility: this.config.accessibility, mode, language: this.language, timezone, timeFormat: this.sourceHass?.locale?.time_format };
+    return { appearance, configuredFont: saved.font, accessibility: this.config.accessibility, mode, language: this.language, timezone, timeFormat: this.sourceHass?.locale?.time_format };
   }
   willUpdate(changed) {
     this.syncPreview();
@@ -679,7 +686,7 @@ export class F1SensorCard extends LitElement {
     model.traceMarkerContext = markerSource?.contextKey ?? null;
     model.title = this.w('modular.race_trace_title');
     model.traceContext = key; model.traceSourceContext = selected.contextKey;
-    model.notice = model.status === 'ready' ? null : this.w('modular.race_trace_notice');
+    model.notice = model.status === 'ready' || module.options.show_explanation === false ? null : this.w('modular.race_trace_notice');
     model.context = { reference: model.series.find(series => series.isReference)?.name ?? module.options.reference_driver,
       anchor: model.anchorLap, updated: selected.updatedAt ?? null, updatedKind: 'received' };
     if (model.status !== 'ready') model.blocked = this.w(`modular.race_trace_${model.reason}`);
@@ -768,7 +775,7 @@ export class F1SensorCard extends LitElement {
         Object.assign(model, season.standingsModel(viewHass, viewEntry, effective, focus));
         if (effective.options.show_mode_badge !== false) model.badge = this.w('modular.published_standings');
         if (model.projection.requested) {
-          if (model.projection.available) model.notice = this.w('modular.projected_columns_follow_the_current_session_published_positions_and_points_stay_separate');
+          if (model.projection.available) model.notice = effective.options.show_explanation === false ? null : this.w('modular.projected_columns_follow_the_current_session_published_positions_and_points_stay_separate');
           else {
             const auth = data.source(viewHass, viewEntry, 'f1tv_token_status');
             const authNeedsAttention = auth.status === 'available' && ['expired', 'invalid', 'rejected', 'refresh_failed'].includes(String(auth.state).toLowerCase());
@@ -784,7 +791,7 @@ export class F1SensorCard extends LitElement {
         Object.assign(model, season.archiveModel(effective, entry?.entry_id, query => this.modelPreview ? this.modelPreview.history?.(query) ?? { status: 'ready', data: { payload: null } } : this.history.read(query), this.modelPreview?.now ?? Date.now()));
         const archiveLabel = this.w('modular.historical_data');
         model.badge = effective.options.show_session_type_badge !== false && model.session?.name ? `${archiveLabel} · ${model.session.name}` : archiveLabel;
-        model.notice = effective.options.content === 'lap_position'
+        model.notice = effective.options.show_explanation === false ? null : effective.options.content === 'lap_position'
           ? this.w('modular.positions_are_recorded_when_each_driver_completes_a_lap_they_are_not_simultaneous_track')
           : effective.options.content === 'lap_time' ? this.w('modular.published_race_laps_may_include_pit_laps_and_neutralisations_sector_times_telemetry_and_clean') : null;
       }
@@ -820,7 +827,7 @@ export class F1SensorCard extends LitElement {
         Object.assign(model, data.lapChartModel(viewHass, viewEntry, effective, focus));
         model.title = module.options.metric === 'lap_change' ? this.w('modular.lap_changes') : this.w('modular.recorded_lap_times');
         if (model.invalidRange) model.blocked = this.w('modular.the_first_lap_is_after_the_last_lap_adjust_the_lap_range_in_the');
-        model.notice = module.options.metric === 'lap_change'
+        model.notice = effective.options.show_explanation === false ? null : module.options.metric === 'lap_change'
           ? this.w('modular.each_change_compares_the_same_driver_with_their_preceding_lap_negative_values_mean_a')
           : this.w('modular.recorded_laps_may_include_pit_laps_neutralisations_and_different_qualifying_parts_this_view_does');
       }
@@ -863,7 +870,7 @@ export class F1SensorCard extends LitElement {
           else model.blocked = this.w('modular.analysis_connection_interrupted_your_settings_are_kept');
         }
         if (model.blocked && module.unavailable === 'hide' && !this.modelPreview) model.hidden = true;
-        if (module.fields.includes('analysis_quality')) model.notice = [model.notice, this.w('modular.evidence_score_measures_support_not_probability')].filter(Boolean).join(' ');
+        if (effective.options.show_explanation !== false && module.fields.includes('analysis_quality')) model.notice = [model.notice, this.w('modular.evidence_score_measures_support_not_probability')].filter(Boolean).join(' ');
         if (module.type === 'timeline' && module.options.event_focus) {
           const source = this.eventFocusSource();
           model.eventFocusReadonly = Boolean(this.frozen || this.preview || this.modelPreview);
@@ -890,7 +897,7 @@ export class F1SensorCard extends LitElement {
         Object.assign(model, sessionData.tyresModel(viewHass, viewEntry, effective, focus));
         if (model.history) model.selectionGeneration = this.tyreHistoryGeneration();
         if (model.waiting) model.notice = this.w('modular.waiting_for_compound_information_from_timingappdata_lap_counts_alone_do_not_identify_a_tyre');
-        if (model.statistics && !model.waiting) model.notice = this.w('modular.recorded_laps_across_all_drivers_and_stints_differences_include_fuel_track_conditions_and_traffic');
+        if (effective.options.show_explanation !== false && model.statistics && !model.waiting) model.notice = this.w('modular.recorded_laps_across_all_drivers_and_stints_differences_include_fuel_track_conditions_and_traffic');
       }
       if (module.type === 'pit_stops') {
         Object.assign(model, sessionData.pitStopsModel(viewHass, viewEntry, effective, focus));
@@ -908,7 +915,7 @@ export class F1SensorCard extends LitElement {
             : this.w('modular.no_pit_records_received');
         }
         if (model.laneOnly) notices.push(this.w('modular.pit_lane_without_stationary'));
-        if (model.rows.length && module.fields.includes('pit_delta')) notices.push(this.w('modular.estimated_lap_loss_the_longer_of_the_in_out_laps_minus_the_median_reference'));
+        if (effective.options.show_explanation !== false && model.rows.length && module.fields.includes('pit_delta')) notices.push(this.w('modular.estimated_lap_loss_the_longer_of_the_in_out_laps_minus_the_median_reference'));
         model.notice = notices.join(' ');
       }
       if (module.type === 'team_radio') {
@@ -918,7 +925,7 @@ export class F1SensorCard extends LitElement {
       }
       if (module.type === 'incidents') {
         Object.assign(model, sessionData.incidentsModel(viewHass, viewEntry, effective, focus));
-        if (model.summary) model.notice = this.w('modular.only_drivers_with_recorded_track_limit_data_are_listed_a_missing_driver_is_not');
+        if (effective.options.show_explanation !== false && model.summary) model.notice = this.w('modular.only_drivers_with_recorded_track_limit_data_are_listed_a_missing_driver_is_not');
       }
       if (module.type === 'timing') {
         const minisectors = minisectorData.usesMinisectors(module, this.moduleNodes.get(module.id)?.timingExpanded?.length > 0) ? this.minisectorState(effective) : null;
@@ -1044,12 +1051,16 @@ export class F1SensorCard extends LitElement {
     const text = haStyle ? 'var(--primary-text-color)' : dark ? '#f1f4f8' : '#1a2533';
     const muted = haStyle ? 'var(--secondary-text-color)' : high ? text : dark ? '#bdc6d4' : '#536174';
     const density = settings.appearance.density;
-    const spacing = density === 'compact' ? [16, 10, 16, 14, '5px 9px', '5px'] : density === 'spacious' ? [24, 16, 32, 24, '15px 16px', '14px'] : [20, 12, 26, 20, '10px 12px', '9px'];
+    const compact = settings.appearance.presentation === 'compact';
+    const normalSpacing = density === 'compact' ? [16, 10, 16, 14, '5px 9px', '5px'] : density === 'spacious' ? [24, 16, 32, 24, '15px 16px', '14px'] : [20, 12, 26, 20, '10px 12px', '9px'];
+    // The shell shares spacing; each opted-in module owns its compact content.
+    const shellSpacing = density === 'compact' ? [10, 8, 10, 10] : density === 'spacious' ? [16, 12, 20, 16] : [12, 10, 14, 12];
+    const spacing = compact ? [...shellSpacing, ...normalSpacing.slice(4)] : normalSpacing;
     const typography = settings.appearance.font === 'f1';
     const accent = cardAccent(settings.appearance, this.modelPreview?.accentTeams ?? data.accentTeams(this.sourceHass, this.entry), settings.mode);
     const radius = settings.appearance.surface === 'framed' ? '8px' : settings.appearance.surface === 'soft' ? '20px' : settings.appearance.surface === 'flat' ? '0' : 'var(--ha-card-border-radius,14px)';
     const style = `--_f1-card-padding:${spacing[0]}px;--_f1-minimal-padding:${spacing[1]}px;--_f1-module-gap:${spacing[2]}px;--_f1-section-space:${spacing[3]}px;--_f1-cell-padding:${spacing[4]};--_f1-item-padding:${spacing[5]};--_f1-heading-font:${typography ? "'F1 Barlow Condensed',sans-serif" : 'var(--ha-font-family-heading,var(--ha-font-family-body,inherit))'};--_f1-heading-transform:${typography ? 'uppercase' : 'none'};--_f1-module-heading-size:${typography ? '1.3em' : '1.1em'};--_f1-surface:${background};--_f1-text:${text};--_f1-muted:${muted};--_f1-border:${dark ? '#637083' : '#778397'};--_f1-divider:${dark ? '#354150' : '#cbd1da'};--_f1-panel:${dark ? '#1b2430' : '#f1f4f8'};--_f1-focus:${dark ? '#7ebfff' : '#005db5'};--_f1-row-alternate:${settings.appearance.surface === 'soft' ? 'var(--f1-panel)' : 'transparent'};--_f1-accent:${accent.color};--_f1-numerals:${settings.appearance.numbers === 'tabular' ? 'tabular-nums' : 'normal'};--_f1-card-radius:${radius}`;
-    if (!this.entry) return html`<ha-card part="card" data-style=${settings.appearance.style} data-font=${settings.appearance.font} data-surface=${settings.appearance.surface} data-accent=${String(accent.visible)} role="group" aria-label=${this.config.title} style=${style}>${this.previewControls()}${settings.appearance.show_header ? html`<header class="heading" part="header">${this.actionHeading()}</header>` : ''}<div class="empty" part="empty-state">${this.discovery?.status === 'error' ? this.discovery.error : (this.modelPreview?.entries ?? this.entries).length > 1 ? this.w('modular.choose_an_f1_sensor_installation_in_the_editor') : this.w('modular.waiting_for_f1_sensor')}</div>${this.actionAlternatives()}</ha-card>`;
+    if (!this.entry) return html`<ha-card part="card" data-style=${settings.appearance.style} data-presentation=${settings.appearance.presentation} data-configured-font=${settings.configuredFont} data-font=${settings.appearance.font} data-surface=${settings.appearance.surface} data-accent=${String(accent.visible)} role="group" aria-label=${this.config.title} style=${style}>${this.previewControls()}${settings.appearance.show_header ? html`<header class="heading" part="header">${this.actionHeading()}</header>` : ''}<div class="empty" part="empty-state">${this.discovery?.status === 'error' ? this.discovery.error : (this.modelPreview?.entries ?? this.entries).length > 1 ? this.w('modular.choose_an_f1_sensor_installation_in_the_editor') : this.w('modular.waiting_for_f1_sensor')}</div>${this.actionAlternatives()}</ha-card>`;
     if (this.entry?.data_api?.configuration_required) return html`<ha-card part="card" style=${style}><div class="empty" role="status"><p>${this.w('modular.data_configuration_required')}</p><a href="/config/integrations/integration/f1_sensor">${this.w('modular.open_integration_settings')}</a></div></ha-card>`;
     const models = this.frozen ? this.frozenModels : this.buildModels();
     if (this.frozen) { this.guardFrozenRaceTrace(models); this.guardFrozenTyreHistory(models); }
@@ -1107,7 +1118,12 @@ export class F1SensorCard extends LitElement {
       return node;
     });
     for (const id of this.moduleNodes.keys()) if (!this.config.modules.some(module => module.id === id)) this.moduleNodes.delete(id);
-    return html`<ha-card data-layout=${this.config.layout} part="card" data-style=${settings.appearance.style} data-font=${settings.appearance.font} data-surface=${settings.appearance.surface} data-accent=${String(accent.visible)} role="group" aria-label=${this.config.title} style=${style}>
+    // Placement groups contain the existing module nodes, so changing a stack
+    // never replaces a module's local state, data sources or selection.
+    const nodesById = new Map(nodes.map(node => [node.dataset.moduleId, node]));
+    const stacks = this.config.layout === 'stacks' ? layoutStacks(this.config).map(stack => ({ ...stack, nodes: stack.modules.map(id => nodesById.get(id)).filter(Boolean) })).filter(stack => stack.nodes.length) : [];
+    const content = this.config.layout === 'stacks' ? repeat(stacks, stack => stack.id, stack => html`<div class="module-stack" part="stack" data-stack-id=${stack.id} data-column-span=${String(stack.column_span)} style=${`--_f1-stack-span:${stack.column_span === 'full' ? 1 : stack.column_span}`}>${stack.nodes}</div>`) : nodes;
+    return html`<ha-card data-layout=${this.config.layout} part="card" data-style=${settings.appearance.style} data-presentation=${settings.appearance.presentation} data-configured-font=${settings.configuredFont} data-font=${settings.appearance.font} data-surface=${settings.appearance.surface} data-accent=${String(accent.visible)} role="group" aria-label=${this.config.title} style=${style}>
       ${this.previewControls()}
       ${this.modelPreview ? html`<p class="demo">${this.w('modular.demo_sample_data')}</p>` : ''}
       <header part="header">${settings.appearance.show_header ? html`<div class="heading" part="title">${this.actionHeading()}<small>${this.w('modular.your_formula_1_view')}</small></div>` : ''}
@@ -1121,7 +1137,7 @@ export class F1SensorCard extends LitElement {
       ${selectedEvent ? html`<section class="connection-status" role="region" aria-label=${this.w('modular.event_focus_selected')}><strong>${this.w('modular.event_focus_selected')}</strong><p>${selectedEvent.title}</p><p>${eventDrivers.length ? eventDrivers.join(', ') : this.w('modular.event_focus_no_driver')} · ${selectedEvent.lap_number ?? this.w('modular.event_focus_no_lap')} · ${selectedEventTime ? html`<time datetime=${selectedEventTime}>${dateTime(selectedEventTime, settings, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</time>` : this.w('modular.event_focus_no_time')}</p><p>${this.w('modular.event_focus_revision', { revision: selectedEvent.revision })} · ${selectedEvent.provider ?? this.w('modular.event_focus_no_source')}</p><p>${this.w('modular.event_focus_seek_unavailable')}</p><button @click=${this.clearEventFocus}>${this.w('modular.event_focus_clear')}</button></section>` : ''}
       <div aria-live=${settings.accessibility.announce ? 'polite' : 'off'} aria-atomic="true">${this.frozen ? html`<p class="frozen">${this.w('modular.reading_snapshot')} · ${dateTime(this.frozenAt, settings, { hour: '2-digit', minute: '2-digit', second: '2-digit' })} · ${this.w('modular.only_this_card_is_paused')}${this.frozenGeneration !== this.savedSources.viewGeneration ? html`<br>${this.w('modular.session_or_playback_settings_have_changed_this_snapshot_keeps_its_original_context_resume_to')}` : ''}${this.focus.driver !== this.frozenFocus?.driver || this.focus.team !== this.frozenFocus?.team ? html`<br>${this.w('modular.group_focus_has_changed_resume_to_follow_it')}` : ''}</p>` : ''}</div>
       ${this.config.layout === 'tabs' ? html`<nav part="tabs" aria-label=${this.w('modular.modules')}>${modules.map(module => html`<button aria-pressed=${String(active === module.id)} aria-controls=${`module-${module.id}`} @click=${() => { this.tab = module.id; }}>${module.title || models.get(module.id).title}</button>`)}</nav>` : ''}
-      ${nodes.length ? html`<div class="modules" part="modules" data-layout=${this.config.layout} style=${`--_f1-max-columns:${this.config.columns}`}>${nodes}</div>` : this.emptyCard()}
+      ${nodes.length ? html`<div class="modules" part="modules" data-layout=${this.config.layout} style=${`--_f1-max-columns:${this.config.columns}`}>${content}</div>` : this.emptyCard()}
       ${configWarnings(this.config).length ? html`<p class="muted">${this.w('modular.some_settings_need_a_newer_card_version_they_are_preserved_in_the_editor')}</p>` : ''}
     </ha-card>`;
   }

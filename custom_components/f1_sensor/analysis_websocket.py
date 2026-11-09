@@ -280,6 +280,12 @@ def _analysis_payload(runtime: F1RuntimeData) -> dict[str, Any]:
     availability = live.availability if live is not None else None
     replay = runtime.replay.controller if runtime.replay is not None else None
     replay_status = replay.get_playback_status() if replay is not None else {}
+    replay_state = getattr(getattr(replay, "state", None), "value", "idle")
+    position_ms = replay_status.get("position_ms")
+    if replay_state == "seeking" and getattr(replay, "transport", None) is None:
+        # With no transport the controller reports the requested position.
+        # The current analysis may still describe the previous playhead.
+        position_ms = None
     session_manager = getattr(replay, "session_manager", None)
     get_index = getattr(session_manager, "get_loaded_index", None)
     replay_index = get_index() if callable(get_index) else None
@@ -310,8 +316,8 @@ def _analysis_payload(runtime: F1RuntimeData) -> dict[str, Any]:
         "capabilities": capabilities,
         "replay": {
             "session_id": getattr(replay_index, "session_id", None),
-            "state": getattr(getattr(replay, "state", None), "value", "idle"),
-            "position_ms": replay_status.get("position_ms"),
+            "state": replay_state,
+            "position_ms": position_ms,
             "duration_ms": replay_status.get("duration_ms"),
             "paused": replay_status.get("paused", False),
         },
@@ -343,6 +349,8 @@ class _AnalysisBroadcastHub:
         self._runtime = runtime
         self._store = store
         self._subscribers: set[_AnalysisSubscription] = set()
+        self._pending: set[_AnalysisSubscription] = set()
+        self._flush_handle: asyncio.TimerHandle | None = None
         self._unsubscribe_store = store.add_listener(self._broadcast)
         self._unsubscribe_close = store.add_close_listener(self.async_close)
         self._demand_tasks: set[asyncio.Task] = set()
@@ -366,9 +374,12 @@ class _AnalysisBroadcastHub:
             if self.closed:
                 return
             self._subscribers.discard(subscription)
-            if self._subscribers or self.closed:
+            self._pending.discard(subscription)
+            if self._subscribers:
+                self._schedule_flush()
                 return
             self.closed = True
+            self._cancel_flush()
             self._unsubscribe_store()
             self._detach_replay_listener()
             _ANALYSIS_HUBS.pop(self._store, None)
@@ -383,11 +394,54 @@ class _AnalysisBroadcastHub:
 
     @callback
     def _broadcast(self) -> None:
+        """Mark clients dirty without calculating a snapshot for throttled frames."""
         if self.closed:
             return
-        payload = self.payload()
-        for subscriber in tuple(self._subscribers):
-            subscriber.receive(payload)
+        self._pending.update(self._subscribers)
+        self._flush_due()
+
+    @callback
+    def _flush_due(self) -> None:
+        if self.closed:
+            return
+        now = self._hass.loop.time()
+        if any(subscriber.next_send <= now for subscriber in self._pending):
+            # Build from the current store and replay context. Pending work owns
+            # only deadlines, so it cannot retain a snapshot from a retired source.
+            payload = self.payload()
+            now = self._hass.loop.time()
+            due = {
+                subscriber
+                for subscriber in self._pending
+                if subscriber.next_send <= now
+            }
+            self._pending.difference_update(due)
+            for subscriber in due:
+                with suppress(Exception):
+                    subscriber._send(payload)
+        self._schedule_flush()
+
+    @callback
+    def _flush_scheduled(self) -> None:
+        self._flush_handle = None
+        self._flush_due()
+
+    def _schedule_flush(self) -> None:
+        deadline = min(
+            (subscriber.next_send for subscriber in self._pending), default=None
+        )
+        if self._flush_handle is not None and self._flush_handle.when() == deadline:
+            return
+        self._cancel_flush()
+        if deadline is not None:
+            self._flush_handle = self._hass.loop.call_at(
+                deadline, self._flush_scheduled
+            )
+
+    def _cancel_flush(self) -> None:
+        if self._flush_handle is not None:
+            self._flush_handle.cancel()
+            self._flush_handle = None
 
     def _set_demand(self, *, active: bool, apply: bool = True) -> None:
         live = self._runtime.live
@@ -466,19 +520,22 @@ class _AnalysisBroadcastHub:
     async def async_close(self) -> None:
         """Terminate subscriptions and await work owned by the retiring store."""
         self.closed = True
+        self._cancel_flush()
+        self._pending.clear()
         self._unsubscribe_store()
         self._detach_replay_listener()
         if _ANALYSIS_HUBS.get(self._store) is self:
             _ANALYSIS_HUBS.pop(self._store, None)
-        payload = {
-            **self.payload(),
-            "status": "closed",
-            "retryable": True,
-            "reason": "entry_unloaded",
-        }
-        for subscriber in tuple(self._subscribers):
-            with suppress(Exception):
-                subscriber.terminate(payload)
+        if self._subscribers:
+            payload = {
+                **self.payload(),
+                "status": "closed",
+                "retryable": True,
+                "reason": "entry_unloaded",
+            }
+            for subscriber in tuple(self._subscribers):
+                with suppress(Exception):
+                    subscriber.terminate(payload)
         self._subscribers.clear()
         self._set_demand(active=False, apply=False)
         tasks = tuple(self._demand_tasks)
@@ -506,9 +563,7 @@ class _AnalysisSubscription:
         self._msg_id = msg_id
         self._hub = hub
         self._throttle_seconds = throttle_seconds
-        self._last_sent = 0.0
-        self._pending_handle: asyncio.TimerHandle | None = None
-        self._pending_payload: dict[str, Any] | None = None
+        self.next_send = 0.0
         self._closed = False
         self._unsubscribe_hub = hub.add(self)
 
@@ -518,31 +573,10 @@ class _AnalysisSubscription:
         self._send(self._hub.payload())
 
     @callback
-    def receive(self, payload: dict[str, Any]) -> None:
-        """Coalesce rapid timing updates to the newest complete snapshot."""
+    def _send(self, payload: dict[str, Any]) -> None:
         if self._closed:
             return
-        self._pending_payload = payload
-        if self._pending_handle is not None:
-            return
-        elapsed = self._hass.loop.time() - self._last_sent
-        delay = max(0.0, self._throttle_seconds - elapsed)
-        if delay == 0:
-            self._send_pending()
-        else:
-            self._pending_handle = self._hass.loop.call_later(delay, self._send_pending)
-
-    @callback
-    def _send_pending(self) -> None:
-        self._pending_handle = None
-        payload = self._pending_payload
-        self._pending_payload = None
-        if payload is not None:
-            self._send(payload)
-
-    @callback
-    def _send(self, payload: dict[str, Any]) -> None:
-        self._last_sent = self._hass.loop.time()
+        self.next_send = self._hass.loop.time() + self._throttle_seconds
         self._connection.send_event(self._msg_id, payload)
 
     @callback
@@ -552,10 +586,6 @@ class _AnalysisSubscription:
             return
         self._closed = True
         self._unsubscribe_hub()
-        if self._pending_handle is not None:
-            self._pending_handle.cancel()
-            self._pending_handle = None
-        self._pending_payload = None
 
     def terminate(self, payload: dict[str, Any]) -> None:
         """Send the terminal state immediately, bypassing the throttle."""

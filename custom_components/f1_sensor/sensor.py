@@ -91,8 +91,6 @@ async def _async_setup_points_progression(sensor) -> None:
             sensor._attr_extra_state_attributes = dict(
                 getattr(last, "attributes", {}) or {}
             )
-    removal = sensor.coordinator.async_add_listener(sensor._handle_coordinator_update)
-    sensor.async_on_remove(removal)
     sensor.async_write_ha_state()
 
 
@@ -645,8 +643,6 @@ class _CoordinatorStreamSensorBase(F1BaseEntity, SensorEntity):
         await super().async_added_to_hass()
         updated = self._update_from_coordinator()
         self._handle_stream_state(updated)
-        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
-        self.async_on_remove(removal)
         try:
             reg = entry_runtime_registry(self.hass, self._entry_id)
             self._session_info_coordinator = reg.get("session_info_coordinator")
@@ -683,8 +679,6 @@ class _ChampionshipPredictionBase(F1BaseEntity, RestoreEntity, SensorEntity):
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
-        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
-        self.async_on_remove(removal)
 
         init = self._extract_current()
         updated = init is not None
@@ -1079,8 +1073,6 @@ class F1FiaDocumentsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         await super().async_added_to_hass()
         await self._restore_last_state()
         self._update_from_coordinator(force=True)
-        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
-        self.async_on_remove(removal)
         self.async_write_ha_state()
 
     async def _restore_last_state(self) -> None:
@@ -1258,8 +1250,6 @@ class F1TrackWeatherSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         else:
             self._clear_state()
         self._handle_stream_state(updated)
-        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
-        self.async_on_remove(removal)
         self._safe_write_ha_state()
 
     async def async_will_remove_from_hass(self) -> None:
@@ -1374,8 +1364,6 @@ class F1TrackStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                 self._clear_state()
         self._handle_stream_state(updated)
         # Listen for coordinator pushes
-        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
-        self.async_on_remove(removal)
         if self._session_status_coordinator is not None:
             status_removal = self._session_status_coordinator.async_add_listener(
                 self._handle_session_status_update
@@ -1481,8 +1469,6 @@ class F1TopThreePositionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             else:
                 self._clear_state()
         self._handle_stream_state(updated)
-        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
-        self.async_on_remove(removal)
         self.async_write_ha_state()
 
     def _extract_state(self) -> dict | None:
@@ -1774,8 +1760,6 @@ class F1SessionStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             else:
                 self._clear_state()
         self._handle_stream_state(updated)
-        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
-        self.async_on_remove(removal)
         # Subscribe to SessionInfo for meeting/session metadata
         try:
             reg = entry_runtime_registry(self.hass, self._entry_id)
@@ -1864,8 +1848,6 @@ class F1SessionClockBaseSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             self._attr_extra_state_attributes = dict(
                 getattr(last, "attributes", {}) or {}
             )
-        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
-        self.async_on_remove(removal)
         self._handle_coordinator_update()
 
     @staticmethod
@@ -2015,8 +1997,6 @@ class F1CurrentSessionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
         # Wire listeners first so _live_status() reflects current coordinator state
-        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
-        self.async_on_remove(removal)
         # Also listen to SessionStatus so we can clear state when session ends
         try:
             reg = entry_runtime_registry(self.hass, self._entry_id)
@@ -2170,8 +2150,6 @@ class F1RaceControlSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
-        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
-        self.async_on_remove(removal)
 
         payload = self._extract_current()
         updated = payload is not None
@@ -2281,8 +2259,6 @@ class F1TrackLimitsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
-        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
-        self.async_on_remove(removal)
 
         reg = entry_runtime_registry(self.hass, self._entry_id)
         live_state = reg.get("live_state")
@@ -2505,8 +2481,6 @@ class F1InvestigationsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
-        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
-        self.async_on_remove(removal)
 
         reg = entry_runtime_registry(self.hass, self._entry_id)
         live_state = reg.get("live_state")
@@ -2689,8 +2663,6 @@ class F1TeamRadioSensor(
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
-        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
-        self.async_on_remove(removal)
 
         payload = self._extract_current()
         updated = payload is not None
@@ -2767,8 +2739,6 @@ class F1PitStopsSensor(
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
-        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
-        self.async_on_remove(removal)
 
         init = self._extract_current()
         updated = init is not None
@@ -2916,8 +2886,6 @@ class F1RaceLapCountSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             else:
                 self._clear_state()
         self._handle_stream_state(updated)
-        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
-        self.async_on_remove(removal)
         self._safe_write_ha_state()
         # No staleness timer: we keep last known value until new feed data arrives
 
@@ -3073,8 +3041,6 @@ class F1DriverListSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                     getLogger(__name__).info(
                         "DriverList: Bootstrapped from Ergast/Jolpica standings (no live feed / no restore-state yet)"
                     )
-        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
-        self.async_on_remove(removal)
         self.async_write_ha_state()
 
     def _handle_coordinator_update(self) -> None:
@@ -3287,8 +3253,6 @@ class F1StartingGridSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         updated = self._update_from_coordinator()
         if not updated:
             await self._restore_if_relevant()
-        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
-        self.async_on_remove(removal)
         self.async_write_ha_state()
 
     def _handle_coordinator_update(self) -> None:
@@ -3454,8 +3418,6 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
         self._handle_stream_state(updated)
 
-        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
-        self.async_on_remove(removal)
         self.async_write_ha_state()
 
     async def _restore_state(self) -> None:

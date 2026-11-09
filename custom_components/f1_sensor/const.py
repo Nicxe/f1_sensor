@@ -3,6 +3,10 @@ from datetime import timedelta
 from homeassistant.const import Platform
 
 DOMAIN = "f1_sensor"
+# Bound catch-up work without losing ordered, transient live stream messages.
+DELAY_DRAIN_MAX_ITEMS = 64
+DELAY_DRAIN_MAX_SECONDS = 0.005
+DELAY_DRAIN_YIELD_SECONDS = 0.001
 PLATFORMS: list[Platform] = [
     Platform.SENSOR,
     Platform.BINARY_SENSOR,

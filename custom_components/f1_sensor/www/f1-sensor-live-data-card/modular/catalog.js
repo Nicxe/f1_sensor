@@ -61,6 +61,7 @@ export const MINISECTOR_FIELDS = [
 
 export const TIMING_FIELDS = [
   timing('position', 'Pos', 'integer', 'current_position', { mobile: 0 }),
+  timing('position_with_change', 'Position + change', 'position_with_change', 'current_position + starting_grid.grid[].grid_position', { mobile: 0, comparison: 'starting_grid' }),
   timing('driver', 'Driver', 'driver', 'racing_number', { mobile: 0, filterable: true }),
   timing('team', 'Team', 'text', 'team', { filterable: true }),
   timing('gap', 'To leader', 'gap', 'gap_to_leader', { mobile: 1 }),
@@ -241,7 +242,11 @@ export const FIELDS = Object.fromEntries([
 ].map(field => [field.id, field]));
 
 const module = (id, sourceText, fields, options, sources, extra = {}) => ({
-  id, label: sourceText, fields, options, sources, version: VERSION, ...extra,
+  id, label: sourceText, fields, options: {
+    show_context: { type: 'boolean', default: true, label: 'modular.show_session_and_event_details' },
+    show_explanation: { type: 'boolean', default: true, label: 'modular.show_explanations' },
+    ...options,
+  }, sources, version: VERSION, ...extra,
 });
 export const MODULES = {
   overview: module('overview', 'Overview', ['meeting', 'circuit', 'country', 'countdown', 'circuit_map', 'circuit_history', 'session', 'session_status', 'lap_progress', 'track_status', 'session_time_elapsed', 'session_time_remaining', 'race_time_to_three_hour_limit', 'session_rain_risk'], {
@@ -259,9 +264,10 @@ export const MODULES = {
   timing: module('timing', 'Timing', TIMING_FIELDS.map(field => field.id), {
     profile: { type: 'enum', values: ['custom', 'auto', 'practice', 'qualifying', 'sprint_qualifying', 'sprint', 'race'], default: 'custom', label: 'Column profile' },
     presentation: { type: 'enum', values: ['current', 'minimal'], default: 'current', label: 'modular.timing_presentation' },
-    narrow_layout: { type: 'boolean', default: false, label: 'modular.timing_narrow_layout' },
+    narrow_layout: { type: 'boolean', default: false, label: 'modular.timing_overview_rows' },
     gap_display: { type: 'enum', values: ['separate', 'combined'], default: 'separate', label: 'modular.timing_gap_display' },
     gap_primary: { type: 'enum', values: ['interval', 'gap'], default: 'interval', label: 'modular.timing_gap_primary' },
+    // Kept for validating and migrating saved configurations; the editor uses fields.
     position_change: { type: 'enum', values: ['off', 'grid'], default: 'off', label: 'modular.timing_position_change' },
     driver_badges: { type: 'boolean', default: false, label: 'modular.timing_driver_badges' },
     dim_retired: { type: 'boolean', default: false, label: 'modular.timing_dim_retired' },
@@ -321,7 +327,6 @@ export const MODULES = {
     rows: { type: 'integer', min: 1, max: 100, default: 30, label: 'Maximum rows' },
     presentation: { type: 'enum', values: ['table', 'grid'], default: 'table', label: 'Presentation' },
     show_selector: { type: 'boolean', default: true, label: 'Show round selector' },
-    show_context: { type: 'boolean', default: true, label: 'Show event details' },
     show_status: { type: 'boolean', default: true, label: 'Show grid status' },
     show_source: { type: 'boolean', default: false, label: 'Show source' },
     show_session_type_badge: { type: 'boolean', default: true, label: 'Show session type' },
@@ -429,7 +434,9 @@ export const MODULES = {
     vertical: { type: 'enum', values: ['normal', 'flipped'], default: 'flipped', label: 'Vertical axis' },
     layout_mode: { type: 'enum', values: ['auto', 'compact', 'full'], default: 'auto', label: 'Layout mode' },
     show_footer: { type: 'boolean', default: true, label: 'Show source footer' },
-    show_session_info: { type: 'boolean', default: true, label: 'Show session information' },
+    show_session_info: { type: 'boolean', default: true, label: 'modular.show_map_status_summary' },
+    show_experimental_notice: { type: 'boolean', default: true, label: 'modular.show_experimental_notice' },
+    show_driver_list: { type: 'boolean', default: true, label: 'modular.show_driver_positions_and_status' },
     show_lap_progress: { type: 'boolean', default: true, label: 'Show lap progress' },
     show_track_status: { type: 'boolean', default: true, label: 'Show track status' },
     track_status_line_mode: { type: 'enum', values: ['accent', 'full', 'off'], default: 'accent', label: 'Track-status line' },
@@ -539,7 +546,9 @@ export function sessionKind(name) {
 }
 export function timingFields(module, session) {
   const profile = module.options?.profile;
-  return [...(TIMING_PROFILES[profile === 'auto' ? sessionKind(session) : profile] ?? module.fields)];
+  const selected = TIMING_PROFILES[profile === 'auto' ? sessionKind(session) : profile];
+  if (!selected) return [...module.fields];
+  return selected.map(id => id === 'position' && module.fields?.includes('position_with_change') ? 'position_with_change' : id);
 }
 export const TYRE_PROFILES = {
   current: ['position', 'driver', 'tyre', 'tyre_age', 'tyre_new'],

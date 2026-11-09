@@ -2,7 +2,7 @@
 
 This catalog is generated from the delivered module registry. It records the source path, data capability, supported modes and sessions, identity boundary, time provenance, freshness rule, unit and presentation for every field in every content-dependent module variant.
 
-Configuration version: 3. Modules: 22. Base field IDs: 155. Resolved sources: 34.
+Configuration version: 3. Modules: 22. Base field IDs: 156. Resolved sources: 34.
 
 A source path describes the contract consumed by the card; it is not a promise that the value is available in every session. `identity` lists the values that must still describe the same observation before fields may be combined. `timestamps` distinguishes source time, receipt time, entity update time and display snapshot time where the source supplies them.
 
@@ -464,6 +464,7 @@ Declared sources: `current_session`, `current_tyres`, `driver_list`, `driver_pos
 | Field | Source and path | Coverage | Identity and time | Presentation |
 | --- | --- | --- | --- | --- |
 | `position` — Pos | `driver_positions` → `current_position` | Capability: public_timing; modes: live, replay; sessions: practice, qualifying, sprint_qualifying, sprint, race; freshness: session; spoiler-protected | Identity: entry, session, driver; generation: session; time: source: not_provided; received: not_provided; updated: entity.last_updated; displayed: snapshot | Type: integer; table, detail |
+| `position_with_change` — Position + change | `driver_positions` → `current_position + starting_grid.grid[].grid_position` | Capability: public_timing; modes: live, replay; sessions: practice, qualifying, sprint_qualifying, sprint, race; freshness: session; spoiler-protected | Identity: entry, session, driver; generation: session; time: source: not_provided; received: not_provided; updated: entity.last_updated; displayed: snapshot | Type: position_with_change; table, detail |
 | `driver` — Driver | `driver_positions` → `racing_number` | Capability: public_timing; modes: live, replay; sessions: practice, qualifying, sprint_qualifying, sprint, race; freshness: session; spoiler-protected | Identity: entry, session, driver; generation: session; time: source: not_provided; received: not_provided; updated: entity.last_updated; displayed: snapshot | Type: driver; table, detail |
 | `team` — Team | `driver_positions` → `team` | Capability: public_timing; modes: live, replay; sessions: practice, qualifying, sprint_qualifying, sprint, race; freshness: session; spoiler-protected | Identity: entry, session, driver; generation: session; time: source: not_provided; received: not_provided; updated: entity.last_updated; displayed: snapshot | Type: text; table, detail |
 | `gap` — To leader | `driver_positions` → `gap_to_leader` | Capability: public_timing; modes: live, replay; sessions: practice, qualifying, sprint_qualifying, sprint, race; freshness: session; spoiler-protected | Identity: entry, session, driver; generation: session; time: source: not_provided; received: not_provided; updated: entity.last_updated; displayed: snapshot | Type: gap; table, detail |

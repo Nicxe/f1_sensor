@@ -82,6 +82,9 @@ from .const import (
     DEFAULT_LIVE_DELAY_REFERENCE,
     DEFAULT_OPERATION_MODE,
     DEFAULT_REPLAY_START_REFERENCE,
+    DELAY_DRAIN_MAX_ITEMS,
+    DELAY_DRAIN_MAX_SECONDS,
+    DELAY_DRAIN_YIELD_SECONDS,
     DOMAIN,
     DRIVER_STANDINGS_URL,
     FIA_DOCS_FETCH_TIMEOUT,
@@ -958,6 +961,7 @@ def _init_delayed_ingest_state(instance: Any) -> None:
     instance._delay_queue_generation = 0
     instance._delay_queue_dropped = 0
     instance._delay_queue_last_drop_log = 0.0
+    instance._delay_queue_resume_at = 0.0
 
 
 def _clear_delayed_ingest_state(instance: Any) -> None:
@@ -971,6 +975,7 @@ def _clear_delayed_ingest_state(instance: Any) -> None:
         queue.clear()
     instance._delay_queue_dropped = 0
     instance._delay_queue_last_drop_log = 0.0
+    instance._delay_queue_resume_at = 0.0
 
 
 def _close_delayed_ingest_state(instance: Any) -> None:
@@ -989,9 +994,10 @@ def _arm_delayed_ingest_queue(instance: Any) -> None:
         if bool(getattr(instance, "_replay_mode", False))
         else max(0, int(getattr(instance, "_delay", 0) or 0))
     )
-    wait = 0.0
+    now_mono = time.monotonic()
+    wait = max(0.0, getattr(instance, "_delay_queue_resume_at", 0.0) - now_mono)
     if delay > 0:
-        wait = max(0.0, queue[0][0] + delay - time.monotonic())
+        wait = max(wait, queue[0][0] + delay - now_mono)
     instance._delay_queue_handle = _schedule_deliver_handle(
         instance.hass.loop,
         getattr(instance, "_delay_queue_handle", None),
@@ -1007,6 +1013,9 @@ def _drain_delayed_ingest_queue(instance: Any) -> None:
     queue = getattr(instance, "_delay_queue", None)
     if not isinstance(queue, deque):
         return
+    generation = int(getattr(instance, "_delay_queue_generation", 0) or 0)
+    deadline = time.monotonic() + DELAY_DRAIN_MAX_SECONDS
+    processed = 0
     while queue:
         delay = (
             0
@@ -1022,6 +1031,15 @@ def _drain_delayed_ingest_queue(instance: Any) -> None:
             callback()
         except Exception:  # noqa: BLE001
             _LOGGER.debug("Delayed ingest callback failed", exc_info=True)
+        if generation != int(getattr(instance, "_delay_queue_generation", 0) or 0):
+            break
+        processed += 1
+        now_mono = time.monotonic()
+        if processed >= DELAY_DRAIN_MAX_ITEMS or now_mono >= deadline:
+            # A short timer also gives socket polling and due timers a turn.
+            # New arrivals must not rearm this continuation ahead of the yield.
+            instance._delay_queue_resume_at = now_mono + DELAY_DRAIN_YIELD_SECONDS
+            break
     _arm_delayed_ingest_queue(instance)
 
 
@@ -1038,13 +1056,13 @@ def _queue_delayed_ingest(instance: Any, callback: Callable[[], None]) -> None:
             if bool(getattr(instance, "_replay_mode", False))
             else max(0, int(getattr(instance, "_delay", 0) or 0))
         )
-        if delay <= 0:
+        queue = getattr(instance, "_delay_queue", None)
+        if delay <= 0 and not queue:
             try:
                 callback()
             except Exception:  # noqa: BLE001
                 _LOGGER.debug("Immediate delayed-ingest callback failed", exc_info=True)
             return
-        queue = getattr(instance, "_delay_queue", None)
         if not isinstance(queue, deque):
             _init_delayed_ingest_state(instance)
             queue = instance._delay_queue
@@ -6078,12 +6096,17 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         self._session_unsub: Callable[[], None] | None = None
         self._session_fingerprint: str | None = None
         self._live_session_key: str | None = None
+        # Only the modular card uses this explicit feed reference. Keep it
+        # separate from legacy lap-history positions, which also have fallbacks.
+        self._modular_grid_positions: dict[str, int] = {}
+        self._modular_grid_session_key: str | None = None
         _init_delayed_ingest_state(self)
         self._delay = max(0, int(delay_seconds or 0))
         self._replay_mode = False
         entry_id = config_entry.entry_id if config_entry is not None else None
         self._minisectors = MiniSectorStateStore(entry_id=entry_id)
         self._push_laps = PushLapTracker()
+        self._push_lap_publication_keys: dict[str, tuple] = {}
         if delay_controller is not None:
             self._delay_listener = delay_controller.add_listener(self.set_delay)
         self.available = True
@@ -6193,6 +6216,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
 
     def _reset_session_state(self, reason: str) -> None:
         """Clear previous-session timing without dropping queued current-session frames."""
+        self._clear_modular_grid_reference()
         if self._deliver_handle is not None:
             self._deliver_handle.cancel()
             self._deliver_handle = None
@@ -6216,18 +6240,88 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         }
         self.async_set_updated_data(self._state)
 
+    def _clear_modular_grid_reference(self) -> None:
+        self._modular_grid_positions.clear()
+        self._modular_grid_session_key = None
+
+    @property
+    def modular_starting_grid_reference(self) -> dict[str, Any] | None:
+        """Return confirmed GridPos evidence without altering shared projections."""
+        if (
+            not self._modular_grid_positions
+            or not self._live_session_key
+            or self._modular_grid_session_key != self._live_session_key
+        ):
+            return None
+        positions = [
+            value for value in self._modular_grid_positions.values() if value > 0
+        ]
+        if len(positions) != len(set(positions)):
+            return None
+        return {
+            "source": "TimingAppData.GridPos",
+            "session_key": self._modular_grid_session_key,
+            "grid": [
+                {"racing_number": rn, "grid_position": position}
+                for rn, position in sorted(
+                    self._modular_grid_positions.items(),
+                    key=lambda item: (item[1], item[0]),
+                )
+            ],
+        }
+
+    def _capture_modular_grid_positions(self, lines: dict) -> None:
+        """Capture only explicit integer GridPos after delayed stream delivery."""
+        if not self._live_session_key:
+            return
+        for rn, app in lines.items():
+            if not isinstance(app, dict) or "GridPos" not in app:
+                continue
+            value = app["GridPos"]
+            position = None
+            if type(value) is int:
+                position = value
+            elif isinstance(value, str) and re.fullmatch(r"[0-9]+", value.strip()):
+                with suppress(ValueError):
+                    position = int(value)
+            key = str(rn)
+            if position is None or position < 0:
+                self._modular_grid_positions.pop(key, None)
+            else:
+                self._modular_grid_positions[key] = position
+                self._modular_grid_session_key = self._live_session_key
+
     def _publish_push_laps(self, *, update_stream_time: bool = True) -> bool:
         """Update the bounded effort projection alongside existing driver timing."""
         changed = False
-        for rn, driver in self._state.get("drivers", {}).items():
+        drivers = self._state.get("drivers", {})
+        keys = self._push_lap_publication_keys
+        if len(keys) > len(drivers):
+            for rn in keys.keys() - drivers.keys():
+                del keys[rn]
+        for rn, driver in drivers.items():
+            key = self._push_laps.publication_key(rn)
+            if (
+                keys.get(rn) == key
+                and "push_lap" in driver
+                and "push_lap_delta" in driver
+            ):
+                continue
             value = self._push_laps.driver_snapshot(rn)
-            if driver.get("push_lap", empty_push_lap()) != value:
+            previous = driver["push_lap"] if "push_lap" in driver else empty_push_lap()
+            if previous != value:
                 changed = True
             driver["push_lap"] = value
             delta = self._push_laps.delta_snapshot(rn)
-            if driver.get("push_lap_delta", empty_push_lap_delta()) != delta:
+            previous = (
+                driver["push_lap_delta"]
+                if "push_lap_delta" in driver
+                else empty_push_lap_delta()
+            )
+            if previous != delta:
                 changed = True
             driver["push_lap_delta"] = delta
+            keys[rn] = key
         status = self._push_laps.status if self.available else "unavailable"
         values = {"push_laps_status": status}
         if update_stream_time:
@@ -7231,6 +7325,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
     def set_delay(self, seconds: int) -> None:
         new_delay = max(0, int(seconds or 0))
         if new_delay != self._delay:
+            self._clear_modular_grid_reference()
             self._state["race_trace_observation"] = pending_observation("delay_changed")
             for driver in self._state.get("drivers", {}).values():
                 history = driver.get("lap_history", {})
@@ -7247,12 +7342,14 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             return
         replay_mode = _is_replay_delay_reason(reason)
         if replay_mode != self._replay_mode:
+            self._clear_modular_grid_reference()
             self._minisectors.set_source("replay" if replay_mode else "live")
             self._push_laps.reset()
         self._replay_mode = replay_mode
         if self._replay_mode:
             _clear_delayed_ingest_state(self)
         if _is_no_spoiler_live_state(reason):
+            self._clear_modular_grid_reference()
             _clear_delayed_ingest_state(self)
             self._minisectors.reset("spoiler_protected")
             self._state["race_trace_observation"] = pending_observation(
@@ -7265,6 +7362,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         self._tyre_first_compound_logged = False
         self._tyre_missing_warning_logged = False
         if not is_live:
+            self._clear_modular_grid_reference()
             # Clear consolidated state so a future session window does not briefly
             # show stale driver/timing information before the first live frames.
             _clear_delayed_ingest_state(self)
@@ -7459,6 +7557,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         lines = (payload or {}).get("Lines", {})
         if not isinstance(lines, dict):
             return False
+        self._capture_modular_grid_positions(lines)
         drivers = self._state["drivers"]
         changed = False
         stints_changed = False
@@ -8200,6 +8299,14 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         changed = False
         for rn, info in payload.items():
             if not isinstance(info, dict):
+                continue
+            # Apply the filter in delivery order, after any queued session reset.
+            # An otherwise unused row can still introduce a new driver.
+            if (
+                rn in drivers
+                and "PitStops" not in info
+                and info.get("Position") is None
+            ):
                 continue
 
             entry = drivers.setdefault(rn, {})

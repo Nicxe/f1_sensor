@@ -169,6 +169,20 @@ export class F1SensorCardEditor extends LitElement {
   }
   setGroup(group, key, value) { this.updateConfig(config => { config[group][key] = value; return config; }); }
   setModule(key, value) { this.updateConfig(config => { const module = config.modules.find(module => module.id === this.selected); if (module) { module[key] = value; if (['timing', 'archive'].includes(module.type) && key === 'fields') module.options.profile = 'custom'; } return config; }); }
+  toggleField(key, fields, id, checked) {
+    let selected = checked ? [...fields, id] : fields.filter(field => field !== id);
+    const module = this.config.modules.find(module => module.id === this.selected);
+    if (checked && module?.type === 'timing' && ['position', 'position_with_change'].includes(id)) {
+      const index = fields.findIndex(field => ['position', 'position_with_change'].includes(field));
+      selected = fields.filter(field => !['position', 'position_with_change'].includes(field));
+      selected.splice(index < 0 ? selected.length : index, 0, id);
+    }
+    this.setModule(key, selected);
+  }
+  fieldName(module, id) {
+    return module.type === 'timing' && id === 'position'
+      ? this.w('modular.timing_position_column') : label(fieldDefinition(module, id), this.language) || id;
+  }
   setOption(key, value) {
     this.updateConfig(config => {
       const module = config.modules.find(module => module.id === this.selected);
@@ -375,13 +389,17 @@ export class F1SensorCardEditor extends LitElement {
       ` : ''}
       ${this.minisectorOverlap(module) ? html`<p class="notice" role="status">${this.minisectorOverlap(module)}</p>` : ''}
       <details><summary>${this.w('modular.module_appearance')}</summary>
+        ${configAPI.COMPACT_MODULE_TYPES.includes(module.type) ? html`
+          ${this.select(this.w('modular.module_presentation'), module.appearance.presentation, [['inherit', this.w('modular.presentation_inherit')], ['current', this.w('modular.presentation_current')], ['compact', this.w('modular.compact')]], value => this.setModule('appearance', { ...module.appearance, presentation: value }))}
+          <p class="muted">${this.w('modular.compact_module_presentation_help')}</p>
+        ` : ''}
         ${this.check(this.w('modular.show_module_title'), module.show_header, value => this.setModule('show_header', value))}
         ${['timing', 'minisectors', 'results', 'standings', 'archive', 'tyres', 'pit_stops', 'strategy', 'battles', 'timeline', 'incidents'].includes(module.type) ? html`${this.check(this.w('modular.show_table_header'), module.show_table_header, value => this.setModule('show_table_header', value))}<p class="muted">${this.w('modular.hidden_column_labels_remain_available_to_screen_readers_chart_data_tables_always_keep_their')}</p>` : ''}
         <p class="muted">${this.w('modular.session_details_and_status_labels_remain_visible_when_the_title_is_hidden')}</p>
       </details>
       ${['timing', 'archive'].includes(module.type) && module.options.profile !== 'custom' && (module.type !== 'archive' || module.options.content === 'classification') ? html`<p class="muted">${this.w('modular.this_profile_chooses_the_columns_changing_a_checkbox_or_order_switches_to_custom_columns')}</p>` : ''}
-      <details open><summary>${this.w('modular.content_and_columns')}</summary>${module.type === 'map' ? html`<p class="muted"><strong>${this.w('modular.track_markings')} · ${this.w('modular.experimental')}.</strong> ${this.w('modular.track_markings_experimental_note')}</p>` : ''}${tyreHistory ? html`<p class="muted">${this.w('modular.tyre_history_fixed_columns')}</p>` : ''}${repeat(fields, id => id, id => html`<div class="field-row">
-        ${this.check(label(fieldDefinition(module, id), this.language) || id, module.fields.includes(id), checked => this.setModule('fields', checked ? [...module.fields, id] : module.fields.filter(key => key !== id)))}
+      <details open><summary>${this.w('modular.content_and_columns')}</summary>${module.type === 'map' ? html`<p class="muted"><strong>${this.w('modular.track_markings')} · ${this.w('modular.experimental')}.</strong> ${this.w('modular.track_markings_experimental_note')}</p>` : ''}${tyreHistory ? html`<p class="muted">${this.w('modular.tyre_history_fixed_columns')}</p>` : ''}${module.type === 'timing' ? html`<p class="muted">${this.w('modular.timing_position_change_help')}</p>` : ''}${repeat(fields, id => id, id => html`<div class="field-row">
+        ${this.check(this.fieldName(module, id), module.fields.includes(id), checked => this.toggleField('fields', module.fields, id, checked))}
         ${module.fields.includes(id) && !tyreHistory ? html`<button aria-label=${`${this.w('modular.move_up')} ${label(fieldDefinition(module, id), this.language) || id}`} ?disabled=${module.fields.indexOf(id) === 0} @click=${() => { const fields = [...module.fields], index = fields.indexOf(id); [fields[index - 1], fields[index]] = [fields[index], fields[index - 1]]; this.setModule('fields', fields); }}>↑</button><button aria-label=${`${this.w('modular.move_down')} ${label(fieldDefinition(module, id), this.language) || id}`} ?disabled=${module.fields.indexOf(id) === module.fields.length - 1} @click=${() => { const fields = [...module.fields], index = fields.indexOf(id); [fields[index + 1], fields[index]] = [fields[index], fields[index + 1]]; this.setModule('fields', fields); }}>↓</button>` : ''}
         ${!available.includes(id) ? html`<small class="muted">${this.w('modular.saved_not_used_by_this_view')}</small>` : ''}
       </div>`)}</details>
@@ -390,8 +408,8 @@ export class F1SensorCardEditor extends LitElement {
         <p class="muted">${this.w('modular.driver_details_help')}</p>
         ${module.options.show_driver_details ? html`
           ${this.input(this.w('modular.recent_laps_in_driver_details'), module.options.detail_laps, value => this.setOption('detail_laps', value), 'number')}
-          ${[...module.detail_fields, ...MODULES.timing.fields.filter(id => id !== 'driver' && !module.detail_fields.includes(id))].map(id => html`<div class="field-row">
-            ${this.check(label(fieldDefinition(module, id), this.language) || id, module.detail_fields.includes(id), checked => this.setModule('detail_fields', checked ? [...module.detail_fields, id] : module.detail_fields.filter(key => key !== id)))}
+          ${repeat([...module.detail_fields, ...MODULES.timing.fields.filter(id => id !== 'driver' && !module.detail_fields.includes(id))], id => id, id => html`<div class="field-row">
+            ${this.check(this.fieldName(module, id), module.detail_fields.includes(id), checked => this.toggleField('detail_fields', module.detail_fields, id, checked))}
             ${module.detail_fields.includes(id) ? html`<button aria-label=${`${this.w('modular.move_up')} ${label(fieldDefinition(module, id), this.language) || id}`} ?disabled=${module.detail_fields.indexOf(id) === 0} @click=${() => { const selected = [...module.detail_fields], index = selected.indexOf(id); [selected[index - 1], selected[index]] = [selected[index], selected[index - 1]]; this.setModule('detail_fields', selected); }}>↑</button><button aria-label=${`${this.w('modular.move_down')} ${label(fieldDefinition(module, id), this.language) || id}`} ?disabled=${module.detail_fields.indexOf(id) === module.detail_fields.length - 1} @click=${() => { const selected = [...module.detail_fields], index = selected.indexOf(id); [selected[index + 1], selected[index]] = [selected[index], selected[index + 1]]; this.setModule('detail_fields', selected); }}>↓</button>` : ''}
             ${module.detail_fields.includes(id) && module.fields.includes(id) ? html`<small class="muted">${this.w('modular.already_in_timing_table')}</small>` : ''}
           </div>`)}
@@ -421,7 +439,7 @@ export class F1SensorCardEditor extends LitElement {
         }
         if (module.type === 'incidents' && (key === 'summary_sort' && module.options.content !== 'track_limits_summary' || ['order', 'presentation'].includes(key) && module.options.content === 'track_limits_summary')) return '';
         if (module.type === 'telemetry' && key === 'session_id') return '';
-        if (module.type === 'timing' && ['show_driver_details', 'detail_laps'].includes(key)) return '';
+        if (module.type === 'timing' && ['show_driver_details', 'detail_laps', 'presentation', 'position_change'].includes(key)) return '';
         if (module.type === 'timing') {
           const combined = module.options.gap_display === 'combined' || module.options.narrow_layout;
           if (key === 'show_gap_toggle' && combined || key === 'gap_primary' && !combined) return '';
@@ -429,12 +447,11 @@ export class F1SensorCardEditor extends LitElement {
             presentation: [['current', 'modular.timing_presentation_current'], ['minimal', 'modular.timing_presentation_minimal']],
             gap_display: [['separate', 'modular.timing_gap_separate'], ['combined', 'modular.timing_gap_combined']],
             gap_primary: [['interval', 'modular.timing_gap_primary_interval'], ['gap', 'modular.timing_gap_primary_gap']],
-            position_change: [['off', 'modular.timing_position_change_off'], ['grid', 'modular.timing_position_change_grid']],
             qualifying_focus: [['all', 'modular.timing_qualifying_all'], ['current', 'modular.timing_qualifying_current'], ['q1', 'modular.timing_qualifying_q1'], ['q2', 'modular.timing_qualifying_q2'], ['q3', 'modular.timing_qualifying_q3']],
           };
           const help = {
-            presentation: 'modular.timing_presentation_help', narrow_layout: 'modular.timing_narrow_layout_help',
-            gap_display: 'modular.timing_gap_display_help', position_change: 'modular.timing_position_change_help',
+            presentation: 'modular.timing_presentation_help', narrow_layout: 'modular.timing_overview_rows_help',
+            gap_display: 'modular.timing_gap_display_help',
             driver_badges: 'modular.timing_driver_badges_help', dim_retired: 'modular.timing_dim_retired_help',
             tyre_age_inline: 'modular.timing_tyre_age_inline_help', qualifying_focus: 'modular.timing_qualifying_focus_help',
           };
@@ -497,7 +514,7 @@ export class F1SensorCardEditor extends LitElement {
       <button @click=${() => this.setModule('options', Object.fromEntries(Object.entries(module.options).filter(([key]) => !Object.hasOwn(definition?.options ?? {}, key))))}>${this.w('modular.reset_module_options')}</button></details>
       ${this.visibilitySettings(module)}
       <div class="buttons"><button @click=${() => this.updateConfig(config => configAPI.duplicateModule(config, module.id))}>${this.w('modular.duplicate_module')}</button>
-      <button @click=${() => { const index = this.config.modules.findIndex(item => item.id === module.id); this.updateConfig(config => { config.modules = config.modules.filter(item => item.id !== module.id); return config; }); this.selected = this.config.modules[Math.min(index, this.config.modules.length - 1)]?.id ?? ''; }}>${this.w('modular.remove_module')}</button></div>
+      <button @click=${() => { const index = this.config.modules.findIndex(item => item.id === module.id); this.updateConfig(config => configAPI.removeModule(config, module.id)); this.selected = this.config.modules[Math.min(index, this.config.modules.length - 1)]?.id ?? ''; }}>${this.w('modular.remove_module')}</button></div>
     </section>`;
   }
   optionName(value) {
@@ -532,6 +549,8 @@ export class F1SensorCardEditor extends LitElement {
     if (appearance.accent_team && !teams.some(team => team.name === appearance.accent_team)) teamOptions.unshift([appearance.accent_team, `${appearance.accent_team} · ${this.w('modular.saved_selection')}`]);
     const accent = cardAccent(appearance, teams, mode);
     return html`<details><summary>${this.w('modular.appearance')}</summary>
+      ${this.select(this.w('modular.card_presentation'), appearance.presentation, [['current', this.w('modular.presentation_current')], ['compact', this.w('modular.compact')]], value => this.setGroup('appearance', 'presentation', value))}
+      <p class="muted">${this.w('modular.compact_presentation_help')}</p>
       ${this.select(this.w('modular.style'), appearance.style, [['f1', 'F1'], ['ha', 'Home Assistant'], ['minimal', this.w('modular.minimal')]], value => this.setGroup('appearance', 'style', value))}
       ${this.select(this.w('modular.theme'), appearance.mode, [['auto', this.w('modular.automatic')], ['light', this.w('modular.light')], ['dark', this.w('modular.dark')]], value => this.setGroup('appearance', 'mode', value))}
       ${this.select(this.w('modular.density'), appearance.density, [['compact', this.w('modular.compact')], ['comfortable', this.w('modular.normal')], ['spacious', this.w('modular.spacious')]], value => this.setGroup('appearance', 'density', value))}
@@ -586,10 +605,10 @@ export class F1SensorCardEditor extends LitElement {
           ${this.input(this.w('modular.card_title'), this.config.title, value => this.updateConfig(config => ({ ...config, title: value })))}
           ${this.entries.length > 1 || this.config.f1_entry_id ? this.select(this.w('modular.f1_sensor_installation'), this.config.f1_entry_id, [['', this.w('modular.automatic_one_installation')], ...this.entries.map(entry => [entry.entry_id, entry.title])], value => this.updateConfig(config => ({ ...config, f1_entry_id: value }))) : ''}
           <details><summary>${this.w('modular.layout_and_shared_focus')}</summary>
-          ${this.select(this.w('modular.layout'), this.config.layout, [['stack', this.w('modular.stacked_modules')], ['tabs', this.w('modular.tabs')], ['columns', this.w('modular.columns')]], value => this.updateConfig(config => ({ ...config, layout: value })))}
-          ${this.config.layout === 'columns' ? html`
+          ${this.select(this.w('modular.layout'), this.config.layout, [['stack', this.w('modular.stacked_modules')], ['tabs', this.w('modular.tabs')], ['columns', this.w('modular.columns')], ['stacks', this.w('modular.independent_stacks')]], value => this.updateConfig(config => ({ ...config, layout: value })))}
+          ${['columns', 'stacks'].includes(this.config.layout) ? html`
             ${this.select(this.w('modular.maximum_columns'), String(this.config.columns), [2, 3, 4].map(count => [String(count), String(count)]), value => this.updateConfig(config => ({ ...config, columns: Number(value) })))}
-            <p class="muted">${this.w('modular.modules_flow_in_list_order_left_to_right_then_onto_the_next_row_fewer')}</p>
+            <p class="muted">${this.w(this.config.layout === 'stacks' ? 'modular.stacks_layout_help' : 'modular.modules_flow_in_list_order_left_to_right_then_onto_the_next_row_fewer')}</p>
             <p class="muted">${this.w('modular.for_a_wide_card_in_home_assistant_sections_increase_the_section_width_and_enable')}</p>
           ` : ''}
           ${this.focusPicker('driver', this.w('modular.default_driver'), this.config.context.driver, value => this.setGroup('context', 'driver', value))}

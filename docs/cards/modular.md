@@ -62,13 +62,41 @@ Data availability depends on the source and session. Adding a module does not cr
 
 Use the focused module guides below for options, examples, waiting states and data interpretation. Shared card settings have their own [configuration reference](/cards/shared-options).
 
+### Hide session details and explanations
+
+Select a module and open **Module options**. Turn off **Show session and event details** to hide the session or event line above its content. Each module has its own setting, so you can show the session once and hide repeated lines in the other modules.
+
+Turn off **Show explanations** to hide help text below timing tables and charts. Analysis modules that already have **Show About section** keep that setting for their explanations. Separate content legends, such as the tyre compound legend, keep their own controls. Data availability and connection messages remain visible.
+
+For **Track map**, turn off **Show experimental notice** to hide the experimental track-markings text, and **Show driver positions and status** to hide the expandable driver list. These choices keep the selected track markings and car markers on the map. **Show map status summary** controls the map's own session and status row; lap progress, track status, driver count and the source footer have separate choices.
+
+All these options are on by default. In YAML, place them under the module's `options`:
+
+```yaml
+type: custom:f1-sensor-card
+modules:
+  - id: compact-timing
+    type: timing
+    options:
+      show_context: false
+      show_explanation: false
+  - id: track-map
+    type: map
+    options:
+      show_context: false
+      show_experimental_notice: false
+      show_driver_list: false
+```
+
 ### Choose a minimal Timing view
 
-In **Timing → Module options**, choose **Minimal presentation** for colored timing text, smaller tyre marks and lighter table decoration. Turn on **Use overview rows on narrow cards** for a concise view with the remaining selected fields available when you open a driver. Existing cards keep their current presentation and columns.
+In **Timing → Module appearance**, set **Module presentation** to **Compact** for colored timing text, smaller tyre marks and lighter table decoration. Choose **Follow card** to use **Card presentation** from **Appearance**. The same card setting supports every module, including results, schedules, analysis, charts and maps. Existing cards keep their current presentation and columns.
 
-Choose **Combined column** to show INT and GAP together. Set the primary value in the editor when building the layout; the combined and narrow views do not add a GAP/INT switch to the card. **Qualifying times to show** can follow the current Q/SQ part or show a chosen part while keeping your saved column choices.
+Under **Module options**, turn on **Overview rows with expandable details** to show the main race or qualifying values in fewer columns and combine GAP/INT. Open a driver for the remaining selected fields and recent laps. Overview rows apply at any card width. **Compact** only changes presentation and retains your chosen columns.
 
-Position changes, driver status badges, dimmed retired rows and tyre age beside the compound are separate choices. Position arrows need a confirmed starting grid for the same session. Penalty badges follow recorded decisions; a pit visit alone does not prove that a penalty was served. See [minimal Timing options](/cards/modular-styling#choose-a-minimal-timing-presentation) for the settings and defaults.
+Choose **Combined column** to show INT and GAP together. Set the primary value in the editor when building the layout; combined columns and overview rows do not add a GAP/INT switch to the card. **Qualifying times to show** can follow the current Q/SQ part or show a chosen part while keeping your saved column choices.
+
+Under **Content and columns**, choose **Position** for the position alone or **Position + change** for the position and places gained or lost from the confirmed starting grid for the same session. The default is **Position**. Driver status badges, dimmed retired rows and tyre age beside the compound remain separate choices. Penalty badges follow recorded decisions; a pit visit alone does not prove that a penalty was served. See [compact Timing options](/cards/modular-styling#choose-a-minimal-timing-presentation) for the settings and defaults.
 
 ### Follow push laps
 
@@ -139,6 +167,68 @@ This field is separate from the weather provider's forecast probability and the 
 <span id="give-the-card-enough-space" />
 
 [Arrange columns and card width](/cards/layout#arrange-modules-in-columns), including [giving the card enough space](/cards/layout#give-the-card-enough-space). Home Assistant sets the outer width; module columns fit inside it.
+
+## Stack modules beside a taller module
+
+Choose **Independent stacks** as the card's layout to place several modules
+under each other beside a taller module. All stacks belong to the same
+**F1 Sensor** card.
+
+For example, give **Timing** three of four columns and place **Tyre history**
+and **Track map** in a stack using the remaining column. Track map starts
+directly below Tyre history, even while Timing continues beside both. An
+**Overview** stack can span the full card width above them.
+
+Open **Modules → Arrange modules** to move a module into a stack, reorder the
+modules within it or change the stack's width. You can drag from a module's
+handle into the marked position in a stack, or select the module and use
+**Move to stack**. **Undo** reverses a completed arrangement change.
+
+Each module keeps its natural height. Expanding tyre history pushes the next
+module down within its own stack. Stack groups have no visible frame in the
+finished card. Hidden modules leave no empty slot. On narrow cards, stacks
+move below each other and keep their internal order. Home Assistant still
+controls the [space available to the whole card](/cards/layout#give-the-card-enough-space).
+
+<details>
+  <summary>Optional YAML example</summary>
+
+```yaml
+type: custom:f1-sensor-card
+layout: stacks
+columns: 4
+modules:
+  - id: overview
+    type: overview
+  - id: timing
+    type: timing
+  - id: tyres
+    type: tyres
+    options:
+      content: history
+  - id: track-map
+    type: map
+stacks:
+  - id: overview-stack
+    column_span: full
+    modules:
+      - overview
+  - id: timing-stack
+    column_span: 3
+    modules:
+      - timing
+  - id: side-stack
+    column_span: 1
+    modules:
+      - tyres
+      - track-map
+```
+
+The `modules` list defines the content once. Each stack refers to those saved
+module ids in its display order. Set `column_span` on the stack to choose its
+width; all modules in that stack use that width.
+
+</details>
 
 ## Choose and lock a session
 

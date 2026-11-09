@@ -292,8 +292,6 @@ class F1SafetyCarBinarySensor(F1BaseEntity, RestoreEntity, BinarySensorEntity):
         await super().async_added_to_hass()
         reg = entry_runtime_registry(self.hass, self._entry_id)
         self._session_status_coordinator = reg.get("session_status_coordinator")
-        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
-        self.async_on_remove(removal)
         if self._session_status_coordinator is not None:
             status_removal = self._session_status_coordinator.async_add_listener(
                 self._handle_session_status_update

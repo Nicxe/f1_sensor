@@ -47,6 +47,7 @@ class RaceTraceObservationSource:
         self._session_info: dict[str, Any] = {}
         self._source: str | None = None
         self._replay_session_id: str | None = None
+        self._context_signature: tuple[tuple[Any, ...], str] | None = None
 
     def stamp(
         self,
@@ -88,9 +89,14 @@ class RaceTraceObservationSource:
             "delay_epoch": delay_epoch,
             "delay_seconds": delay_seconds,
         }
-        context["token"] = hashlib.sha256(
-            json.dumps(context, sort_keys=True).encode()
-        ).hexdigest()[:32]
+        key = tuple(context.values())
+        signature = self._context_signature
+        if signature is None or signature[0] != key:
+            token = hashlib.sha256(
+                json.dumps(context, sort_keys=True).encode()
+            ).hexdigest()[:32]
+            signature = self._context_signature = (key, token)
+        context["token"] = signature[1]
         cursor = None
         seconds = payload.get("_f1_source_time")
         domain = payload.get("_f1_source_domain")

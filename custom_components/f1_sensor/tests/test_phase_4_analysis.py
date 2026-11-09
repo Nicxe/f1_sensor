@@ -117,7 +117,10 @@ def test_strategy_analyzer_matches_provider_neutral_golden_output() -> None:
     assert "not official strategy" in result["assumptions"][1]
 
 
-def test_strategy_analyzer_reports_evidence_backed_undercut_outcome() -> None:
+@pytest.mark.parametrize("duplicate_positions", [False, True])
+def test_strategy_analyzer_reports_evidence_backed_undercut_outcome(
+    duplicate_positions,
+) -> None:
     laps = []
     for lap_number in range(1, 9):
         laps.extend(
@@ -143,6 +146,14 @@ def test_strategy_analyzer_reports_evidence_backed_undercut_outcome() -> None:
             ]
         )
 
+    if duplicate_positions:
+        # Missing position on the first row does not hide later evidence;
+        # subsequent valid duplicates do not replace the first valid position.
+        before, transition = laps[4], laps[6]
+        laps.insert(0, {**transition, "lap_duration": None})
+        laps.insert(0, {**before, "position": None, "lap_duration": None})
+        laps.append({**before, "position": 1, "lap_duration": None})
+
     result = analyze_strategy(
         laps,
         {
@@ -154,11 +165,86 @@ def test_strategy_analyzer_reports_evidence_backed_undercut_outcome() -> None:
     outcome = result["undercut_overcut_outcomes"][0]
     assert outcome["result"] == "undercut_succeeded"
     assert outcome["successful_driver"] == 4
+    assert outcome["positions_before"] == {"4": 2, "81": 1}
     assert outcome["supporting_signals"] == [
         "stint_transition",
         "lap_position_before",
         "lap_position_after",
     ]
+    second_stint = next(
+        stint
+        for stint in result["stints"]
+        if stint["driver_number"] == 4 and stint["stint_index"] == 1
+    )
+    assert second_stint["pit_loss_seconds"] == (None if duplicate_positions else 0)
+
+
+def test_analysis_snapshot_materializes_the_timeline_once() -> None:
+    bus = _Bus()
+    laps = LapAnalysisStore(bus, source_provider=lambda: "live")
+    store = Phase4AnalysisStore(bus, laps, source_provider=lambda: "live")
+    bus.emit("SessionInfo", {"Key": 1, "Name": "Race", "Type": "Race"})
+    with patch.object(
+        store._timeline, "snapshot", wraps=store._timeline.snapshot
+    ) as build:
+        snapshot = store.snapshot()
+    build.assert_called_once()
+    assert snapshot["timeline"]["count"] == len(snapshot["timeline"]["events"]) == 1
+    assert snapshot["capabilities"]["timeline"] == "ready"
+
+
+@pytest.mark.parametrize("before,after", [("f1_live", "replay"), ("replay", "f1_live")])
+def test_analysis_retains_its_data_provider_until_source_reset(before, after) -> None:
+    bus = _Bus()
+    provider = before
+
+    def source_provider():
+        return provider
+
+    laps = LapAnalysisStore(bus, source_provider=source_provider)
+    store = Phase4AnalysisStore(bus, laps, source_provider=source_provider)
+    session = {"Key": 1, "Name": "Race", "Type": "Race"}
+    bus.emit("SessionInfo", session)
+    provider = after
+    bus.emit("SessionStatus", {"Status": "Started"})
+
+    snapshot = store.snapshot()
+    assert snapshot["provider"] == before
+    assert {event["provider"] for event in snapshot["timeline"]["events"]} == {before}
+
+    laps.reset_for_replay()
+    store.reset_for_replay()
+    snapshot = store.snapshot()
+    assert snapshot["provider"] == after
+    assert snapshot["session_id"] is None
+    assert not snapshot["timeline"]["events"]
+
+    bus.emit("SessionInfo", session)
+    snapshot = store.snapshot()
+    assert snapshot["provider"] == after
+    assert {event["provider"] for event in snapshot["timeline"]["events"]} == {after}
+
+
+def test_battle_uses_first_reported_driver_at_a_duplicate_position() -> None:
+    bus = _Bus()
+    laps = LapAnalysisStore(bus, source_provider=lambda: "live")
+    store = Phase4AnalysisStore(bus, laps, source_provider=lambda: "live")
+    bus.emit(
+        "TimingData",
+        {
+            "Lines": {
+                "4": {"Position": 1, "NumberOfLaps": 2},
+                "1": {"Position": 1, "NumberOfLaps": 2},
+                "81": {"Position": 2, "NumberOfLaps": 2, "Interval": "0.4"},
+            }
+        },
+    )
+    # Frames without position changes still count toward battle confirmation.
+    sector_delta = {"Lines": {"81": {"Sectors": {"0": {"Status": 1}}}}}
+    bus.emit("TimingData", sector_delta)
+    assert store.snapshot()["battles"]["active"] == []
+    bus.emit("TimingData", sector_delta)
+    assert store.snapshot()["battles"]["active"][0]["driver_numbers"] == [4, 81]
 
 
 def test_strategy_waits_for_clean_laps_and_reports_observed_coverage() -> None:

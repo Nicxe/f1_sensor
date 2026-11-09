@@ -87,6 +87,7 @@ function normalizeVisibility(value, path, depth = 0) {
 
 export const APPEARANCE = {
   style: 'f1', mode: 'auto', font: 'auto', show_header: true, density: 'comfortable', accent: '#e10600',
+  presentation: 'current',
   accent_mode: 'style', accent_team: '', surface: 'style',
   logos: true, logo_style: 'auto', logo_size: 'normal', flags: true, team_colors: true, full_names: false,
   numbers: 'tabular', tyre_style: 'ring', palette: {},
@@ -94,6 +95,18 @@ export const APPEARANCE = {
 export const CUSTOM_STYLE_MAX_LENGTH = 32_768;
 export const ACCESSIBILITY = { high_contrast: false, signals: 'shape', motion: 'system', announce: true };
 export const PHASES = ['before', 'active', 'finished', 'unknown'];
+export const COMPACT_MODULE_TYPES = Object.keys(MODULES);
+
+export function resolvePresentation(appearance, module) {
+  if (!COMPACT_MODULE_TYPES.includes(module?.type)) return 'current';
+  const selected = module.appearance?.presentation;
+  if (selected === 'current' || selected === 'compact') return selected;
+  // Accept legacy, unnormalized timing configs as well as saved module overrides.
+  if (selected !== 'inherit' && module.type === 'timing' && ['current', 'minimal'].includes(module.options?.presentation)) {
+    return module.options.presentation === 'minimal' ? 'compact' : 'current';
+  }
+  return appearance?.presentation === 'compact' ? 'compact' : 'current';
+}
 export const CONTEXT = {
   driver: '', team: '', group: '', scope: 'local', spoilers: 'inherit', viewing_controls: false,
   show_focus_control: true, show_freeze_control: true,
@@ -147,10 +160,11 @@ export function normalizeConfig(input) {
     if (/\$\{/.test(inspected)) fail('styles', 'JavaScript templates are not supported');
   }
   config.f1_entry_id ??= ''; text(config.f1_entry_id, 'f1_entry_id');
-  config.layout ??= 'stack'; choice(config.layout, ['stack', 'tabs', 'columns'], 'layout');
+  config.layout ??= 'stack'; choice(config.layout, ['stack', 'tabs', 'columns', 'stacks'], 'layout');
   config.columns ??= 2; integer(config.columns, 2, 4, 'columns');
   config.appearance = { ...copyConfig(APPEARANCE), ...object(config.appearance ?? {}, 'appearance') };
   const appearance = config.appearance;
+  choice(appearance.presentation, ['current', 'compact'], 'appearance.presentation');
   for (const [key, values] of Object.entries({ style: ['f1', 'ha', 'minimal'], mode: ['auto', 'light', 'dark'], density: ['comfortable', 'compact', 'spacious'], font: ['auto', 'f1', 'system'], logo_style: ['auto', 'color', 'white', 'mono'], logo_size: ['small', 'normal', 'large'], accent_mode: ['style', 'neutral', 'f1', 'team', 'custom'], surface: ['style', 'framed', 'soft', 'flat'], numbers: ['tabular', 'inherit'], tyre_style: ['ring', 'image', 'text', 'both'] })) choice(appearance[key], values, `appearance.${key}`);
   for (const key of ['show_header', 'logos', 'flags', 'team_colors', 'full_names']) bool(appearance[key], `appearance.${key}`);
   const color = (value, path) => { if (typeof value !== 'string' || !/^#[0-9a-f]{6}$/i.test(value)) fail(path, 'expected a six-digit hex color'); };
@@ -186,6 +200,12 @@ export function normalizeConfig(input) {
     item.column_span ??= 1;
     if (item.column_span !== 'full') integer(item.column_span, 1, 4, `${path}.column_span`);
     for (const key of ['show_header', 'show_table_header']) { item[key] ??= true; bool(item[key], `${path}.${key}`); }
+    item.appearance = object(item.appearance ?? {}, `${path}.appearance`);
+    if (item.appearance.presentation === undefined) {
+      const legacy = item.type === 'timing' ? item.options?.presentation : undefined;
+      item.appearance.presentation = legacy === 'minimal' ? 'compact' : legacy === 'current' ? 'current' : 'inherit';
+    }
+    choice(item.appearance.presentation, ['inherit', 'current', 'compact'], `${path}.appearance.presentation`);
     item.unavailable ??= 'explain'; choice(item.unavailable, ['explain', 'retain', 'hide'], `${path}.unavailable`);
     item.focus_mode ??= 'inherit'; choice(item.focus_mode, ['inherit', 'independent'], `${path}.focus_mode`);
     item.selection = normalizeSelection(item.selection ?? { mode: 'inherit' }, `${path}.selection`, true);
@@ -219,6 +239,23 @@ export function normalizeConfig(input) {
       else if (spec.type === 'list') { strings(item.options[key], optionPath); for (const value of item.options[key]) choice(value, spec.values, optionPath); }
       else text(item.options[key], optionPath);
     }
+    if (item.type === 'timing' && item.options.position_change === 'grid') {
+      // Profiles and the former narrow summary provide a position even when
+      // saved custom fields omit it. Keep that effective choice and profile.
+      if ((item.options.profile !== 'custom' || item.options.narrow_layout) && !item.fields.some(id => ['position', 'position_with_change'].includes(id))) {
+        item.fields.unshift('position_with_change');
+      }
+      // Move the former global switch into the selected column, keeping its
+      // index. Explicit advanced configs may intentionally contain both fields.
+      for (const key of ['fields', 'detail_fields']) {
+        if (!item[key].includes('position_with_change')) {
+          item[key] = item[key].map(id => id === 'position' ? 'position_with_change' : id);
+        }
+      }
+      // Consume the saved switch so selecting plain Position stays plain on
+      // later normalizations, template round trips and editor updates.
+      item.options.position_change = 'off';
+    }
     if (item.type === 'lap_chart' && item.options.metric === 'cumulative_lap_delta') {
       const driverNumber = (value, optionPath) => {
         if (!/^[0-9]+$/.test(value) || Number(value) < 1 || Number(value) > 99) fail(optionPath, 'choose a driver number from 1 to 99');
@@ -232,7 +269,86 @@ export function normalizeConfig(input) {
     return item;
   });
   if (new Set(config.modules.map(item => item.id)).size !== config.modules.length) fail('modules', 'module IDs must be unique');
+  if (config.layout === 'stacks' || config.stacks !== undefined) config.stacks = normalizeStacks(config);
+  if (config.layout === 'stacks') {
+    const modules = new Map(config.modules.map(module => [module.id, module]));
+    config.modules = config.stacks.flatMap(stack => stack.modules.map(id => modules.get(id)));
+  }
   return config;
+}
+
+function normalizeStacks(config) {
+  const input = config.stacks ?? [];
+  if (!Array.isArray(input) || input.length > 64) fail('stacks', 'expected a list of at most 64 stacks');
+  const moduleIds = new Set(config.modules.map(module => module.id)), assigned = new Set(), ids = new Set();
+  const stacks = input.map((value, index) => {
+    const path = `stacks.${index}`, stack = object(value, path);
+    stack.id ??= nextStackId([...input, ...config.modules.map(module => ({ id: module.id }))], index + 1);
+    text(stack.id, `${path}.id`);
+    if (!/^[a-zA-Z0-9_-]{1,100}$/.test(stack.id) || ids.has(stack.id)) fail(`${path}.id`, 'stack IDs must be unique letters, digits, hyphens or underscores');
+    ids.add(stack.id);
+    stack.column_span ??= 1;
+    if (stack.column_span !== 'full') integer(stack.column_span, 1, 4, `${path}.column_span`);
+    strings(stack.modules, `${path}.modules`);
+    for (const id of stack.modules) {
+      if (!moduleIds.has(id)) fail(`${path}.modules`, `unknown module ${id}`);
+      if (assigned.has(id)) fail(`${path}.modules`, `module ${id} already belongs to a stack`);
+      assigned.add(id);
+    }
+    return stack;
+  });
+  for (const module of config.modules) if (!assigned.has(module.id)) {
+    stacks.push({ id: nextStackId(stacks), column_span: module.column_span, modules: [module.id] });
+  }
+  if (stacks.length > 64) fail('stacks', 'at most 64 stacks');
+  return stacks;
+}
+function nextStackId(stacks, start = 1) {
+  let index = start;
+  while (stacks.some(stack => stack?.id === `stack-${index}`)) index++;
+  return `stack-${index}`;
+}
+export function layoutStacks(config) {
+  return config.stacks ?? config.modules.map((module, index) => ({ id: `stack-${index + 1}`, column_span: module.column_span, modules: [module.id] }));
+}
+function orderedStacks(config) {
+  const modules = new Map(config.modules.map(module => [module.id, module]));
+  config.modules = config.stacks.flatMap(stack => stack.modules.map(id => modules.get(id)));
+  return normalizeConfig(config);
+}
+export function placeModuleInStack(config, moduleId, targetStackId, index = Infinity) {
+  const result = normalizeConfig({ ...config, stacks: copyConfig(layoutStacks(config)) });
+  if (!result.modules.some(module => module.id === moduleId)) fail('module', 'not found');
+  const source = result.stacks.find(stack => stack.modules.includes(moduleId));
+  let target = result.stacks.find(stack => stack.id === targetStackId);
+  if (!targetStackId) {
+    target = { id: nextStackId(result.stacks), column_span: source.column_span, modules: [] };
+    result.stacks.push(target);
+  } else if (!target) fail('stack', 'not found');
+  for (const stack of result.stacks) stack.modules = stack.modules.filter(id => id !== moduleId);
+  target.modules.splice(Math.max(0, Math.min(target.modules.length, index)), 0, moduleId);
+  result.stacks = result.stacks.filter(stack => stack.modules.length);
+  return orderedStacks(result);
+}
+export function moveStack(config, id, offset) {
+  const result = normalizeConfig({ ...config, stacks: copyConfig(layoutStacks(config)) });
+  const index = result.stacks.findIndex(stack => stack.id === id), next = index + offset;
+  if (index < 0 || next < 0 || next >= result.stacks.length) return result;
+  result.stacks.splice(next, 0, result.stacks.splice(index, 1)[0]);
+  return orderedStacks(result);
+}
+export function changeStackWidth(config, id, width) {
+  const result = normalizeConfig({ ...config, stacks: copyConfig(layoutStacks(config)) });
+  const stack = result.stacks.find(stack => stack.id === id);
+  if (!stack) fail('stack', 'not found');
+  stack.column_span = width;
+  return normalizeConfig(result);
+}
+export function removeModule(config, id) {
+  const result = copyConfig(config);
+  result.modules = result.modules.filter(module => module.id !== id);
+  if (result.stacks) result.stacks = result.stacks.map(stack => ({ ...stack, modules: stack.modules.filter(value => value !== id) })).filter(stack => stack.modules.length);
+  return normalizeConfig(result);
 }
 
 export function configWarnings(config) {
@@ -244,7 +360,9 @@ export function configWarnings(config) {
 }
 export function applyPreset(config, preset) {
   if (!PRESETS[preset]) fail('preset', 'unknown preset');
-  return normalizeConfig({ ...config, modules: copyConfig(PRESETS[preset].modules) });
+  const result = { ...config, modules: copyConfig(PRESETS[preset].modules) };
+  delete result.stacks;
+  return normalizeConfig(result);
 }
 export function makeModule(type, current = []) {
   if (!MODULES[type]) fail('module', 'unknown module');
@@ -256,9 +374,18 @@ export function duplicateModule(config, id) {
   if (index < 0) fail('module', 'not found');
   let next = `${id}-copy`; while (result.modules.some(item => item.id === next)) next += '-copy';
   result.modules.splice(index + 1, 0, { ...copyConfig(result.modules[index]), id: next });
+  const stack = result.stacks?.find(stack => stack.modules.includes(id));
+  if (stack) stack.modules.splice(stack.modules.indexOf(id) + 1, 0, next);
   return normalizeConfig(result);
 }
 export function moveModule(config, id, offset) {
+  if (config.layout === 'stacks') {
+    const stacks = layoutStacks(config), order = stacks.flatMap(stack => stack.modules), index = order.indexOf(id), next = index + offset;
+    if (index < 0 || next < 0 || next >= order.length) return copyConfig(config);
+    const target = stacks.find(stack => stack.modules.includes(order[next]));
+    const position = target.modules.filter(value => value !== id).indexOf(order[next]);
+    return placeModuleInStack(config, id, target.id, position + Number(offset > 0));
+  }
   const result = copyConfig(config), index = result.modules.findIndex(item => item.id === id), next = index + offset;
   if (index < 0 || next < 0 || next >= result.modules.length) return result;
   const [item] = result.modules.splice(index, 1); result.modules.splice(next, 0, item);

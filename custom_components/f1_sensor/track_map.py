@@ -14,6 +14,11 @@ from statistics import median
 import time
 from typing import Any
 
+from .const import (
+    DELAY_DRAIN_MAX_ITEMS,
+    DELAY_DRAIN_MAX_SECONDS,
+    DELAY_DRAIN_YIELD_SECONDS,
+)
 from .helpers import (
     POSITION_Z_MAX_DECOMPRESSED_BYTES,
     POSITION_Z_MAX_LINE_BYTES,
@@ -262,6 +267,8 @@ class TrackMapReplayAdapter:
         self._delay_queue_handle: Any | None = None
         self._delay_queue_dropped = 0
         self._delay_queue_last_drop_log = 0.0
+        self._delay_queue_resume_at = 0.0
+        self._delay_queue_generation = 0
         self._delay_listener: Callable[[], None] | None = None
         if delay_controller is not None:
             add_listener = getattr(delay_controller, "add_listener", None)
@@ -346,7 +353,7 @@ class TrackMapReplayAdapter:
             if (
                 self._closed
                 or self._position_source() != TRACK_MAP_SOURCE_LIVE
-                or self._delay <= 0
+                or (self._delay <= 0 and not self._delay_queue)
             ):
                 callback(payload)
                 return
@@ -385,7 +392,12 @@ class TrackMapReplayAdapter:
             self._drain_delay_queue(force=True)
             return
         received_at = self._delay_queue[0][0]
-        wait = max(0.0, received_at + self._delay - time.monotonic())
+        now_mono = time.monotonic()
+        wait = max(
+            0.0,
+            received_at + self._delay - now_mono,
+            self._delay_queue_resume_at - now_mono,
+        )
         self._delay_queue_handle = call_later(wait, self._drain_delay_queue)
 
     def _drain_delay_queue(self, *, force: bool = False) -> None:
@@ -396,6 +408,12 @@ class TrackMapReplayAdapter:
         if self._position_source() != TRACK_MAP_SOURCE_LIVE:
             self._delay_queue.clear()
             return
+        generation = self._delay_queue_generation
+        deadline = time.monotonic() + DELAY_DRAIN_MAX_SECONDS
+        processed = 0
+        can_continue = callable(
+            getattr(getattr(self._hass, "loop", None), "call_later", None)
+        )
         while self._delay_queue:
             received_at, callback, payload = self._delay_queue[0]
             if (
@@ -409,13 +427,30 @@ class TrackMapReplayAdapter:
                 callback(payload)
             except Exception:  # noqa: BLE001
                 _LOGGER.debug("Delayed track map callback failed", exc_info=True)
+            if generation != self._delay_queue_generation or self._closed:
+                break
+            if self._position_source() != TRACK_MAP_SOURCE_LIVE:
+                self._delay_queue.clear()
+                break
+            processed += 1
+            now_mono = time.monotonic()
+            if can_continue and (
+                processed >= DELAY_DRAIN_MAX_ITEMS or now_mono >= deadline
+            ):
+                # A callback may have queued a frame or changed the delay and
+                # armed an immediate timer. Rearm it after this batch's yield.
+                self._cancel_delay_queue_timer()
+                self._delay_queue_resume_at = now_mono + DELAY_DRAIN_YIELD_SECONDS
+                break
         self._arm_delay_queue()
 
     def _clear_delay_queue(self) -> None:
+        self._delay_queue_generation += 1
         self._cancel_delay_queue_timer()
         self._delay_queue.clear()
         self._delay_queue_dropped = 0
         self._delay_queue_last_drop_log = 0.0
+        self._delay_queue_resume_at = 0.0
 
     def _cancel_delay_queue_timer(self) -> None:
         if self._delay_queue_handle is None:
@@ -492,8 +527,11 @@ class TrackMapReplayAdapter:
                 source=position_source,
                 observed_at=observed_at,
             )
-        self._extend_geometry_positions(positions)
-        self._maybe_rebuild_geometry()
+        if not self._geometry_preloaded and not _is_static_track_geometry(
+            self._store.geometry
+        ):
+            self._extend_geometry_positions(positions)
+            self._maybe_rebuild_geometry()
 
     def _on_replay_state(self, snapshot: Mapping[str, Any]) -> None:
         if self._closed or not isinstance(snapshot, Mapping):
@@ -1047,6 +1085,12 @@ class TrackMapStore:
 
     def snapshot(self, *, now: datetime | None = None) -> dict[str, Any]:
         """Return a JSON-serializable snapshot of current track map state."""
+        return self._snapshot_with_geometry(_geometry_payload(self._geometry), now=now)
+
+    def _snapshot_with_geometry(
+        self, geometry_payload: dict[str, Any] | None, *, now: datetime | None = None
+    ) -> dict[str, Any]:
+        """Refresh live fields around the websocket hub's owned geometry."""
         now_utc = _snapshot_now(now)
         return {
             "entry_id": self.entry_id,
@@ -1059,7 +1103,7 @@ class TrackMapStore:
             "stale": self.is_stale(now_utc),
             "stale_after_seconds": self._stale_after.total_seconds(),
             "session": _session_payload(self._session),
-            "track": _geometry_payload(self._geometry),
+            "track": geometry_payload,
             "drivers": [
                 self._driver_snapshot(position, now_utc)
                 for position in sorted(

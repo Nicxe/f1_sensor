@@ -5,7 +5,7 @@ description: Move and resize modules, use columns and give the F1 Sensor card en
 toc_max_heading_level: 3
 ---
 
-Choose stacked content, tabs or columns in the [F1 Sensor card editor](/cards/modular). Home Assistant controls the outer card width; the F1 Sensor layout controls modules inside it.
+Choose stacked content, tabs, columns or independent stacks in the [F1 Sensor card editor](/cards/modular). Home Assistant controls the outer card width; the F1 Sensor layout controls modules inside it.
 
 ## Drag modules into place
 
@@ -26,7 +26,9 @@ shows each module as a named tile. Choose **Module layout → Columns** and
 You can also use the existing move buttons and width choices. With a handle
 focused, arrow keys move or resize the module; **Home** and **End** select the
 first/last position or smallest/largest width. Stacked modules and tabs support
-reordering, while width handles are available in **Columns**.
+reordering, while width handles are available in **Columns**. Use
+[**Independent stacks**](#stack-modules-independently) to group modules under
+each other beside a taller module.
 
 On small screens, scroll the overview sideways to reach all columns. Drag only
 from a handle; the rest of the overview supports normal touch scrolling.
@@ -34,9 +36,28 @@ Hidden and conditional modules remain available in the overview, while the
 finished card respects their visibility rules. Tile heights in the overview
 are illustrative; module heights on the dashboard follow their content.
 
-The overview changes module order and width within the card. It does not store
-fixed row positions or intentional empty cells. Save the card in Home Assistant
-to keep the arrangement on your dashboard.
+The overview changes module order, grouping and width within the card. It does
+not store fixed row positions or intentional empty cells. Save the card in Home
+Assistant to keep the arrangement on your dashboard.
+
+## Stack modules independently
+
+Choose **Independent stacks** under **Module layout** to arrange vertical groups
+inside the same F1 Sensor card. Each group's modules follow their own content
+heights. For example, place Tyre history and Track map in a one-column stack
+beside a three-column Timing stack. Track map starts directly below Tyre history
+instead of waiting for Timing to end.
+
+Drag a module into a marked position inside a stack, or select it and use
+**Move to stack**. Choose **New stack** to give the module its own group. Set
+**Stack width** for the whole group, including **Full card width** for an
+Overview above the other stacks. Use **Undo** to reverse a completed change.
+
+The saved stack order is also the reading order on a narrow card. The card uses
+fewer columns when necessary and places the stacks below each other, keeping
+each stack's module order. Stack frames appear only in the layout overview.
+See the [complete stack example](/cards/modular#stack-modules-beside-a-taller-module)
+for configuration and YAML.
 
 ## Arrange modules in columns
 

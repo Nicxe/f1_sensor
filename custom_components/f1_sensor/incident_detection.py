@@ -467,7 +467,7 @@ class IncidentDetector:
                 incident_history=deque(maxlen=self._max_history),
             )
             self._sessions[key] = state
-        elif signal.session is not None:
+        elif signal.session is not None and signal.session != state.metadata:
             state.metadata = _merge_session_metadata(state.metadata, signal.session)
         return state
 
@@ -477,7 +477,6 @@ class IncidentDetector:
         if signal.driver is not None:
             state.drivers[signal.driver.racing_number] = signal.driver
         if signal.kind == "session_context" and signal.session is not None:
-            state.metadata = _merge_session_metadata(state.metadata, signal.session)
             return []
         if signal.kind == "driver_metadata" and signal.driver is not None:
             state.drivers[signal.driver.racing_number] = signal.driver
@@ -724,7 +723,9 @@ class IncidentDetector:
         if moving_change:
             return moving_change
 
-        if speed > self._car_low_speed_threshold_kph:
+        if speed > self._car_low_speed_threshold_kph or not self._car_candidate_allowed(
+            driver_state, signal.observed_at
+        ):
             return []
 
         track_context, race_context, context_signals = self._find_context(
@@ -733,12 +734,7 @@ class IncidentDetector:
             signal.observed_at,
             window=self._car_context_window,
         )
-        location = self._location_context(signal.racing_number, signal.observed_at)
         if not context_signals:
-            return []
-        if _location_suppresses_incident(location):
-            return []
-        if not self._car_candidate_allowed(driver_state, signal.observed_at):
             return []
         return self._start_or_update_car_candidate(
             state,
@@ -747,7 +743,6 @@ class IncidentDetector:
             track_context=track_context,
             race_context=race_context,
             context_signals=context_signals,
-            location=location,
         )
 
     def _start_car_candidates_from_context(
@@ -1111,7 +1106,10 @@ class IncidentDetector:
         self, state: _SessionState, racing_number: str | None
     ) -> _DriverState:
         rn = str(racing_number or "").strip()
-        return state.driver_states.setdefault(rn, _DriverState())
+        driver_state = state.driver_states.get(rn)
+        if driver_state is None:
+            driver_state = state.driver_states[rn] = _DriverState()
+        return driver_state
 
     def _refresh_active_driver_metadata(
         self, state: _SessionState, driver: DriverMetadata

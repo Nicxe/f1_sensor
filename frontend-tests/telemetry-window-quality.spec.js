@@ -7,11 +7,14 @@ test.beforeEach(async ({ page }) => {
 });
 
 for (const language of ['en', 'fr']) {
-test(`telemetry keeps its complete-recording explanation visible in ${language}`, async ({ page }) => {
+test(`telemetry complete-recording explanation is visible by default and can be hidden in ${language}`, async ({ page }) => {
   await page.evaluate(language => window.mountModular({ language, scene: 'replay', config: {
-    modules: [{ type: 'telemetry', options: { show_explanation: false } }],
+    modules: [{ type: 'telemetry' }],
   } }), language);
-  await expect(page.locator('f1-telemetry-view svg.plot').first()).toBeVisible();
+  const telemetry = page.locator('f1-telemetry-view');
+  await expect(telemetry.locator('svg.plot').first()).toBeVisible();
+  const selected = await telemetry.evaluate(node => node.model.selected);
+  expect(selected.length).toBeGreaterThan(0);
   await expect(page.getByText(/Analysis of the complete recording\./)).toBeVisible();
   await expect(page.getByText(/including laps beyond the current playback position/)).toBeVisible();
   await expect(page.getByText(/Lap windows use observed timing updates/)).toBeVisible();
@@ -24,6 +27,15 @@ test(`telemetry keeps its complete-recording explanation visible in ${language}`
     card.hass = { ...card.hass, states };
   });
   await expect(page.getByText(/including laps beyond the current playback position/)).toBeVisible();
+  await page.evaluate(() => {
+    const card = window.fixtureCard;
+    card.setConfig({ ...card.config, modules: card.config.modules.map(module => ({ ...module, options: { ...module.options, show_explanation: false } })) });
+  });
+  await expect(page.getByText(/Analysis of the complete recording\./)).toHaveCount(0);
+  await expect(page.getByText(/including laps beyond the current playback position/)).toHaveCount(0);
+  await expect(page.getByText(/Lap windows use observed timing updates/)).toHaveCount(0);
+  await expect(telemetry.locator('svg.plot').first()).toBeVisible();
+  expect(await telemetry.evaluate(node => node.model.selected)).toEqual(selected);
 });
 }
 

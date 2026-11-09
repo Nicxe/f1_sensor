@@ -535,6 +535,8 @@ test('replay display migration retains supported visibility choices', () => {
   });
   const result = proposeMigration(original);
   assert.deepEqual(result.config.modules[0].options, {
+    show_context: true,
+    show_explanation: true,
     display: 'compact',
     secondary_selects: false,
     start_reference: false,

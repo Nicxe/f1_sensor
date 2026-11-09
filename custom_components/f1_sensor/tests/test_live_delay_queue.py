@@ -12,7 +12,9 @@ from custom_components.f1_sensor.__init__ import (
     TeamRadioCoordinator,
     TopThreeCoordinator,
     _apply_delay_with_queue,
+    _clear_delayed_ingest_state,
     _close_delayed_ingest_state,
+    _drain_delayed_ingest_queue,
     _init_delayed_ingest_state,
     _wrap_delayed_handler,
 )
@@ -25,6 +27,128 @@ class _QueueProbe:
         self._replay_mode = False
         self.delivered: list[str] = []
         _init_delayed_ingest_state(self)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("callback_cost", [0.0, 0.003])
+async def test_delayed_ingest_backlog_yields_to_ready_callbacks_and_timers(
+    hass, monkeypatch, callback_cost
+) -> None:
+    """Catch-up must let unrelated HA work run before the whole backlog ends."""
+    probe = _QueueProbe(hass, delay=40)
+    clock = SimpleNamespace(now=100.0)
+    monkeypatch.setitem(
+        _drain_delayed_ingest_queue.__globals__,
+        "time",
+        SimpleNamespace(monotonic=lambda: clock.now),
+    )
+    delivered = []
+    observations = []
+    complete = hass.loop.create_future()
+
+    def deliver(index):
+        delivered.append(index)
+        clock.now += callback_cost
+        if index == 199:
+            complete.set_result(None)
+
+    for index in range(200):
+        probe._delay_queue.append((0.0, lambda index=index: deliver(index)))
+    hass.loop.call_soon(_drain_delayed_ingest_queue, probe)
+    hass.loop.call_soon(lambda: observations.append(("ready", len(delivered))))
+    hass.loop.call_later(0, lambda: observations.append(("timer", len(delivered))))
+    try:
+        await asyncio.wait_for(complete, timeout=5)
+        assert delivered == list(range(200))
+        assert {kind for kind, _ in observations} == {"ready", "timer"}
+        assert all(0 < count < 200 for _, count in observations)
+    finally:
+        _close_delayed_ingest_state(probe)
+
+
+@pytest.mark.asyncio
+async def test_delayed_ingest_zero_delay_preserves_pending_backlog_order(
+    hass, monkeypatch
+) -> None:
+    probe = _QueueProbe(hass, delay=40)
+    clock = SimpleNamespace(now=100.0)
+    monkeypatch.setitem(
+        _drain_delayed_ingest_queue.__globals__,
+        "time",
+        SimpleNamespace(monotonic=lambda: clock.now),
+    )
+    delivered = []
+    complete = hass.loop.create_future()
+
+    def deliver(index):
+        delivered.append(index)
+        clock.now += 0.003
+        if index == 100:
+            complete.set_result(None)
+
+    for index in range(100):
+        probe._delay_queue.append((0.0, lambda index=index: deliver(index)))
+    try:
+        _apply_delay_with_queue(probe, 0)
+        assert 0 < len(delivered) < 100
+        _wrap_delayed_handler(probe, deliver)(100)
+        await asyncio.wait_for(complete, timeout=5)
+        assert delivered == list(range(101))
+    finally:
+        _close_delayed_ingest_state(probe)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "retire", [_clear_delayed_ingest_state, _close_delayed_ingest_state]
+)
+async def test_delayed_ingest_retiring_generation_cancels_catchup(
+    hass, monkeypatch, retire
+) -> None:
+    probe = _QueueProbe(hass, delay=40)
+    clock = SimpleNamespace(now=100.0)
+    monkeypatch.setitem(
+        _drain_delayed_ingest_queue.__globals__,
+        "time",
+        SimpleNamespace(monotonic=lambda: clock.now),
+    )
+
+    def deliver(index):
+        probe.delivered.append(index)
+        clock.now += 0.003
+
+    for index in range(100):
+        probe._delay_queue.append((0.0, lambda index=index: deliver(index)))
+    _drain_delayed_ingest_queue(probe)
+    assert 0 < len(probe.delivered) < 100
+    retire(probe)
+    probe._replay_mode = True
+    _wrap_delayed_handler(probe, probe.delivered.append)("new generation")
+    await hass.async_block_till_done()
+    assert probe.delivered[-1] == "new generation"
+    assert len(probe.delivered) < 100
+    assert probe._delay_queue_handle is None
+
+
+@pytest.mark.asyncio
+async def test_delayed_ingest_reset_inside_callback_retires_the_running_batch(hass):
+    probe = _QueueProbe(hass, delay=0)
+
+    def reset():
+        probe.delivered.append("old first")
+        _clear_delayed_ingest_state(probe)
+        probe._delay_queue.append((0.0, lambda: probe.delivered.append("new")))
+
+    probe._delay_queue.extend(
+        [(0.0, reset), (0.0, lambda: probe.delivered.append("old second"))]
+    )
+    try:
+        _drain_delayed_ingest_queue(probe)
+        assert probe.delivered == ["old first"]
+        await hass.async_block_till_done()
+        assert probe.delivered == ["old first", "new"]
+    finally:
+        _close_delayed_ingest_state(probe)
 
 
 @pytest.mark.asyncio
@@ -70,7 +194,14 @@ async def test_delayed_ingest_queue_flushes_when_delay_becomes_zero(hass) -> Non
 @pytest.mark.asyncio
 async def test_delayed_ingest_queue_drops_oldest_when_full(hass) -> None:
     probe = _QueueProbe(hass, delay=60)
-    wrapped = _wrap_delayed_handler(probe, probe.delivered.append)
+    complete = hass.loop.create_future()
+
+    def deliver(value):
+        probe.delivered.append(value)
+        if value == str(MAX_DELAY_QUEUE_ITEMS + 2):
+            complete.set_result(None)
+
+    wrapped = _wrap_delayed_handler(probe, deliver)
 
     try:
         for idx in range(MAX_DELAY_QUEUE_ITEMS + 3):
@@ -81,7 +212,7 @@ async def test_delayed_ingest_queue_drops_oldest_when_full(hass) -> None:
         assert probe._delay_queue_dropped == 3
 
         _apply_delay_with_queue(probe, 0)
-        await hass.async_block_till_done()
+        await asyncio.wait_for(complete, timeout=5)
 
         assert len(probe.delivered) == MAX_DELAY_QUEUE_ITEMS
         assert probe.delivered[0] == "3"
