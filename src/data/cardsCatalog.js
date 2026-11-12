@@ -60,6 +60,24 @@ export const cardsCatalog = [
     "nativeAnchor": true
   },
   {
+    "id": "radar",
+    "title": "Precipitation radar (beta)",
+    "category": "Planning",
+    "description": "Play recent precipitation maps and near-term forecasts around a circuit, using LibreWXR radar, satellite estimates and weather models.",
+    "href": "/cards/cards-overview#radar-module",
+    "availability": [
+      "Current weather; ground radar coverage varies"
+    ],
+    "keywords": "radar precipitation rain satellite weather map animation librewxr beta",
+    "sources": [
+      "current_season",
+      "next_race",
+      "replay_status",
+      "live_delay_number"
+    ],
+    "nativeAnchor": true
+  },
+  {
     "id": "timing",
     "title": "Timing",
     "category": "Session",

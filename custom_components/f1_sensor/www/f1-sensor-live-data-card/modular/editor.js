@@ -417,6 +417,8 @@ export class F1SensorCardEditor extends LitElement {
       </details>` : ''}
       <details><summary>${this.w('modular.module_options')}</summary>${Object.entries(definition?.options ?? {}).map(([key, option]) => {
         const title = module.type === 'incidents' && module.options.content === 'track_limits_summary' && key === 'rows' ? this.w('modular.maximum_drivers') : label(option, this.language), value = module.options[key];
+        if (module.type === 'radar' && key === 'zoom') return html`${this.select(title, String(value), Array.from({ length: option.max - option.min + 1 }, (_, index) => { const zoom = String(option.min + index); return [zoom, zoom]; }), value => this.setOption(key, Number(value)))}<p class="muted">${this.w('modular.radar_default_zoom_help')}</p>`;
+        if (module.type === 'radar' && key === 'show_circuit_selector') return html`${this.check(title, value, value => this.setOption(key, value))}<p class="muted">${this.w('modular.radar_circuit_selector_help')}</p>`;
         const trace = module.type === 'lap_chart' && module.options.metric === 'cumulative_lap_delta';
         if (module.type === 'lap_chart') {
           if (!trace && ['reference_driver', 'anchor_lap', 'event_markers'].includes(key) || trace && key === 'series_limit') return '';

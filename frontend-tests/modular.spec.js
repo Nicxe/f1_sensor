@@ -834,11 +834,15 @@ test('progression uses team colors and toggles drivers from either the legend or
   const norrisLegend = legend.getByRole('button', { name: 'Lando Norris: visible. Hide series.', exact: true });
   await expect(leclercLegend).toHaveAttribute('aria-pressed', 'true');
 
+  const plot = chart.locator('svg.plot');
+  // The responsive plot replaces its initial geometry in a ResizeObserver frame.
+  // Wait for stable bounds before measuring, then retain click hit-target checks.
+  await plot.scrollIntoViewIfNeeded();
   const linePoint = await leclerc.locator('.series-line').first().evaluate(node => {
-    const point = node.getPointAtLength(node.getTotalLength() / 2), matrix = node.getScreenCTM();
-    return { x: point.x * matrix.a + point.y * matrix.c + matrix.e, y: point.x * matrix.b + point.y * matrix.d + matrix.f };
+    const point = node.getPointAtLength(node.getTotalLength() / 2), matrix = node.getScreenCTM(), bounds = node.ownerSVGElement.getBoundingClientRect();
+    return { x: point.x * matrix.a + point.y * matrix.c + matrix.e - bounds.left, y: point.x * matrix.b + point.y * matrix.d + matrix.f - bounds.top };
   });
-  await page.mouse.click(linePoint.x, linePoint.y);
+  await plot.click({ position: linePoint });
   await expect(chart.locator('[data-series="LEC"]')).toHaveCount(0);
   await expect(legend.getByRole('button', { name: 'Charles Leclerc: hidden. Show series.', exact: true })).toHaveAttribute('aria-pressed', 'false');
   await chart.getByRole('button', { name: 'Show data table', exact: true }).click();
