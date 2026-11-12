@@ -2,7 +2,7 @@
 
 This catalog is generated from the delivered module registry. It records the source path, data capability, supported modes and sessions, identity boundary, time provenance, freshness rule, unit and presentation for every field in every content-dependent module variant.
 
-Configuration version: 3. Modules: 22. Base field IDs: 156. Resolved sources: 34.
+Configuration version: 3. Modules: 23. Base field IDs: 156. Resolved sources: 34.
 
 A source path describes the contract consumed by the card; it is not a promise that the value is available in every session. `identity` lists the values that must still describe the same observation before fields may be combined. `timestamps` distinguishes source time, receipt time, entity update time and display snapshot time where the source supplies them.
 
@@ -249,6 +249,13 @@ Declared sources: `current_session`, `race_control`.
 | --- | --- | --- | --- | --- |
 | `event_time` — Time | `race_control_log` → `utc` | Capability: public; modes: live, replay; sessions: all; freshness: source; spoiler-protected | Identity: entry, season, round; generation: session; time: source: events[].utc; received: subscription.received_at; updated: not_provided; displayed: snapshot | Type: datetime; timeline |
 | `message` — Message | `race_control_log` → `message` | Capability: public; modes: live, replay; sessions: all; freshness: source; spoiler-protected | Identity: entry, season, round; generation: session; time: source: events[].utc; received: subscription.received_at; updated: not_provided; displayed: snapshot | Type: text; timeline |
+
+## modular.radar_title (`radar`)
+
+Declared sources: `current_season`, `live_delay_number`, `next_race`, `replay_status`.
+
+| Field | Source and path | Coverage | Identity and time | Presentation |
+| --- | --- | --- | --- | --- |
 
 ## Replay (`replay`)
 

@@ -95,6 +95,47 @@ export function sessionContext(hass, entry) {
   return { key, name, meeting: attrs.meeting_name ?? null, start: attrs.start ?? null, status: status.state, active: attrs.active === true || status.state === 'live', replay: replay.state, source: current };
 }
 
+// Coordinates come from the selected installation's calendar, never the
+// normalized track-map artwork. The external feed only represents current time.
+export function radarModel(hass, entry, module = {}, now = Date.now()) {
+  const calendar = source(hass, entry, 'current_season');
+  const races = calendar.status === 'available' ? array(calendar.attributes.races) : [];
+  const circuits = [], seen = new Set();
+  const addCircuit = (id, name, latitude, longitude) => {
+    const lat = number(latitude), lon = number(longitude);
+    if (!id || seen.has(id) || lat === null || lon === null || Math.abs(lat) > 85 || Math.abs(lon) > 180) return;
+    seen.add(id);
+    circuits.push({ id, name: nonempty(name) ?? id, lat, lon });
+  };
+  for (const race of races) {
+    const circuit = race?.Circuit;
+    addCircuit(nonempty(circuit?.circuitId), circuit?.circuitName, circuit?.Location?.lat, circuit?.Location?.long);
+  }
+  const next = source(hass, entry, 'next_race');
+  // A date-only next race has an unknown timestamp state but still identifies
+  // the upcoming circuit. Unavailable entity attributes are not current data.
+  const nextId = ['available', 'unknown'].includes(next.status) ? nonempty(next.attributes.circuit_id) : null;
+  if (nextId) addCircuit(nextId, next.attributes.circuit_name, next.attributes.circuit_lat, next.attributes.circuit_long);
+  const upcoming = nextId ? [] : races.map(race => {
+    const start = publishedStart(race?.race_start_utc ?? (race?.date && race?.time ? `${race.date}T${race.time}` : null));
+    const date = publishedDate(race?.date);
+    const eligible = start ? Date.parse(start) >= now : date && !dateHasPassed(date, race?.circuit_timezone, now);
+    return eligible ? { race, at: Date.parse(start ?? `${date}T00:00:00Z`) } : null;
+  }).filter(Boolean).sort((a, b) => a.at - b.at);
+  const nextRace = upcoming[0]?.race;
+  const requested = nextId ?? nonempty(nextRace?.Circuit?.circuitId);
+  const selectedId = circuits.find(circuit => circuit.id === requested)?.id ?? null;
+  const identity = nextId ? next.attributes : nextRace;
+  const selectionKey = JSON.stringify([entry?.entry_id, requested, identity?.season, identity?.round, identity?.race_date ?? identity?.date]);
+  const replay = source(hass, entry, 'replay_status');
+  const replayActive = ['selected', 'loading', 'ready', 'seeking', 'playing', 'paused', 'error'].includes(String(replay.state).toLowerCase())
+    || entry?.card_data?.session_context?.data?.source === 'replay';
+  const delay = number(source(hass, entry, 'live_delay_number').state);
+  const historical = module.selection?.mode === 'pinned' || module.selection?.source === 'replay' || module.selection?.source === 'archive';
+  return { circuits, selectedId, selectionKey, currentOnly: Boolean(replayActive || delay > 0 || historical),
+    contextKey: JSON.stringify([entry?.entry_id, replay.state, replay.attributes.selected_session, delay, module.selection]) };
+}
+
 export function sessionPhase(hass, entry) {
   const context = sessionContext(hass, entry), value = String(context.status ?? '').toLowerCase();
   if (context.active || ['live', 'started', 'green', 'red_flag', 'red flag', 'suspended', 'paused'].includes(value)) return 'active';
