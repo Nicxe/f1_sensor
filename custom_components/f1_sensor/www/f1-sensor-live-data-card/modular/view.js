@@ -1,6 +1,6 @@
 const version = new URL(import.meta.url).searchParams.get('v');
 const load = path => import(`${path}${version ? `?v=${encodeURIComponent(version)}` : ''}`);
-let chartLoading, mapLoading, telemetryLoading, teamRadioLoading, tyreHistoryLoading;
+let chartLoading, mapLoading, radarLoading, telemetryLoading, teamRadioLoading, tyreHistoryLoading;
 const [{ LitElement, html, css, repeat }, { FIELDS, fieldDefinition, moduleFields, moduleFocusKinds, INCIDENT_SIGNALS, label, translatePlural, words }, { formatTime, formatTimingGap, formatDelta, timingStatus, SIGNALS, statusColors, safeImageUrl, compoundMeta, trackSignal, logoDimensions }, { getTeamLogoMeta }, { resolvePresentation }] = await Promise.all([
   load('../f1-lit-3.3.2.js'), load('./catalog.js'), load('./semantics.js'), load('../platform/branding.js'), load('./config.js'),
 ]);
@@ -485,6 +485,7 @@ export class F1ModuleView extends LitElement {
       case 'documents': return this.documents();
       case 'progression': case 'lap_chart': return this.chart();
       case 'map': return this.map();
+      case 'radar': return this.radar();
       case 'replay': return this.replay();
       case 'archive': return this.archive();
       case 'telemetry': return this.telemetry();
@@ -516,6 +517,17 @@ export class F1ModuleView extends LitElement {
     this.mapNode.model = this.model; this.mapNode.module = this.module; this.mapNode.settings = this.settings;
     this.mapNode.presentation = this.compactPresentation ? 'compact' : 'current';
     return this.mapNode;
+  }
+  radar() {
+    if (!this.radarNode) {
+      this.radarNode = document.createElement('f1-radar-view');
+      this.radarNode.setAttribute('part', 'radar');
+      radarLoading ??= load('./radar-view.js').catch(error => { radarLoading = null; throw error; });
+      radarLoading.catch(() => { this.radarError = true; this.requestUpdate(); });
+    }
+    if (this.radarError) return this.empty(this.w('modular.radar_error'));
+    this.radarNode.model = this.model; this.radarNode.module = this.module; this.radarNode.language = this.language;
+    return this.radarNode;
   }
   chart() {
     if (!this.module.fields.includes(['lap_chart', 'archive'].includes(this.module.type) ? 'lap_series' : 'progression')) return this.empty(this.w('modular.choose_fields_in_the_editor'));

@@ -69,7 +69,7 @@ The card combines the following modules in one visual editor. [Choose a focused 
 
 | Purpose | Modules |
 | --- | --- |
-| Plan a weekend | Overview, Schedule, Weather |
+| Plan a weekend | Overview, Schedule, Weather, Precipitation radar (beta) |
 | Follow a session | [Timing](/cards/timing), [Minisectors](/cards/minisectors), Race Control, [Team Radio (experimental)](/cards/team-radio), Tyres, [Pit stops](/cards/pit-stops), Incidents |
 | Review results | Results, Championship, Historical archive, Season progression |
 | Analyse a session | Lap history chart, Session timeline, Strategy analysis, Battles and position changes, Track map |
@@ -123,6 +123,46 @@ Add **Weather** and choose its content under **Module options**: current conditi
 Forecasts and session measurements have different sources and availability. See the [weather comparison](/reference/overview#which-weather-entity) and [Track Weather](/entities/track-weather) before interpreting a missing value as current conditions.
 
 The optional **Session rain risk** field uses [Race Control's assessment](/entities/session-rain-risk) for the identified session. It stays separate from **Rain probability** in the weather provider's forecast and **Rain detected** in track observations. When the field is selected, missing data hides it while a published **0 %** is shown.
+
+### Precipitation radar module (beta) {/* #radar-module */}
+
+Add **Precipitation radar (beta)** to see nearby precipitation in relation to the circuit's geographical outline. The map initially follows the next race from the selected F1 Sensor installation. When the next circuit changes, the map follows it. If the next circuit is unknown, no circuit is selected automatically.
+
+This beta uses a community weather service. It does not guarantee ground-radar coverage at every circuit or predict the exact minute rain reaches the track. Check the image time and data-quality notice when interpreting the map.
+
+Under **Module options**, set **Default map zoom** from 5 to 14; the default is 13. You can also hide the circuit selector with **Show circuit selector**, which is enabled by default. When the selector is visible, you can temporarily view another circuit from the season calendar. Hiding it returns the map to the next race. The zoom buttons adjust the current view, and the scale bar helps you judge the distance between the track and approaching rain.
+
+Turn off **Show explanations** for a more compact map. This hides the general text below the map and the timeline explanation. Image times, playback controls, the colour scale, data-quality information, source credits and any current status or circuit-layout warning remain visible.
+
+The timeline focuses on the 30 minutes before and after the latest available precipitation image. Use **Play**, **Pause** or the timeline to compare those images, and **Latest** to return to the newest recent image. Each image shows its time and whether it is recent data or a forecast; the map also shows the latest image's age and the available time step. LibreWXR currently supplies ten-minute steps. The card does not invent intermediate images or calculate a precise rain arrival time.
+
+Use the colour scale to compare precipitation intensity. Its labelled swatches are reference colours; their dBZ values describe the provider's image intensity, not measured rainfall in mm/h. The same scale applies to all precipitation, including snow. Map smoothing and transparency can soften the colours you see. Expand **Image intensity · dBZ** for the explanation.
+
+Circuit outlines come from [F1 Circuits](https://github.com/bacinger/f1-circuits/tree/8094e957b8d6aa8b9f4510c93968556cccd30e02), a community dataset. These geographical lines help locate the track but are not surveyed boundaries or a guarantee of the layout used for a particular race weekend. Madrid's mapped outline is shown dashed because it may differ from the current race layout. If no outline is available, the map keeps the calendar location marker and explains the missing outline.
+
+LibreWXR combines ground radar, satellite precipitation estimates and weather models over an OpenStreetMap base map. Zooming closer enlarges the available weather data; it does not improve its resolution. Satellite estimates can cover several kilometres per data cell. See [LibreWXR's coverage documentation](https://github.com/JoshuaKimsey/LibreWXR/blob/c917725f5cabf62aaeb8e87978498f8be9719761/docs/coverage.md) for the source differences.
+
+The data-quality information stays visible in compact mode. **Local coverage unverified** means the service does not identify the actual source and original observation time at the circuit. This applies even when the images load successfully, including at Baku, Shanghai, Melbourne, Lusail and Yas Marina. The displayed age is the image's age; it does not verify the age of local observations. A clear map does not confirm dry weather. Expand the quality notice for more detail.
+
+**Current weather only:** The module shows the provider's current weather timeline. It does not reproduce the weather from a recorded F1 session or follow Live Delay. During replay or delayed viewing, select **Show current weather** to view it. This does not override Global No Spoiler or a frozen view. Changing the replay or delay context can require confirmation again.
+
+Requests and playback stop when the module is hidden, leaves the visible area, is removed, or is blocked by the card's viewing controls. Returning to the module loads the map without automatically restarting the animation; select **Play** to resume. Pausing the animation keeps the visible map's periodic updates active.
+
+If a map request fails or exceeds its 15-second timeout, the card clears the image and offers **Try again**. Use it after the connection is available again, then select **Play** if needed. The module does not repeatedly retry a failed request in the background. The public weather service is provided on a best-effort basis; precipitation accuracy and race-weekend reliability have not been validated.
+
+Your browser fetches weather images directly from LibreWXR and base-map tiles from OpenStreetMap. No weather API key is required. The requests use the circuit area, not your device's location, and do not include your Home Assistant login or F1 TV credentials. The services receive your network address; OpenStreetMap also receives your Home Assistant site's origin as the browser referrer. Keep the visible source credits. See [LibreWXR's terms](https://librewxr.net/terms.html) and [OpenStreetMap's privacy policy](https://osmfoundation.org/wiki/Privacy_Policy) for the providers' policies.
+
+For a compact map that always follows the next race:
+
+```yaml
+type: custom:f1-sensor-card
+modules:
+  - type: radar
+    options:
+      zoom: 13
+      show_circuit_selector: false
+      show_explanation: false
+```
 
 ### Race Control module {/* #race-control-module */}
 

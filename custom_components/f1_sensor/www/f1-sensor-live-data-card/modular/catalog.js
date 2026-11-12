@@ -508,6 +508,10 @@ export const MODULES = {
   }, ['investigations', 'track_limits', 'driver_list'], { spoiler: true, focus: ['driver', 'team'], defaultFields: ['incident_status', 'incident_drivers', 'event_time', 'incident_lap', 'incident_location', 'incident_reason', 'incident_penalty'], fieldDefinitions: {
     event_time: { ...FIELDS.event_time, source: 'selected_incidents', path: 'incident.nfi_utc ?? incident.utc' },
   } }),
+  radar: module('radar', 'modular.radar_title', [], {
+    zoom: { type: 'integer', min: 5, max: 14, default: 13, label: 'modular.radar_default_zoom' },
+    show_circuit_selector: { type: 'boolean', default: true, label: 'modular.radar_show_circuit_selector' },
+  }, ['current_season', 'next_race', 'replay_status', 'live_delay_number'], { spoiler: true }),
   weather: module('weather', 'Weather', WEATHER_FIELDS.map(field => field.id), {
     content: { type: 'enum', values: ['weather_overview', 'current_conditions', 'automatic_conditions', 'race_forecast', 'track_conditions'], default: 'weather_overview', label: 'Weather source' },
     presentation: { type: 'enum', values: ['metrics', 'compact_list'], default: 'metrics', label: 'Weather layout' },

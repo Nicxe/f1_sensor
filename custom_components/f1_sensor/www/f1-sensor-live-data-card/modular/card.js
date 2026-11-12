@@ -831,6 +831,12 @@ export class F1SensorCard extends LitElement {
           ? this.w('modular.each_change_compares_the_same_driver_with_their_preceding_lap_negative_values_mean_a')
           : this.w('modular.recorded_laps_may_include_pit_laps_neutralisations_and_different_qualifying_parts_this_view_does');
       }
+      if (module.type === 'radar') {
+        Object.assign(model, data.radarModel(viewHass, viewEntry, effective));
+        model.demo = Boolean(this.preview || this.modelPreview);
+        if (this.frozen) model.blocked = 'modular.radar_frozen';
+        if (model.blocked) model.blocked = this.w(model.blocked);
+      }
       if (module.type === 'documents') Object.assign(model, season.documentsModel(viewHass, viewEntry, effective));
       if (module.type === 'map') {
         const driverPositions = data.source(viewHass, viewEntry, 'driver_positions');
@@ -1108,6 +1114,7 @@ export class F1SensorCard extends LitElement {
         this.moduleNodes.set(module.id, node);
       }
       node.module = models.get(module.id)?.fields ? { ...module, fields: models.get(module.id).fields } : module; node.model = ['replay', 'telemetry', 'race_control', 'team_radio'].includes(module.type) ? { ...models.get(module.id), readonly: Boolean(this.preview || this.modelPreview || this.frozen), frozen: this.frozen, ...(module.type === 'race_control' ? { request: this.raceControlRequest } : {}), ...(module.type === 'team_radio' ? { request: this.teamRadioRequests.get(module.id) ?? null } : {}) } : models.get(module.id); node.settings = settings;
+      if (module.type === 'radar' && this.frozen) node.model = { ...node.model, blocked: this.w('modular.radar_frozen') };
       node.hidden = this.config.layout === 'tabs' && active !== module.id;
       node.id = `module-${module.id}`;
       node.dataset.moduleType = module.type;

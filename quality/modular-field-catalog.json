@@ -3,7 +3,7 @@
   "configuration_version": 3,
   "generated_from": "modular/catalog.js",
   "field_count": 156,
-  "module_count": 22,
+  "module_count": 23,
   "sources": [
     "analysis",
     "analysis/telemetry_compare",
@@ -4666,6 +4666,23 @@
               "unit": null
             }
           ]
+        }
+      ]
+    },
+    {
+      "id": "radar",
+      "label": "modular.radar_title",
+      "sources": [
+        "current_season",
+        "live_delay_number",
+        "next_race",
+        "replay_status"
+      ],
+      "variants": [
+        {
+          "id": "default",
+          "options": {},
+          "fields": []
         }
       ]
     },
