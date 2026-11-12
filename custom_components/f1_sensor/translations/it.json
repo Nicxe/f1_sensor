@@ -301,6 +301,9 @@
       },
       "starting_grid": {
         "name": "Griglia di partenza"
+      },
+      "session_rain_risk": {
+        "name": "Sessione a rischio pioggia"
       }
     },
     "weather": {
@@ -464,7 +467,8 @@
           "name": "Voce di configurazione di F1 Sensor",
           "description": "Utilizzare questo parametro al posto di entity_id quando non è esposto alcun sensore Race Control. Fornire un indirizzo."
         }
-      }
+      },
+      "name": "Pulisci i registri della Race Control"
     }
   }
 }
