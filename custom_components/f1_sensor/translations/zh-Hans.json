@@ -339,6 +339,9 @@
       },
       "replay_status": {
         "name": "回放状态"
+      },
+      "session_rain_risk": {
+        "name": "环节降雨风险"
       }
     },
     "weather": {

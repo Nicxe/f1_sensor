@@ -339,6 +339,9 @@
       },
       "replay_status": {
         "name": "Estat de la repetició"
+      },
+      "session_rain_risk": {
+        "name": "Sessió amb risc de pluja"
       }
     },
     "weather": {
