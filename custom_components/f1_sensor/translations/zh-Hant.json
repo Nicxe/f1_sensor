@@ -1,0 +1,476 @@
+{
+  "device_automation": {
+    "trigger_type": {
+      "race_week_started": "賽事週已開始",
+      "race_week_ended": "賽事週已結束",
+      "safety_car_deployed": "安全車已出動",
+      "safety_car_cleared": "安全車已撤離",
+      "possible_on_track_incident_detected": "偵測到可能的賽道事故",
+      "possible_on_track_incident_cleared": "可能的賽道事故已解除",
+      "on_track_incident_detected": "偵測到賽道事故",
+      "on_track_incident_cleared": "賽道事故已解除",
+      "formation_start_ready": "列隊起跑就緒",
+      "overtake_mode_enabled": "超車模式已啟用",
+      "overtake_mode_disabled": "超車模式已停用",
+      "session_live": "賽程節目開始直播",
+      "track_status_clear": "賽道狀態：暢通",
+      "track_status_yellow": "賽道狀態：黃旗",
+      "track_status_safety_car": "賽道狀態：安全車",
+      "track_status_vsc": "賽道狀態：虛擬安全車",
+      "track_status_red_flag": "賽道狀態：紅旗",
+      "new_race_control_message": "新的賽事管制訊息",
+      "new_fia_document": "FIA 發布新檔案",
+      "investigation_changed": "調查狀態已變更",
+      "new_team_radio": "新的車隊無線電訊息",
+      "favorite_driver_position_gained": "最愛車手名次上升",
+      "favorite_driver_position_lost": "最愛車手名次下滑",
+      "favorite_driver_entered_pits": "最愛車手進入維修區",
+      "favorite_driver_exited_pits": "最愛車手離開維修區",
+      "favorite_driver_retired": "最愛車手退賽",
+      "live_timing_online": "即時計時已上線",
+      "live_timing_offline": "即時計時已離線"
+    }
+  },
+  "config": {
+    "step": {
+      "user": {
+        "title": "F1 Sensor 設定",
+        "data": {
+          "sensor_name": "裝置名稱",
+          "enabled_sensors": "啟用的感測器",
+          "operation_mode": "運作模式",
+          "replay_file": "重播傾印檔路徑",
+          "enable_race_control": "啟用即時 F1 API（賽事管制／賽道／賽程）",
+          "install_dashboard_cards": "安裝內建儀表板卡片",
+          "race_week_start_day": "賽事週的第一天",
+          "live_timing_auth_header": "手動備援：F1TV 授權值",
+          "clear_live_timing_auth_header": "清除 F1TV 授權值",
+          "start_f1tv_pairing": "建議：使用 Token Helper 連接 F1TV 存取權",
+          "install_legacy_cards": "安裝舊版儀表板卡片"
+        },
+        "data_description": {
+          "operation_mode": "選擇「即時」以連線至 Formula 1 SignalR，或選擇「開發」以在本機重播已儲存的傾印檔。",
+          "replay_file": "已錄製的 SignalR 傾印檔的絕對路徑。僅在開發模式下需要。",
+          "enable_race_control": "透過 SignalR 連線至 Formula 1 即時計時以接收即時更新。若停用，則不會建立這些即時感測器。",
+          "install_dashboard_cards": "在 Home Assistant 中註冊內建的 F1 Sensor 卡片。如果你只使用實體與自動化，請停用此選項。重新載入瀏覽器後，現有的 F1 儀表板卡片將無法運作。",
+          "race_week_start_day": "選擇賽事週從週六、週日或週一開始。",
+          "live_timing_auth_header": "當 Token Helper 配對無法使用時的手動備援。僅在進階備援情況下，貼上取自 F1TV Token Helper 的完整 Bearer 權杖。留空則使用公開的即時計時，無法使用重播模式或存檔媒體。",
+          "start_f1tv_pairing": "建議的方式。連接你的 Formula 1 帳號以使用重播模式與存檔資料。免費帳號即可使用重播；額外的即時資料則取決於帳號權限與賽程是否提供。未連接時，公開的即時計時仍會持續運作。",
+          "install_legacy_cards": "同時註冊已淘汰的 F1 卡片。新安裝預設關閉；既有安裝會保留先前的卡片。需要先啟用儀表板卡片安裝。變更此選項後請重新載入瀏覽器。停用後，現有的舊版卡片將無法運作，除非你將它們遷移至 F1 Sensor 卡片。若存在多個 F1 Sensor 安裝，只要有任何一個已啟用的安裝要求，舊版卡片就會持續可用。"
+        },
+        "description": "F1 Sensor 卡片會自動取得資料。「啟用的感測器」僅控制在 Home Assistant 中公開的實體。請保留舊版卡片、範本或自動化所使用的感測器。即時計時與 F1TV 存取權則依其各自的設定。"
+      },
+      "reconfigure": {
+        "title": "重新設定 F1 Sensor",
+        "data": {
+          "sensor_name": "裝置名稱",
+          "enabled_sensors": "啟用的感測器",
+          "operation_mode": "運作模式",
+          "replay_file": "重播傾印檔路徑",
+          "enable_race_control": "啟用即時 F1 API",
+          "install_dashboard_cards": "安裝內建儀表板卡片",
+          "race_week_start_day": "賽事週的第一天",
+          "live_timing_auth_header": "手動備援：F1TV 授權值",
+          "clear_live_timing_auth_header": "清除 F1TV 授權值",
+          "start_f1tv_pairing": "建議：使用 Token Helper 連接 F1TV 存取權",
+          "install_legacy_cards": "安裝舊版儀表板卡片"
+        },
+        "data_description": {
+          "operation_mode": "選擇「即時」以連線至 Formula 1 SignalR，或選擇「開發」以在本機重播已儲存的傾印檔。",
+          "replay_file": "已錄製的 SignalR 傾印檔的絕對路徑。僅在開發模式下需要。",
+          "enable_race_control": "連線至 Formula 1 即時計時以接收即時更新。若停用，則不會建立這些即時感測器。",
+          "install_dashboard_cards": "在 Home Assistant 中註冊內建的 F1 Sensor 卡片。如果你只使用實體與自動化，請停用此選項。重新載入瀏覽器後，現有的 F1 儀表板卡片將無法運作。",
+          "race_week_start_day": "選擇賽事週從週六、週日或週一開始。",
+          "live_timing_auth_header": "當 Token Helper 配對無法使用時的手動備援。僅在進階備援情況下，貼上新的完整 Bearer 權杖。留空則保留目前的值。",
+          "clear_live_timing_auth_header": "移除已儲存的 F1TV 授權值，並繼續使用公開的即時計時。重播模式與存檔媒體將無法使用。",
+          "start_f1tv_pairing": "建議的方式。連接你的 Formula 1 帳號以使用重播模式與存檔資料。免費帳號即可使用重播；額外的即時資料則取決於帳號權限與賽程是否提供。未連接時，公開的即時計時仍會持續運作。",
+          "install_legacy_cards": "同時註冊已淘汰的 F1 卡片。新安裝預設關閉；既有安裝會保留先前的卡片。需要先啟用儀表板卡片安裝。變更此選項後請重新載入瀏覽器。停用後，現有的舊版卡片將無法運作，除非你將它們遷移至 F1 Sensor 卡片。若存在多個 F1 Sensor 安裝，只要有任何一個已啟用的安裝要求，舊版卡片就會持續可用。"
+        },
+        "description": "F1 Sensor 卡片會自動取得資料。「啟用的感測器」僅控制在 Home Assistant 中公開的實體。請保留舊版卡片、範本或自動化所使用的感測器。即時計時與 F1TV 存取權則依其各自的設定。"
+      },
+      "reauth_confirm": {
+        "title": "更新 F1TV 即時計時授權",
+        "data": {
+          "live_timing_auth_header": "手動備援：F1TV 授權值",
+          "clear_live_timing_auth_header": "清除 F1TV 授權值",
+          "start_f1tv_pairing": "建議：使用 Token Helper 連接 F1TV 存取權"
+        },
+        "data_description": {
+          "live_timing_auth_header": "當 Token Helper 配對無法使用時的手動備援。僅在進階備援情況下，貼上新的完整 Bearer 權杖。",
+          "clear_live_timing_auth_header": "移除已儲存的 F1TV 授權值，並繼續使用公開的即時計時。重播模式與存檔媒體將無法使用。",
+          "start_f1tv_pairing": "建議的方式。連接你的 Formula 1 帳號以使用重播模式與存檔資料。免費帳號即可使用重播；額外的即時資料則取決於帳號權限與賽程是否提供。未連接時，公開的即時計時仍會持續運作。"
+        }
+      },
+      "f1tv_pairing": {
+        "title": "連接 F1TV 存取權",
+        "description": "使用 F1TV Token Helper 連接你的 Formula 1 帳號。免費帳號即可使用重播模式；額外的即時資料則取決於帳號權限與賽程是否提供。沒有權杖時，公開的即時計時仍會持續運作。此配對將於 {expires_at} 到期。"
+      },
+      "sensor_review": {
+        "title": "檢視感測器變更",
+        "description": "已從你先前的選擇中移除的感測器：{removed_sensors}。使用這些實體的舊版卡片、範本與自動化可能會停止運作。在 Home Assistant 中正常停用會保留註冊資訊。透過此整合的選擇移除感測器可能會一併移除其註冊項目；之後重新建立時，自訂名稱與實體 ID 可能會改變。你的其他設定與已儲存的資料不受影響。",
+        "data": {
+          "confirm": "確認感測器變更"
+        }
+      }
+    },
+    "abort": {
+      "reconfigure_successful": "F1 Sensor 已成功重新設定。",
+      "f1tv_pairing_unavailable": "此版本不支援 F1TV 配對。",
+      "f1tv_pairing_failed": "F1TV 配對未完成。請開始新的配對流程後再試一次。"
+    },
+    "error": {
+      "replay_required": "啟用開發模式時，請選擇重播傾印檔。",
+      "replay_missing": "找不到重播傾印檔，或無法讀取。",
+      "auth_header_required": "請輸入 F1TV 授權值，或選擇清除。",
+      "invalid_auth_header": "請輸入有效的 Bearer 權杖值。",
+      "auth_token_missing_exp": "此權杖不含到期時間。",
+      "auth_token_expired": "此權杖已過期。",
+      "auth_token_expiring_soon": "此權杖即將到期。請產生新的權杖後再試一次。",
+      "invalid_choice": "請選擇有效的設定。",
+      "confirmation_required": "儲存前請先確認已檢視的選項。"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "設定 F1 Sensor 功能",
+        "data": {
+          "enabled_sensors": "啟用的感測器",
+          "enable_race_control": "啟用即時 F1 API",
+          "install_dashboard_cards": "安裝內建儀表板卡片",
+          "race_week_start_day": "賽事週的第一天",
+          "operation_mode": "運作模式",
+          "replay_file": "重播傾印檔路徑",
+          "install_legacy_cards": "安裝舊版儀表板卡片"
+        },
+        "data_description": {
+          "enable_race_control": "僅在啟用即時功能時才連線至 Formula 1 即時計時。",
+          "install_dashboard_cards": "在 Home Assistant 中註冊內建的 F1 Sensor 卡片。如果你只使用實體與自動化，請停用此選項。重新載入瀏覽器後，現有的 F1 儀表板卡片將無法運作。",
+          "race_week_start_day": "選擇賽事週從週六、週日或週一開始。",
+          "operation_mode": "選擇即時模式，或本機重播的開發模式。",
+          "replay_file": "僅在開發模式下使用的重播傾印檔的絕對路徑。",
+          "install_legacy_cards": "同時註冊已淘汰的 F1 卡片。新安裝預設關閉；既有安裝會保留先前的卡片。需要先啟用儀表板卡片安裝。變更此選項後請重新載入瀏覽器。停用後，現有的舊版卡片將無法運作，除非你將它們遷移至 F1 Sensor 卡片。若存在多個 F1 Sensor 安裝，只要有任何一個已啟用的安裝要求，舊版卡片就會持續可用。"
+        },
+        "description": "F1 Sensor 卡片會自動取得資料。「啟用的感測器」僅控制在 Home Assistant 中公開的實體。請保留舊版卡片、範本或自動化所使用的感測器。即時計時與 F1TV 存取權則依其各自的設定。"
+      },
+      "sensor_review": {
+        "title": "檢視感測器變更",
+        "description": "已從你先前的選擇中移除的感測器：{removed_sensors}。使用這些實體的舊版卡片、範本與自動化可能會停止運作。在 Home Assistant 中正常停用會保留註冊資訊。透過此整合的選擇移除感測器可能會一併移除其註冊項目；之後重新建立時，自訂名稱與實體 ID 可能會改變。你的其他設定與已儲存的資料不受影響。",
+        "data": {
+          "confirm": "確認感測器變更"
+        }
+      }
+    },
+    "error": {
+      "replay_required": "啟用開發模式時，請選擇重播傾印檔。",
+      "replay_missing": "找不到重播傾印檔，或無法讀取。",
+      "invalid_choice": "請選擇有效的設定。",
+      "confirmation_required": "儲存前請先確認已檢視的選項。"
+    }
+  },
+  "issues": {
+    "stale_live_data_card_resources": {
+      "description": "Home Assistant 中仍有舊版獨立 F1 卡片遺留的 Lovelace 資源項目（偵測到 {stale_resource_count} 個）。這些項目可能造成卡片重複，或在停用內建儀表板卡片後仍顯示 F1 卡片。請移除舊版獨立的 HACS 儀表板儲存庫及其遺留的 Lovelace 資源項目，然後重新啟動 Home Assistant，或重新載入 Lovelace 資源並強制重新整理瀏覽器。",
+      "title": "偵測到舊版獨立 F1 即時資料卡片資源"
+    },
+    "f1tv_token_attention_required": {
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "data": {
+              "start_f1tv_pairing": "建議：使用 Token Helper 連接 F1TV 存取權",
+              "live_timing_auth_header": "F1TV 授權值",
+              "clear_live_timing_auth_header": "清除 F1TV 授權值"
+            },
+            "data_description": {
+              "start_f1tv_pairing": "建議的方式。開始一個短時效的配對流程，並從瀏覽器擴充功能傳送權杖，無需手動複製。",
+              "live_timing_auth_header": "貼上取自 F1TV Token Helper 的新 Bearer 權杖值，以取得 F1TV 存取權。",
+              "clear_live_timing_auth_header": "移除已儲存的 F1TV 權杖，並繼續使用公開的即時計時。重播模式與存檔媒體將無法使用。"
+            },
+            "description": "{name} 已儲存的 F1TV 權杖需要處理。公開的即時計時仍可運作，但重播模式、存檔媒體與額外的 F1TV 即時資料需要更換權杖。",
+            "title": "更新 F1TV 即時計時權杖"
+          },
+          "f1tv_pairing": {
+            "title": "連接 F1TV 存取權",
+            "description": "使用 F1TV Token Helper 連接你的 Formula 1 帳號。免費帳號即可使用重播模式；額外的即時資料則取決於帳號權限與賽程是否提供。沒有權杖時，公開的即時計時仍會持續運作。此配對將於 {expires_at} 到期。"
+          }
+        }
+      },
+      "title": "F1TV 即時計時權杖需要處理"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "next_race": {
+        "name": "下一場比賽"
+      },
+      "track_time": {
+        "name": "賽道當地時間"
+      },
+      "current_season": {
+        "name": "目前賽季"
+      },
+      "driver_standings": {
+        "name": "車手積分榜"
+      },
+      "constructor_standings": {
+        "name": "車隊積分榜"
+      },
+      "weather": {
+        "name": "天氣"
+      },
+      "track_weather": {
+        "name": "賽道天氣"
+      },
+      "session_rain_risk": {
+        "name": "賽程降雨機率"
+      },
+      "current_session": {
+        "name": "目前賽程"
+      },
+      "last_race_results": {
+        "name": "上一場比賽結果"
+      },
+      "season_results": {
+        "name": "賽季結果"
+      },
+      "sprint_results": {
+        "name": "衝刺賽結果"
+      },
+      "lap_position_progression": {
+        "name": "各圈名次變化"
+      },
+      "race_control": {
+        "name": "賽事管制"
+      },
+      "top_three_p1": {
+        "name": "前三名（P1）"
+      },
+      "top_three_p2": {
+        "name": "前三名（P2）"
+      },
+      "top_three_p3": {
+        "name": "前三名（P3）"
+      },
+      "pitstops": {
+        "name": "進站"
+      },
+      "championship_prediction_drivers": {
+        "name": "冠軍預測（車手）"
+      },
+      "championship_prediction_teams": {
+        "name": "冠軍預測（車隊）"
+      },
+      "fia_documents": {
+        "name": "FIA 裁決"
+      },
+      "live_timing_mode": {
+        "name": "即時計時模式"
+      },
+      "f1tv_token_status": {
+        "name": "F1TV 權杖狀態",
+        "state": {
+          "not_configured": "未設定",
+          "valid": "有效",
+          "expiring_soon": "即將到期",
+          "expired": "已過期",
+          "invalid": "無效",
+          "rejected": "已拒絕"
+        }
+      },
+      "f1tv_token_expires_at": {
+        "name": "F1TV 權杖到期時間"
+      },
+      "driver_positions": {
+        "name": "車手名次"
+      },
+      "favorite_driver": {
+        "name": "最愛車手"
+      },
+      "starting_grid": {
+        "name": "起跑排位"
+      },
+      "track_limits": {
+        "name": "賽道界線"
+      },
+      "investigations": {
+        "name": "調查與處罰"
+      },
+      "straight_mode": {
+        "name": "直線模式",
+        "state": {
+          "normal_grip": "正常抓地力",
+          "low_grip": "低抓地力",
+          "disabled": "已停用"
+        }
+      },
+      "track_status": {
+        "name": "賽道狀態"
+      },
+      "session_status": {
+        "name": "賽程狀態"
+      },
+      "session_time_remaining": {
+        "name": "賽程剩餘時間"
+      },
+      "session_time_elapsed": {
+        "name": "賽程已進行時間"
+      },
+      "race_time_to_three_hour_limit": {
+        "name": "距離 3 小時上限的時間"
+      },
+      "driver_list": {
+        "name": "車手名單"
+      },
+      "current_tyres": {
+        "name": "目前輪胎"
+      },
+      "tyre_statistics": {
+        "name": "輪胎統計"
+      },
+      "team_radio": {
+        "name": "車隊無線電"
+      },
+      "race_lap_count": {
+        "name": "比賽圈數"
+      },
+      "driver_points_progression": {
+        "name": "車手積分變化"
+      },
+      "constructor_points_progression": {
+        "name": "車隊積分變化"
+      },
+      "replay_status": {
+        "name": "重播狀態"
+      }
+    },
+    "weather": {
+      "weather": {
+        "name": "天氣"
+      }
+    },
+    "button": {
+      "delay_calibration_match": {
+        "name": "對齊即時延遲"
+      },
+      "replay_load": {
+        "name": "載入賽程"
+      },
+      "replay_play": {
+        "name": "播放"
+      },
+      "replay_pause": {
+        "name": "暫停"
+      },
+      "replay_back_30": {
+        "name": "倒退 30 秒"
+      },
+      "replay_forward_30": {
+        "name": "快轉 30 秒"
+      },
+      "replay_stop": {
+        "name": "停止"
+      },
+      "replay_refresh": {
+        "name": "重新整理賽程"
+      },
+      "jolpica_ua_test": {
+        "name": "Jolpica User-Agent 測試"
+      },
+      "clear_f1tv_access": {
+        "name": "清除 F1TV 存取權"
+      },
+      "refresh_f1tv_access": {
+        "name": "重新整理 F1TV 存取權"
+      }
+    },
+    "switch": {
+      "delay_calibration": {
+        "name": "延遲校正"
+      },
+      "no_spoiler_mode": {
+        "name": "防劇透模式"
+      }
+    },
+    "number": {
+      "live_delay": {
+        "name": "即時延遲"
+      }
+    },
+    "media_player": {
+      "replay_player": {
+        "name": "重播播放器"
+      }
+    },
+    "select": {
+      "favorite_driver": {
+        "name": "最愛車手"
+      },
+      "live_delay_reference": {
+        "name": "即時延遲參考點"
+      },
+      "replay_year": {
+        "name": "重播年份"
+      },
+      "replay_session": {
+        "name": "重播賽程"
+      },
+      "replay_start_reference": {
+        "name": "重播起點參考"
+      }
+    },
+    "binary_sensor": {
+      "race_week": {
+        "name": "賽事週"
+      },
+      "live_timing_online": {
+        "name": "即時計時上線"
+      },
+      "safety_car": {
+        "name": "安全車"
+      },
+      "on_track_incident": {
+        "name": "賽道事故"
+      },
+      "possible_on_track_incident": {
+        "name": "可能的賽道事故"
+      },
+      "formation_start": {
+        "name": "列隊起跑"
+      },
+      "overtake_mode": {
+        "name": "超車模式"
+      }
+    },
+    "calendar": {
+      "season_calendar": {
+        "name": "賽季行事曆"
+      }
+    }
+  },
+  "selector": {},
+  "exceptions": {
+    "card_data_notification_title": {
+      "message": "F1 Sensor：卡片自動取得資料"
+    },
+    "card_data_notification": {
+      "message": "{name} 現在會自動將資料提供給 F1 Sensor 卡片。你現有的感測器、設定與自動化仍會繼續運作。你可以選擇性地在 [F1 Sensor 設定]({integration_url}) → 設定 中，減少在 Home Assistant 中公開的感測器。請保留舊版卡片、範本或自動化所使用的感測器。無需任何設定。你可以關閉此訊息，重新啟動或重新載入後不會再出現。"
+    }
+  },
+  "services": {
+    "clear_race_control_log": {
+      "name": "清除賽事管制記錄",
+      "description": "清除單一 F1 Sensor 安裝中已儲存的賽事管制訊息。請提供感測器實體或設定項目其中之一。",
+      "fields": {
+        "entity_id": {
+          "name": "賽事管制實體",
+          "description": "此安裝的賽事管制感測器。使用 entry_id 時請省略。"
+        },
+        "entry_id": {
+          "name": "F1 Sensor 設定項目",
+          "description": "未公開賽事管制感測器時，請改用此欄位取代 entity_id。請只提供其中一個。"
+        }
+      }
+    }
+  }
+}
