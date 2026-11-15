@@ -339,6 +339,9 @@
       },
       "favorite_driver": {
         "name": "Favoritförare"
+      },
+      "session_rain_risk": {
+        "name": "Regnrisk (session)"
       }
     },
     "weather": {
