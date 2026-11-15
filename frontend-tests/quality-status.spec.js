@@ -1,5 +1,6 @@
 const { test, expect } = require('@playwright/test');
 const AxeBuilder = require('@axe-core/playwright').default;
+const { catalogs, expectedMessage } = require('./localization-fixture.cjs');
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/frontend-tests/modular.html');
@@ -31,37 +32,50 @@ test('replay explains identity conflicts and old cache formats, then clears the 
   await expect(page.getByText('The archive does not include enough session identity data to verify this recording.')).toBeVisible();
 });
 
-test('prediction waiting reasons preserve published standings and follow the spoiler gate', async ({ page }) => {
-  await page.evaluate(() => {
-    window.mountModular({ language: 'sv', config: { modules: [{ type: 'standings', fields: ['driver', 'points', 'predicted_points'] }] } });
-    const { hass, preview } = window.fixtureDemo, entry = preview.entries[0];
-    hass.states[entry.entities.championship_prediction_drivers].attributes.prediction_status = 'waiting_for_session';
-    window.fixtureCard.hass = { ...hass, states: { ...hass.states } };
-  });
-  await expect(page.getByText('Waiting for session identity before showing championship projections.')).toBeVisible();
-  await expect(page.locator('tbody tr').first()).toBeVisible();
-  for (const [status, text] of [
-    ['waiting_for_prediction', 'Race or Sprint identified. Waiting for championship prediction data.'],
-    ['not_applicable', 'Championship projections are available during Race and Sprint sessions.'],
-  ]) {
-    await page.evaluate(status => {
+const projectionStatuses = ['waiting_for_session', 'waiting_for_prediction', 'not_applicable'];
+for (const missingStatus of [null, ...projectionStatuses]) {
+  test(`prediction waiting reasons preserve published standings and follow the spoiler gate${missingStatus ? ` with untranslated ${missingStatus}` : ''}`, async ({ page }) => {
+    const missingKey = missingStatus && `modular.projection_${missingStatus}`;
+    if (missingKey) {
+      const messages = { ...catalogs.sv };
+      delete messages[missingKey];
+      await page.route('**/f1-sensor-live-data-card/localization/locales/sv.json*', route => route.fulfill({ json: messages }));
+      // Reload after installing the fixture so the immutable catalog loads it.
+      await page.reload();
+      await page.waitForFunction(() => window.modularReady);
+    }
+    const messageFor = status => {
+      const key = `modular.projection_${status}`;
+      return key === missingKey ? catalogs.en[key] : expectedMessage('sv', key);
+    };
+    await page.evaluate(() => {
+      window.mountModular({ language: 'sv', config: { modules: [{ type: 'standings', fields: ['driver', 'points', 'predicted_points'] }] } });
       const { hass, preview } = window.fixtureDemo, entry = preview.entries[0];
-      hass.states[entry.entities.championship_prediction_drivers].attributes.prediction_status = status;
+      hass.states[entry.entities.championship_prediction_drivers].attributes.prediction_status = 'waiting_for_session';
       window.fixtureCard.hass = { ...hass, states: { ...hass.states } };
-    }, status);
-    await expect(page.getByText(text, { exact: true })).toBeVisible();
-  }
-  await page.setViewportSize({ width: 360, height: 800 });
-  await page.emulateMedia({ forcedColors: 'active' });
-  expect((await new AxeBuilder({ page }).include('f1-sensor-card').analyze()).violations).toEqual([]);
-  await page.evaluate(() => {
-    const { hass, preview } = window.fixtureDemo;
-    hass.states[preview.entries[0].global_entities.no_spoiler_mode].state = 'on';
-    window.fixtureCard.hass = { ...hass, states: { ...hass.states } };
+    });
+    await expect(page.getByText(messageFor('waiting_for_session'), { exact: true })).toBeVisible();
+    await expect(page.locator('tbody tr').first()).toBeVisible();
+    for (const status of projectionStatuses.slice(1)) {
+      await page.evaluate(status => {
+        const { hass, preview } = window.fixtureDemo, entry = preview.entries[0];
+        hass.states[entry.entities.championship_prediction_drivers].attributes.prediction_status = status;
+        window.fixtureCard.hass = { ...hass, states: { ...hass.states } };
+      }, status);
+      await expect(page.getByText(messageFor(status), { exact: true })).toBeVisible();
+    }
+    await page.setViewportSize({ width: 360, height: 800 });
+    await page.emulateMedia({ forcedColors: 'active' });
+    expect((await new AxeBuilder({ page }).include('f1-sensor-card').analyze()).violations).toEqual([]);
+    await page.evaluate(() => {
+      const { hass, preview } = window.fixtureDemo;
+      hass.states[preview.entries[0].global_entities.no_spoiler_mode].state = 'on';
+      window.fixtureCard.hass = { ...hass, states: { ...hass.states } };
+    });
+    await expect(page.locator('tbody tr')).toHaveCount(0);
+    await expect(page.getByText(messageFor('not_applicable'), { exact: true })).toHaveCount(0);
   });
-  await expect(page.locator('tbody tr')).toHaveCount(0);
-  await expect(page.getByText('Championship projections are available during Race and Sprint sessions.')).toHaveCount(0);
-});
+}
 
 test('an accepted token without positions is distinct from an authentication failure or normal idle', async ({ page }) => {
   await page.evaluate(() => {
