@@ -6,8 +6,9 @@ import asyncio
 import base64
 from datetime import UTC, datetime
 import json
+from threading import Event
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import Mock
 import zlib
 
 import pytest
@@ -280,21 +281,25 @@ async def test_replay_telemetry_catalog_is_local_bounded_and_session_scoped(
 async def test_telemetry_catalog_close_rejects_inflight_scan(
     hass, tmp_path, monkeypatch
 ) -> None:
-    entered, release = asyncio.Event(), asyncio.Event()
+    entered, release = asyncio.Event(), Event()
+    original_scan = telemetry._scan_replay_timing
 
-    async def delayed_scan(*_args):
-        entered.set()
-        await release.wait()
-        return []
+    def delayed_scan(*args):
+        hass.loop.call_soon_threadsafe(entered.set)
+        if not release.wait(5):
+            raise TimeoutError("Test did not release recording scan")
+        return original_scan(*args)
 
-    monkeypatch.setattr(hass, "async_add_executor_job", delayed_scan)
-    service = telemetry.ReplayTelemetryService(
-        hass, _Session(_Response(200)), _manager(tmp_path)
-    )
+    monkeypatch.setattr(telemetry, "_scan_replay_timing", delayed_scan)
+    manager = _manager(tmp_path)
+    manager.get_loaded_index().frames_file.write_text("")
+    service = telemetry.ReplayTelemetryService(hass, _Session(_Response(200)), manager)
     task = hass.async_create_task(service.async_catalog(expected_session_id="session"))
-    await entered.wait()
-    await service.async_close()
-    release.set()
+    try:
+        await asyncio.wait_for(entered.wait(), 5)
+        await service.async_close()
+    finally:
+        release.set()
     with pytest.raises(ValueError, match="changed"):
         await task
     assert service._catalog is None
@@ -343,7 +348,7 @@ def _manager(tmp_path):
 
 
 async def test_replay_compare_validation_missing_laps_and_provider_errors(
-    hass, tmp_path, monkeypatch
+    hass, tmp_path
 ) -> None:
     service = telemetry.ReplayTelemetryService(hass, _Session(_Response(200)), None)
     with pytest.raises(ValueError, match="valid driver_number"):
@@ -367,30 +372,22 @@ async def test_replay_compare_validation_missing_laps_and_provider_errors(
         await service.async_compare([{"driver_number": 4, "lap_number": 1}])
 
     manager = _manager(tmp_path)
-    monkeypatch.setattr(
-        hass, "async_add_executor_job", AsyncMock(return_value=({}, None))
-    )
+    manager.get_loaded_index().frames_file.write_text("")
     service = telemetry.ReplayTelemetryService(hass, _Session(_Response(200)), manager)
     with pytest.raises(ValueError, match="unavailable"):
         await service.async_compare([{"driver_number": 4, "lap_number": 1}])
 
+    manager.get_loaded_index().frames_file.write_text(
+        '{"t":0,"s":"SessionStatus","p":{"Status":"Started"}}\n'
+        '{"t":1000,"s":"TimingData","p":{"Lines":{"4":{"NumberOfLaps":1}}}}\n'
+    )
     for status, message in ((404, "unavailable"), (503, "temporarily")):
-        monkeypatch.setattr(
-            hass,
-            "async_add_executor_job",
-            AsyncMock(return_value=({"4:1": (0, 1000)}, None)),
-        )
         service = telemetry.ReplayTelemetryService(
             hass, _Session(_Response(status)), _manager(tmp_path)
         )
         with pytest.raises(ValueError, match=message):
             await service.async_compare([{"driver_number": 4, "lap_number": 1}])
 
-    monkeypatch.setattr(
-        hass,
-        "async_add_executor_job",
-        AsyncMock(return_value=({"4:1": (0, 1000)}, None)),
-    )
     service = telemetry.ReplayTelemetryService(
         hass, _Session(_Response(200, TimeoutError())), _manager(tmp_path)
     )

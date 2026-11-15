@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import asyncio
 from collections import OrderedDict
-from collections.abc import Mapping, Sequence
-from contextlib import suppress
+from collections.abc import Iterator, Mapping, Sequence
+from contextlib import contextmanager, suppress
 from copy import deepcopy
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from functools import partial
 import json
@@ -30,7 +31,16 @@ MAX_TELEMETRY_SELECTIONS = 4
 MAX_TELEMETRY_POINTS = 500
 MAX_RAW_SELECTION_POINTS = 4_000
 MAX_TELEMETRY_CACHE_ENTRIES = 8
+MAX_TELEMETRY_CONCURRENT_COMPARISONS = 2
+MAX_TELEMETRY_REQUESTS = 8
 TELEMETRY_HTTP_TIMEOUT = 120
+
+
+@dataclass(frozen=True)
+class _TimingSnapshot:
+    windows: dict[str, tuple[int, int]]
+    anchor: tuple[datetime, int] | None
+    drivers: list[dict[str, Any]]
 
 
 def _mapping(value: object) -> Mapping[str, Any]:
@@ -206,18 +216,16 @@ def _scan_replay_windows(
     return _closed_lap_windows(completion, selections, verified_start), anchor
 
 
-def _scan_replay_catalog(
-    frames_file: Path, session_start_ms: int
-) -> list[dict[str, Any]]:
-    """List recorded lap windows, without downloading remote car telemetry."""
-    completion, _anchor, people, observed_start = _scan_replay_timing(frames_file)
+def _scan_replay_snapshot(frames_file: Path, session_start_ms: int) -> _TimingSnapshot:
+    """Read bounded lap windows once for both the catalog and comparisons."""
+    completion, anchor, people, observed_start = _scan_replay_timing(frames_file)
     verified_start = session_start_ms if observed_start == session_start_ms else None
     windows = _closed_lap_windows(completion, list(completion), verified_start)
     laps_by_driver: dict[int, list[int]] = {}
     for key in windows:
         driver, lap = (int(value) for value in key.split(":"))
         laps_by_driver.setdefault(driver, []).append(lap)
-    return [
+    drivers = [
         {
             "driver_number": driver,
             "name": people.get(driver, {}).get("FullName"),
@@ -227,6 +235,7 @@ def _scan_replay_catalog(
         }
         for driver, laps in sorted(laps_by_driver.items())
     ]
+    return _TimingSnapshot(windows, anchor, drivers)
 
 
 def _channel_value(channels: Mapping[str, Any], key: str) -> float | None:
@@ -393,7 +402,13 @@ class ReplayTelemetryService:
         self._cache: OrderedDict[
             tuple[str, tuple[tuple[int, int], ...]], dict[str, Any]
         ] = OrderedDict()
-        self._catalog_lock = asyncio.Lock()
+        self._timing_index: Any = None
+        self._timing_future: asyncio.Future[_TimingSnapshot] | None = None
+        self._inflight: dict[
+            tuple[int, tuple[tuple[int, int], ...]], asyncio.Task[dict[str, Any]]
+        ] = {}
+        self._active_requests = 0
+        self._closed = False
         self._catalog_index: Any = None
         self._catalog: dict[str, Any] | None = None
         self._cache_index: Any = None
@@ -402,6 +417,8 @@ class ReplayTelemetryService:
         self._cache_hits = 0
 
     def _loaded_replay(self, expected_session_id: str | None = None) -> tuple[Any, Any]:
+        if self._closed:
+            raise ValueError("Replay session changed; select laps again")
         if self._session_manager is None:
             raise ValueError("Load a replay session before requesting telemetry")
         index = self._session_manager.get_loaded_index()
@@ -417,23 +434,60 @@ class ReplayTelemetryService:
         if current is not index or self._generation != generation:
             raise ValueError("Replay session changed; select laps again")
 
+    @contextmanager
+    def _request_slot(self) -> Iterator[None]:
+        """Reject overload without building an unbounded queue of waiters."""
+        if self._active_requests >= MAX_TELEMETRY_REQUESTS:
+            raise ValueError("Replay telemetry is busy; try again shortly")
+        self._active_requests += 1
+        try:
+            yield
+        finally:
+            self._active_requests -= 1
+
+    def _timing_done(self, completed: asyncio.Future[_TimingSnapshot]) -> None:
+        # A disconnected caller must neither cancel the disk worker nor leave
+        # an unobserved exception. Keep its slot until the actual worker ends.
+        with suppress(asyncio.CancelledError, Exception):
+            completed.exception()
+        if self._closed and self._timing_future is completed:
+            self._timing_future = None
+            self._timing_index = None
+
+    async def _async_timing(self, index: Any, generation: int) -> _TimingSnapshot:
+        self._assert_current(index, generation)
+        if self._timing_index is not index or self._timing_future is None:
+            if self._timing_future is not None and not self._timing_future.done():
+                raise ValueError("Replay telemetry is busy; try again shortly")
+            self._timing_index = index
+            self._timing_future = self._hass.async_add_executor_job(
+                _scan_replay_snapshot, index.frames_file, index.session_started_at_ms
+            )
+            self._timing_future.add_done_callback(self._timing_done)
+        future = self._timing_future
+        try:
+            timing = await asyncio.shield(future)
+        except Exception:
+            if self._timing_future is future:
+                self._timing_future = None
+                self._timing_index = None
+            raise
+        self._assert_current(index, generation)
+        return timing
+
     async def async_catalog(self, *, expected_session_id: str) -> dict[str, Any]:
         """Return selectable recorded laps for the explicitly identified replay."""
         index, _session = self._loaded_replay(expected_session_id)
         generation = self._generation
-        async with self._catalog_lock:
-            self._assert_current(index, generation)
+        with self._request_slot():
             if self._catalog_index is index and self._catalog is not None:
                 return deepcopy(self._catalog)
-            drivers = await self._hass.async_add_executor_job(
-                _scan_replay_catalog, index.frames_file, index.session_started_at_ms
-            )
-            self._assert_current(index, generation)
+            timing = await self._async_timing(index, generation)
             self._catalog = {
                 "protocol_version": 1,
                 "session_id": index.session_id,
                 "analysis_scope": "complete_recording",
-                "drivers": drivers,
+                "drivers": timing.drivers,
                 "coverage": {
                     "lap_windows": "observation_based",
                     "passage_times_verified": False,
@@ -483,23 +537,64 @@ class ReplayTelemetryService:
         normalized = self._normalize_selections(selections)
         index, selected_session = self._loaded_replay(expected_session_id)
         generation = self._generation
-        if self._cache_index is not index:
-            self._cache.clear()
-            self._cache_index = index
-        cache_key = (index.session_id, normalized)
-        if cache_key in self._cache:
-            self._cache_hits += 1
-            self._cache.move_to_end(cache_key)
-            return deepcopy(self._cache[cache_key])
+        with self._request_slot():
+            if self._cache_index is not index:
+                self._cache.clear()
+                self._cache_index = index
+            cache_key = (index.session_id, normalized)
+            if cache_key in self._cache:
+                self._cache_hits += 1
+                self._cache.move_to_end(cache_key)
+                return deepcopy(self._cache[cache_key])
+            request_key = (id(index), normalized)
+            task = self._inflight.get(request_key)
+            if task is None:
+                if len(self._inflight) >= MAX_TELEMETRY_CONCURRENT_COMPARISONS:
+                    raise ValueError("Replay telemetry is busy; try again shortly")
+                task = self._hass.async_create_background_task(
+                    self._async_compare(
+                        normalized, index, selected_session, generation
+                    ),
+                    "F1 replay telemetry comparison",
+                    eager_start=False,
+                )
+                self._inflight[request_key] = task
+                task.add_done_callback(
+                    lambda completed: self._remove_inflight(request_key, completed)
+                )
+            try:
+                result = await asyncio.shield(task)
+            except asyncio.CancelledError:
+                self._assert_current(index, generation)
+                raise
+            self._assert_current(index, generation)
+            return deepcopy(result)
 
+    def _remove_inflight(
+        self,
+        request_key: tuple[int, tuple[tuple[int, int], ...]],
+        completed: asyncio.Task[dict[str, Any]],
+    ) -> None:
+        if self._inflight.get(request_key) is completed:
+            self._inflight.pop(request_key)
+        with suppress(asyncio.CancelledError, Exception):
+            completed.exception()
+
+    async def _async_compare(
+        self,
+        normalized: tuple[tuple[int, int], ...],
+        index: Any,
+        selected_session: Any,
+        generation: int,
+    ) -> dict[str, Any]:
         self._requests += 1
-        windows, anchor = await self._hass.async_add_executor_job(
-            _scan_replay_windows,
-            index.frames_file,
-            normalized,
-            index.session_started_at_ms,
-        )
-        self._assert_current(index, generation)
+        timing = await self._async_timing(index, generation)
+        windows = {
+            key: timing.windows[key]
+            for driver, lap in normalized
+            if (key := _selection_key(driver, lap)) in timing.windows
+        }
+        anchor = timing.anchor
         missing = [
             {"driver_number": driver, "lap_number": lap}
             for driver, lap in normalized
@@ -521,6 +616,7 @@ class ReplayTelemetryService:
         try:
             async with asyncio.timeout(TELEMETRY_HTTP_TIMEOUT):
                 async with self._session.get(url) as response:
+                    self._assert_current(index, generation)
                     if response.status == 404:
                         raise ValueError(
                             "Telemetry is unavailable for the selected replay session"
@@ -531,6 +627,7 @@ class ReplayTelemetryService:
                         )
                     while not stop_scan:
                         raw = await response.content.readline()
+                        self._assert_current(index, generation)
                         if not raw:
                             break
                         if len(raw) > CARDATA_MAX_LINE_BYTES:
@@ -551,6 +648,7 @@ class ReplayTelemetryService:
                             )
                         )
                         batch.clear()
+                        self._assert_current(index, generation)
                         for key, values in decoded.items():
                             _bounded_extend(collected[key], values)
                         stop_scan = (
@@ -656,6 +754,7 @@ class ReplayTelemetryService:
                 "cache_entries": MAX_TELEMETRY_CACHE_ENTRIES,
             },
         }
+        cache_key = (index.session_id, normalized)
         self._cache[cache_key] = deepcopy(result)
         self._cache.move_to_end(cache_key)
         while len(self._cache) > MAX_TELEMETRY_CACHE_ENTRIES:
@@ -675,8 +774,19 @@ class ReplayTelemetryService:
 
     async def async_close(self) -> None:
         """Release cached selected telemetry and invalidate pending responses."""
+        self._closed = True
         self._generation += 1
         self._cache.clear()
         self._cache_index = None
         self._catalog = None
         self._catalog_index = None
+        tasks = tuple(self._inflight.values())
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        # Cancelling an executor Future cannot stop its running thread. Retain
+        # that single worker until completion; no closed service admits work.
+        if self._timing_future is not None and self._timing_future.done():
+            self._timing_future = None
+            self._timing_index = None

@@ -42,6 +42,7 @@ AUTH_CALLBACK_ATTEMPTS = "f1tv_auth_callback_attempts"
 AUTH_CALLBACK_METRICS = "f1tv_auth_callback_metrics"
 AUTH_PAIRING_TTL = timedelta(minutes=5)
 AUTH_CALLBACK_MAX_BODY_BYTES = 16 * 1024
+AUTH_CALLBACK_MAX_CLIENTS = 256
 AUTH_CALLBACK_RATE_LIMIT = 12
 AUTH_CALLBACK_RATE_WINDOW = timedelta(minutes=1)
 F1TV_HELPER_PAIRING_URL = "https://nicxe.github.io/f1_sensor/help/f1tv-token-helper"
@@ -111,7 +112,7 @@ def _is_safe_callback_url(value: str) -> bool:
 
 
 def _callback_rate_limited(hass: HomeAssistant, client_id: str) -> bool:
-    """Apply a bounded per-client sliding-window callback limit."""
+    """Bound retained clients and apply the per-client sliding-window limit."""
     root = hass.data.setdefault(DOMAIN, {})
     state = root.setdefault(AUTH_CALLBACK_ATTEMPTS, {})
     if not isinstance(state, dict):
@@ -119,6 +120,16 @@ def _callback_rate_limited(hass: HomeAssistant, client_id: str) -> bool:
         root[AUTH_CALLBACK_ATTEMPTS] = state
     now = _utcnow().timestamp()
     cutoff = now - AUTH_CALLBACK_RATE_WINDOW.total_seconds()
+    for stored_client, timestamps in list(state.items()):
+        if not any(
+            isinstance(timestamp, (int, float)) and timestamp > cutoff
+            for timestamp in timestamps
+        ):
+            del state[stored_client]
+    # Retain active quotas: evicting them would let address churn reset a
+    # limited client's attempts. Reject new sources before reading their body.
+    if client_id not in state and len(state) >= AUTH_CALLBACK_MAX_CLIENTS:
+        return True
     attempts = [
         timestamp
         for timestamp in state.get(client_id, [])
