@@ -252,10 +252,13 @@ async def test_incident_notification_includes_optional_location_description(
     )
     calls.clear()
 
-    await _fire_incident(hass, location_description="on track, sector 2")
+    await _fire_incident(
+        hass, location_description="on track, approximate track section 2 of 3"
+    )
 
     assert calls[0]["message"] == (
-        "GAS stopped on track (Medium)\nSession: Race\nLocation: on track, sector 2"
+        "GAS stopped on track (Medium)\nSession: Race\n"
+        "Location: on track, approximate track section 2 of 3"
     )
 
 

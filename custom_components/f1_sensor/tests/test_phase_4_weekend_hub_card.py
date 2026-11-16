@@ -18,6 +18,8 @@ REGISTRY_PATH = CARD_DIR / "platform" / "card-registry.js"
 NODE_CARD_PROBE = r"""
 const fs = require("node:fs");
 const source = fs.readFileSync(process.env.F1_CARD_PATH, "utf8");
+const english = JSON.parse(fs.readFileSync(require("node:path").join(
+  require("node:path").dirname(process.env.F1_CARD_PATH), "localization/locales/en.json"), "utf8"));
 
 function findMatchingBrace(text, openIndex) {
   let depth = 0;
@@ -51,7 +53,7 @@ function renderValue(value) {
   return String(value);
 }
 
-const Card = new Function(`
+const Card = new Function("f1Translate", `
 const DEFAULT_F1_THEME_MODE = "dark";
 const DEFAULT_FONT_STYLE = "wide";
 const F1_THEME_STYLES = {};
@@ -72,7 +74,7 @@ const updateF1DashboardContext = () => {};
 ${renderValue.toString()}
 ${extractClass("class F1WeekendHubCard extends LitElement")}
 return F1WeekendHubCard;
-`)();
+`)((_hass, key) => english[key] ?? key);
 
 async function run() {
   const messages = [];
@@ -242,6 +244,9 @@ def test_weekend_hub_uses_subscription_and_selected_telemetry_contracts() -> Non
     assert result["aheadGap"] == "+0.698"
     assert result["offGap"] == "Hidden"
     assert "value=30 ?selected=true" in result["telemetryMarkup"]
+    assert "Analysis of the complete recording." in result["telemetryMarkup"]
+    assert "Lap windows use observed timing updates" in result["telemetryMarkup"]
+    assert "not verified finish-line crossings" in result["telemetryMarkup"]
     assert result["phaseCopy"] == [
         "Replay running",
         "Timing, strategy and race events update from replay",

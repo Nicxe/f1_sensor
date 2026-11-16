@@ -12,6 +12,7 @@ import voluptuous as vol
 from .card_data import DATA_PRODUCTS, DATA_PROTOCOL_VERSION
 from .card_data_websocket import CARD_RACE_CONTROL_EVENT
 from .const import DOMAIN
+from .lap_history import LAP_HISTORY_VERSION
 
 ENTITY_MAP_WS_MARKER = "__entity_map_ws_registered__"
 ENTITY_MAP_WS_TYPE = f"{DOMAIN}/entities"
@@ -67,6 +68,7 @@ async def _ws_get_entity_map(
                 "disabled_entities": sorted(disabled_entities),
                 "data_api": {
                     "protocol_version": DATA_PROTOCOL_VERSION,
+                    "lap_history_version": LAP_HISTORY_VERSION,
                     "supported": sorted(DATA_PRODUCTS),
                     "enabled": sorted(DATA_PRODUCTS),
                     "automatic": True,

@@ -82,6 +82,9 @@ from .const import (
     DEFAULT_LIVE_DELAY_REFERENCE,
     DEFAULT_OPERATION_MODE,
     DEFAULT_REPLAY_START_REFERENCE,
+    DELAY_DRAIN_MAX_ITEMS,
+    DELAY_DRAIN_MAX_SECONDS,
+    DELAY_DRAIN_YIELD_SECONDS,
     DOMAIN,
     DRIVER_STANDINGS_URL,
     FIA_DOCS_FETCH_TIMEOUT,
@@ -160,6 +163,7 @@ from .jolpica_pagination import (
     standings_leaf_keys,
     validate_single_page_jolpica,
 )
+from .lap_history import MAX_TYRE_STINTS_PER_DRIVER, record_lap_time
 from .lap_position_websocket import (
     LAP_POSITION_WS_MARKER,
     async_register_lap_position_websocket,
@@ -179,6 +183,7 @@ from .no_spoiler import NoSpoilerModeManager
 from .providers import ProviderRegistry
 from .push_laps import PushLapTracker, empty_push_lap
 from .qualifying_deltas import empty_push_lap_delta
+from .race_trace_observation import pending_observation
 from .race_weather import F1RaceWeatherCoordinator
 from .replay import ReplaySignalRClient
 from .replay_mode import ReplayController, ReplayState
@@ -202,6 +207,7 @@ from .runtime import (
     track_sensor_demand,
 )
 from .schedule_laps import add_scheduled_laps, validate_session_page
+from .session_rain_risk import SessionRainRiskCoordinator
 from .signalr import (
     AUTH_GATED_LIVE_STREAMS,
     PUBLIC_LIVE_STREAMS,
@@ -228,6 +234,14 @@ from .track_map import (
 )
 from .track_map_annotation_contract import load_annotation_catalog
 from .track_map_websocket import TRACK_MAP_WS_MARKER, async_register_track_map_websocket
+from .tyre_history import (
+    current_physical_stint,
+    current_tyre_counter,
+    lap_count,
+    normalize_compound,
+    observe_tyre_boundaries,
+    restore_tyre_boundaries,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -252,7 +266,6 @@ RACE_CONTROL_LOG_MAX_FIELD_CHARS = 512
 RACE_CONTROL_LOG_EVENT_ID_CHARS = 40
 MAX_DELAY_QUEUE_ITEMS = 2048
 DELAY_QUEUE_DROP_LOG_INTERVAL = 60.0
-MAX_TYRE_STINTS_PER_DRIVER = 32
 MAX_TYRE_STINT_INDEX = MAX_TYRE_STINTS_PER_DRIVER - 1
 PITSTOP_MAX_HISTORY_PER_CAR = 10
 PITSTOP_MAX_CARS = 30
@@ -948,6 +961,7 @@ def _init_delayed_ingest_state(instance: Any) -> None:
     instance._delay_queue_generation = 0
     instance._delay_queue_dropped = 0
     instance._delay_queue_last_drop_log = 0.0
+    instance._delay_queue_resume_at = 0.0
 
 
 def _clear_delayed_ingest_state(instance: Any) -> None:
@@ -961,6 +975,7 @@ def _clear_delayed_ingest_state(instance: Any) -> None:
         queue.clear()
     instance._delay_queue_dropped = 0
     instance._delay_queue_last_drop_log = 0.0
+    instance._delay_queue_resume_at = 0.0
 
 
 def _close_delayed_ingest_state(instance: Any) -> None:
@@ -979,9 +994,10 @@ def _arm_delayed_ingest_queue(instance: Any) -> None:
         if bool(getattr(instance, "_replay_mode", False))
         else max(0, int(getattr(instance, "_delay", 0) or 0))
     )
-    wait = 0.0
+    now_mono = time.monotonic()
+    wait = max(0.0, getattr(instance, "_delay_queue_resume_at", 0.0) - now_mono)
     if delay > 0:
-        wait = max(0.0, queue[0][0] + delay - time.monotonic())
+        wait = max(wait, queue[0][0] + delay - now_mono)
     instance._delay_queue_handle = _schedule_deliver_handle(
         instance.hass.loop,
         getattr(instance, "_delay_queue_handle", None),
@@ -997,6 +1013,9 @@ def _drain_delayed_ingest_queue(instance: Any) -> None:
     queue = getattr(instance, "_delay_queue", None)
     if not isinstance(queue, deque):
         return
+    generation = int(getattr(instance, "_delay_queue_generation", 0) or 0)
+    deadline = time.monotonic() + DELAY_DRAIN_MAX_SECONDS
+    processed = 0
     while queue:
         delay = (
             0
@@ -1012,6 +1031,15 @@ def _drain_delayed_ingest_queue(instance: Any) -> None:
             callback()
         except Exception:  # noqa: BLE001
             _LOGGER.debug("Delayed ingest callback failed", exc_info=True)
+        if generation != int(getattr(instance, "_delay_queue_generation", 0) or 0):
+            break
+        processed += 1
+        now_mono = time.monotonic()
+        if processed >= DELAY_DRAIN_MAX_ITEMS or now_mono >= deadline:
+            # A short timer also gives socket polling and due timers a turn.
+            # New arrivals must not rearm this continuation ahead of the yield.
+            instance._delay_queue_resume_at = now_mono + DELAY_DRAIN_YIELD_SECONDS
+            break
     _arm_delayed_ingest_queue(instance)
 
 
@@ -1028,13 +1056,13 @@ def _queue_delayed_ingest(instance: Any, callback: Callable[[], None]) -> None:
             if bool(getattr(instance, "_replay_mode", False))
             else max(0, int(getattr(instance, "_delay", 0) or 0))
         )
-        if delay <= 0:
+        queue = getattr(instance, "_delay_queue", None)
+        if delay <= 0 and not queue:
             try:
                 callback()
             except Exception:  # noqa: BLE001
                 _LOGGER.debug("Immediate delayed-ingest callback failed", exc_info=True)
             return
-        queue = getattr(instance, "_delay_queue", None)
         if not isinstance(queue, deque):
             _init_delayed_ingest_state(instance)
             queue = instance._delay_queue
@@ -1105,6 +1133,7 @@ class _DelayedAnalysisBus:
         self._handlers: dict[str, list[Callable[[Any], None]]] = {}
         self._last_payload: dict[str, Any] = {}
         self._stream_unsubs: dict[str, Callable[[], None]] = {}
+        self._observation_reset_listeners: list[Callable[[], None]] = []
         self._closed = False
         _init_stream_delay_state(
             self,
@@ -1144,7 +1173,33 @@ class _DelayedAnalysisBus:
             handler(payload)
 
     def set_delay(self, seconds: int) -> None:
+        if max(0, int(seconds or 0)) != self._delay:
+            self._invalidate_observations()
         _apply_delay_with_queue(self, seconds)
+
+    def consumed_observation(self, payload: Any) -> dict[str, Any]:
+        """Expose only provenance from this bus's actually delivered callback."""
+        observe = getattr(self._bus, "consumed_observation", None)
+        return (
+            observe(payload, self._delay)
+            if callable(observe)
+            else pending_observation()
+        )
+
+    def add_observation_reset_listener(
+        self, listener: Callable[[], None]
+    ) -> Callable[[], None]:
+        self._observation_reset_listeners.append(listener)
+
+        def _unsubscribe() -> None:
+            with suppress(ValueError):
+                self._observation_reset_listeners.remove(listener)
+
+        return _unsubscribe
+
+    def _invalidate_observations(self) -> None:
+        for listener in tuple(self._observation_reset_listeners):
+            listener()
 
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
         if reason == "init":
@@ -1160,6 +1215,7 @@ class _DelayedAnalysisBus:
 
     def reset_for_replay(self) -> None:
         """Discard raw frames from the previous playback generation."""
+        self._invalidate_observations()
         _clear_delayed_ingest_state(self)
         self._last_payload.clear()
 
@@ -1171,6 +1227,7 @@ class _DelayedAnalysisBus:
             unsubscribe()
         self._stream_unsubs.clear()
         self._handlers.clear()
+        self._observation_reset_listeners.clear()
         self._last_payload.clear()
 
 
@@ -2507,6 +2564,7 @@ async def _async_setup_entry(
     weather_data_coordinator = None
     lap_count_coordinator = None
     race_control_coordinator = None
+    session_rain_risk_coordinator = None
     incident_coordinator = None
     race_control_log_store = None
     live_mode_coordinator = None
@@ -2676,9 +2734,28 @@ async def _async_setup_entry(
     transaction.track(replay_controller)
     await replay_controller.async_initialize()
 
+    def _observation_replay_session_id() -> str | None:
+        return replay_controller.active_session_id
+
     def _lap_analysis_provider() -> str:
-        replay_active = bool(getattr(replay_controller, "_replay_active", False))
+        replay_active = replay_controller.replay_active
         return "replay" if replay_active else "f1_live"
+
+    live_bus.configure_observations(
+        entry.entry_id,
+        delay_controller,
+        _observation_replay_session_id,
+        source_provider=lambda: (
+            "replay"
+            if operation_mode == OPERATION_MODE_DEVELOPMENT
+            or _lap_analysis_provider() == "replay"
+            else "live"
+        ),
+        transport_ready=lambda: (
+            not replay_controller.replay_active
+            or replay_controller.transport is not None
+        ),
+    )
 
     def _lap_analysis_session_type() -> str | None:
         data = getattr(session_coordinator, "data", None)
@@ -2805,6 +2882,18 @@ async def _async_setup_entry(
             delay_controller=delay_controller,
             live_state=live_state,
         )
+    if feature_plan.needs("session_rain_risk"):
+        session_rain_risk_coordinator = SessionRainRiskCoordinator(
+            hass,
+            config_entry=entry,
+            bus=analysis_bus,
+            session_info=session_info_coordinator,
+            session_status=session_status_coordinator,
+            live_state=live_state,
+            delay_controller=delay_controller,
+        )
+        transaction.track(session_rain_risk_coordinator)
+        await session_rain_risk_coordinator.async_initialize()
     if feature_plan.needs("lap_count"):
         lap_count_coordinator = LapCountCoordinator(
             hass,
@@ -3033,6 +3122,7 @@ async def _async_setup_entry(
         "session_info_coordinator": session_info_coordinator,
         "session_clock_coordinator": session_clock_coordinator,
         "race_control_coordinator": race_control_coordinator,
+        "session_rain_risk_coordinator": session_rain_risk_coordinator,
         "incident_coordinator": incident_coordinator,
         _RC_LOG_STORE_KEY: race_control_log_store,
         "live_mode_coordinator": live_mode_coordinator,
@@ -3084,6 +3174,7 @@ async def _async_setup_entry(
             session_info_coordinator,
             session_clock_coordinator,
             race_control_coordinator,
+            session_rain_risk_coordinator,
             live_mode_coordinator,
             weather_data_coordinator,
             lap_count_coordinator,
@@ -4068,6 +4159,8 @@ class IncidentCoordinator(DataUpdateCoordinator):
             confidence=payload.get("confidence"),
             description=payload.get("description"),
             sector=payload.get("sector"),
+            approximate_track_third=payload.get("approximate_track_third"),
+            sector_basis=payload.get("sector_basis"),
             corner=payload.get("corner"),
             pit_lane=payload.get("pit_lane"),
             track_segment=payload.get("track_segment"),
@@ -5547,6 +5640,10 @@ class ChampionshipPredictionCoordinator(
         self._drivers: dict[str, dict[str, Any]] = {}
         self._teams: dict[str, dict[str, Any]] = {}
         self._driver_map: dict[str, dict[str, Any]] = {}
+        self._prediction_session_key: str | None = None
+        self._prediction_meeting_key: str | None = None
+        self._prediction_session_info: dict[str, Any] = {}
+        self._prediction_session_kind: str | None = None
 
         self._deliver_handle: asyncio.Handle | None = None
         self._state: dict[str, Any] = {
@@ -5565,6 +5662,9 @@ class ChampionshipPredictionCoordinator(
                 "entry": None,
             },
             "last_update": None,
+            "session_key": None,
+            "session_type": None,
+            "prediction_status": "waiting_for_session",
         }
 
     async def async_close(self, *_):
@@ -5598,6 +5698,10 @@ class ChampionshipPredictionCoordinator(
         if not self.available:
             _clear_delayed_ingest_state(self)
             self._reset_store()
+        else:
+            # Reconnection makes the source available before fresh SessionInfo.
+            # Publish that pending state even when unbound predictions are dropped.
+            self._schedule_deliver()
 
     def set_delay(self, seconds: int) -> None:
         _apply_delay_with_queue(self, seconds)
@@ -5605,6 +5709,11 @@ class ChampionshipPredictionCoordinator(
     def _reset_store(self) -> None:
         self._drivers = {}
         self._teams = {}
+        self._driver_map = {}
+        self._prediction_session_key = None
+        self._prediction_meeting_key = None
+        self._prediction_session_info = {}
+        self._prediction_session_kind = None
         self._state = {
             "drivers": {},
             "teams": {},
@@ -5621,9 +5730,71 @@ class ChampionshipPredictionCoordinator(
                 "entry": None,
             },
             "last_update": None,
+            "session_key": None,
+            "session_type": None,
+            "prediction_status": "waiting_for_session",
         }
         with suppress(Exception):
             self.async_set_updated_data(self._state)
+
+    def _on_session_info(self, payload: Any) -> None:
+        """Bind eligibility to delivered session metadata, preserving sparse deltas."""
+        if not isinstance(payload, dict):
+            return
+        raw_key = payload.get("Key", payload.get("SessionKey"))
+        key = str(raw_key).strip() if raw_key is not None else None
+        meeting = payload.get("Meeting")
+        raw_meeting = meeting.get("Key") if isinstance(meeting, dict) else None
+        meeting_key = str(raw_meeting).strip() if raw_meeting is not None else None
+        changed = (
+            key is not None
+            and self._prediction_session_key is not None
+            and key != self._prediction_session_key
+        ) or (
+            meeting_key is not None
+            and self._prediction_meeting_key is not None
+            and meeting_key != self._prediction_meeting_key
+        )
+        if changed:
+            # Earlier callbacks have already been delivered in receipt order.
+            # Keep later queued frames: they belong after this boundary.
+            self._reset_store()
+        if key:
+            self._prediction_session_key = key
+        if meeting_key:
+            self._prediction_meeting_key = meeting_key
+        for field in ("Type", "Name"):
+            value = payload.get(field)
+            if isinstance(value, str) and value.strip():
+                self._prediction_session_info[field] = value.strip()
+        text = " ".join(self._prediction_session_info.values()).lower()
+        if any(
+            word in text for word in ("qualifying", "shootout", "practice", "testing")
+        ):
+            kind = "other"
+        elif "sprint" in text:
+            kind = "sprint"
+        elif "race" in text:
+            kind = "race"
+        else:
+            kind = None
+        self._prediction_session_kind = kind
+        self._schedule_deliver()
+
+    def _prediction_status(self) -> str:
+        if not self._prediction_session_key or self._prediction_session_kind is None:
+            return "waiting_for_session"
+        if self._prediction_session_kind not in {"race", "sprint"}:
+            return "not_applicable"
+        return "ready" if self._drivers or self._teams else "waiting_for_prediction"
+
+    @property
+    def prediction_context(self) -> dict[str, str | None]:
+        """Return the delivered identity required for restoring prediction state."""
+        return {
+            "session_key": self._prediction_session_key,
+            "session_type": self._prediction_session_kind,
+        }
 
     def _schedule_deliver(self) -> None:
         self._deliver()
@@ -5765,6 +5936,9 @@ class ChampionshipPredictionCoordinator(
         if _is_no_spoiler_blocked(self):
             return
 
+        if self._prediction_status() in {"waiting_for_session", "not_applicable"}:
+            self._drivers.clear()
+            self._teams.clear()
         p1_rn, p1_entry = self._pick_predicted_driver_p1()
         ident = self._driver_map.get(str(p1_rn), {}) if p1_rn else {}
         p1_tla = ident.get("tla") if isinstance(ident, dict) else None
@@ -5802,18 +5976,23 @@ class ChampionshipPredictionCoordinator(
                 "entry": dict(t1_entry) if isinstance(t1_entry, dict) else None,
             },
             "last_update": dt_util.utcnow().isoformat(timespec="seconds"),
+            "session_key": self._prediction_session_key,
+            "session_type": self._prediction_session_kind,
+            "prediction_status": self._prediction_status(),
         }
         self.async_set_updated_data(self._state)
 
     def _on_bus_message(self, msg: dict) -> None:
         if not isinstance(msg, dict):
             return
+        if self._prediction_status() in {"waiting_for_session", "not_applicable"}:
+            return
         self._ingest_prediction(msg)
         self._schedule_deliver()
 
     async def async_config_entry_first_refresh(self):
         await super().async_config_entry_first_refresh()
-        # Seed driver identity for replay mode (single-stream dump).
+        # Driver identity does not establish session eligibility.
         self._seed_driver_map_from_ergast()
         # Reset on index/session rollover
         try:
@@ -5827,6 +6006,12 @@ class ChampionshipPredictionCoordinator(
             self._session_unsub = None
         # Subscriptions
         bus = self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")
+        with suppress(Exception):
+            self._unsubs.append(
+                bus.subscribe(
+                    "SessionInfo", _wrap_delayed_handler(self, self._on_session_info)
+                )
+            )
         with suppress(Exception):
             self._unsubs.append(
                 bus.subscribe(
@@ -5911,12 +6096,17 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         self._session_unsub: Callable[[], None] | None = None
         self._session_fingerprint: str | None = None
         self._live_session_key: str | None = None
+        # Only the modular card uses this explicit feed reference. Keep it
+        # separate from legacy lap-history positions, which also have fallbacks.
+        self._modular_grid_positions: dict[str, int] = {}
+        self._modular_grid_session_key: str | None = None
         _init_delayed_ingest_state(self)
         self._delay = max(0, int(delay_seconds or 0))
         self._replay_mode = False
         entry_id = config_entry.entry_id if config_entry is not None else None
         self._minisectors = MiniSectorStateStore(entry_id=entry_id)
         self._push_laps = PushLapTracker()
+        self._push_lap_publication_keys: dict[str, tuple] = {}
         if delay_controller is not None:
             self._delay_listener = delay_controller.add_listener(self.set_delay)
         self.available = True
@@ -5925,6 +6115,8 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         self._tyre_missing_warning_logged = False
         self._state: dict[str, Any] = {
             "drivers": {},
+            "lap_history_session_type": None,
+            "race_trace_observation": pending_observation(),
             "leader_rn": None,
             "lap_current": None,
             "lap_total": None,
@@ -6001,19 +6193,30 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         self._reset_session_state("replay_reset")
 
     def _on_sessioninfo(self, payload: dict) -> None:
-        self._push_laps.update("SessionInfo", payload)
-        if self._publish_push_laps():
-            self._schedule_deliver()
-        session_key = _stream_session_key(payload)
-        if session_key is None or session_key == self._live_session_key:
+        if not isinstance(payload, dict):
             return
-        changed = self._live_session_key is not None
-        self._live_session_key = session_key
-        if changed:
-            self._reset_session_state("session_change")
+        session_key = _stream_session_key(payload)
+        if session_key is not None and session_key != self._live_session_key:
+            changed = self._live_session_key is not None
+            self._live_session_key = session_key
+            if changed:
+                self._reset_session_state("session_change")
+        changed = False
+        if "Type" in payload:
+            raw_type = payload["Type"]
+            session_type = (
+                raw_type.strip() or None if isinstance(raw_type, str) else None
+            )
+            if self._state.get("lap_history_session_type") != session_type:
+                self._state["lap_history_session_type"] = session_type
+                changed = True
+        self._push_laps.update("SessionInfo", payload)
+        if self._publish_push_laps() or changed:
+            self._schedule_deliver()
 
     def _reset_session_state(self, reason: str) -> None:
         """Clear previous-session timing without dropping queued current-session frames."""
+        self._clear_modular_grid_reference()
         if self._deliver_handle is not None:
             self._deliver_handle.cancel()
             self._deliver_handle = None
@@ -6024,6 +6227,8 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         self._push_laps.reset()
         self._state = {
             "drivers": {},
+            "lap_history_session_type": None,
+            "race_trace_observation": pending_observation(),
             "leader_rn": None,
             "lap_current": None,
             "lap_total": None,
@@ -6035,18 +6240,88 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         }
         self.async_set_updated_data(self._state)
 
+    def _clear_modular_grid_reference(self) -> None:
+        self._modular_grid_positions.clear()
+        self._modular_grid_session_key = None
+
+    @property
+    def modular_starting_grid_reference(self) -> dict[str, Any] | None:
+        """Return confirmed GridPos evidence without altering shared projections."""
+        if (
+            not self._modular_grid_positions
+            or not self._live_session_key
+            or self._modular_grid_session_key != self._live_session_key
+        ):
+            return None
+        positions = [
+            value for value in self._modular_grid_positions.values() if value > 0
+        ]
+        if len(positions) != len(set(positions)):
+            return None
+        return {
+            "source": "TimingAppData.GridPos",
+            "session_key": self._modular_grid_session_key,
+            "grid": [
+                {"racing_number": rn, "grid_position": position}
+                for rn, position in sorted(
+                    self._modular_grid_positions.items(),
+                    key=lambda item: (item[1], item[0]),
+                )
+            ],
+        }
+
+    def _capture_modular_grid_positions(self, lines: dict) -> None:
+        """Capture only explicit integer GridPos after delayed stream delivery."""
+        if not self._live_session_key:
+            return
+        for rn, app in lines.items():
+            if not isinstance(app, dict) or "GridPos" not in app:
+                continue
+            value = app["GridPos"]
+            position = None
+            if type(value) is int:
+                position = value
+            elif isinstance(value, str) and re.fullmatch(r"[0-9]+", value.strip()):
+                with suppress(ValueError):
+                    position = int(value)
+            key = str(rn)
+            if position is None or position < 0:
+                self._modular_grid_positions.pop(key, None)
+            else:
+                self._modular_grid_positions[key] = position
+                self._modular_grid_session_key = self._live_session_key
+
     def _publish_push_laps(self, *, update_stream_time: bool = True) -> bool:
         """Update the bounded effort projection alongside existing driver timing."""
         changed = False
-        for rn, driver in self._state.get("drivers", {}).items():
+        drivers = self._state.get("drivers", {})
+        keys = self._push_lap_publication_keys
+        if len(keys) > len(drivers):
+            for rn in keys.keys() - drivers.keys():
+                del keys[rn]
+        for rn, driver in drivers.items():
+            key = self._push_laps.publication_key(rn)
+            if (
+                keys.get(rn) == key
+                and "push_lap" in driver
+                and "push_lap_delta" in driver
+            ):
+                continue
             value = self._push_laps.driver_snapshot(rn)
-            if driver.get("push_lap", empty_push_lap()) != value:
+            previous = driver["push_lap"] if "push_lap" in driver else empty_push_lap()
+            if previous != value:
                 changed = True
             driver["push_lap"] = value
             delta = self._push_laps.delta_snapshot(rn)
-            if driver.get("push_lap_delta", empty_push_lap_delta()) != delta:
+            previous = (
+                driver["push_lap_delta"]
+                if "push_lap_delta" in driver
+                else empty_push_lap_delta()
+            )
+            if previous != delta:
                 changed = True
             driver["push_lap_delta"] = delta
+            keys[rn] = key
         status = self._push_laps.status if self.available else "unavailable"
         values = {"push_laps_status": status}
         if update_stream_time:
@@ -6226,7 +6501,13 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 yield seg_num, lap_data
 
     def _ingest_completed_lap(
-        self, rn: str, lap_time: str, lap_num: int | None = None
+        self,
+        rn: str,
+        lap_time: str,
+        lap_num: int | None = None,
+        *,
+        explicit_number: Any = None,
+        snapshot: bool = False,
     ) -> bool:
         """Ingest a completed lap atomically across timing, history, and stint stats."""
         if not isinstance(lap_time, str) or not lap_time:
@@ -6264,7 +6545,9 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             timing["best_lap"] = lap_time
             changed = True
 
-        if self._record_lap_for_history(rn, lap_time, lap_num):
+        if self._record_lap_for_history(
+            rn, lap_time, lap_num, explicit_number=explicit_number, snapshot=snapshot
+        ):
             changed = True
         if self._record_lap_time_for_stint(rn, lap_time):
             changed = True
@@ -6416,7 +6699,16 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 except (TypeError, ValueError):
                     number_of_laps = None
                 if number_of_laps is not None:
-                    if lap_history.get("completed_laps") != number_of_laps:
+                    source_laps = lap_count(td.get("NumberOfLaps"))
+                    if (
+                        source_laps is not None
+                        and entry["tyre_history"].get("timing_completed_laps")
+                        != source_laps
+                    ):
+                        entry["tyre_history"]["timing_completed_laps"] = source_laps
+                        changed = True
+                    completed = lap_history.get("completed_laps")
+                    if not isinstance(completed, int) or number_of_laps > completed:
                         lap_history["completed_laps"] = number_of_laps
                         changed = True
             # IMPORTANT: Only set fields that are present in this delta payload.
@@ -6453,7 +6745,11 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                     completed = lap_history.get("completed_laps")
                     lap_num = completed if isinstance(completed, int) else None
                 if last_lap is not None and self._ingest_completed_lap(
-                    rn, last_lap, lap_num
+                    rn,
+                    last_lap,
+                    lap_num,
+                    explicit_number=td.get("NumberOfLaps"),
+                    snapshot=payload.get("_f1_snapshot") is True,
                 ):
                     changed = True
                 if self._merge_last_lap_status(
@@ -6558,6 +6854,12 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 if value and seg.get("best_time") != value:
                     seg["best_time"] = value
                     changed = True
+            if observe_tyre_boundaries(
+                entry,
+                snapshot=payload.get("_f1_snapshot") is True,
+                session_lap=self._state.get("lap_current"),
+            ):
+                changed = True
         if (
             has_best_lap_update
             and previous_best_reference != self._official_best_lap_reference()
@@ -7023,10 +7325,16 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
     def set_delay(self, seconds: int) -> None:
         new_delay = max(0, int(seconds or 0))
         if new_delay != self._delay:
+            self._clear_modular_grid_reference()
+            self._state["race_trace_observation"] = pending_observation("delay_changed")
+            for driver in self._state.get("drivers", {}).values():
+                history = driver.get("lap_history", {})
+                if history.get("lap_metadata"):
+                    history["lap_metadata"] = {}
             self._minisectors.reset("live_delay_change")
             self._push_laps.reset()
-            if self._publish_push_laps():
-                self._schedule_deliver()
+            self._publish_push_laps()
+            self._schedule_deliver()
         _apply_delay_with_queue(self, seconds)
 
     def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
@@ -7034,14 +7342,19 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             return
         replay_mode = _is_replay_delay_reason(reason)
         if replay_mode != self._replay_mode:
+            self._clear_modular_grid_reference()
             self._minisectors.set_source("replay" if replay_mode else "live")
             self._push_laps.reset()
         self._replay_mode = replay_mode
         if self._replay_mode:
             _clear_delayed_ingest_state(self)
         if _is_no_spoiler_live_state(reason):
+            self._clear_modular_grid_reference()
             _clear_delayed_ingest_state(self)
             self._minisectors.reset("spoiler_protected")
+            self._state["race_trace_observation"] = pending_observation(
+                "spoiler_protected"
+            )
             self._push_laps.reset()
             return
         self.available = is_live
@@ -7049,6 +7362,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         self._tyre_first_compound_logged = False
         self._tyre_missing_warning_logged = False
         if not is_live:
+            self._clear_modular_grid_reference()
             # Clear consolidated state so a future session window does not briefly
             # show stale driver/timing information before the first live frames.
             _clear_delayed_ingest_state(self)
@@ -7057,6 +7371,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             with suppress(Exception):
                 self._state = {
                     "drivers": {},
+                    "race_trace_observation": pending_observation("source_unavailable"),
                     "leader_rn": None,
                     "lap_current": None,
                     "lap_total": None,
@@ -7111,61 +7426,14 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
     @staticmethod
     def _current_valid_stint_index(tyre_history: dict) -> int | None:
         """Return the highest received stint that represents a tyre change."""
-        stints = tyre_history.get("stints")
-        if not isinstance(stints, list):
-            return None
-        for stint_idx in range(len(stints) - 1, -1, -1):
-            stint = stints[stint_idx]
-            if not isinstance(stint, dict):
-                continue
-            if stint.get("source_seen") is False:
-                continue
-            if stint.get("tyres_not_changed") is True:
-                continue
-            return stint_idx
-        return None
+        return current_physical_stint(tyre_history)
 
     @classmethod
     def _current_tyre_stint_index(
         cls, tyre_history: dict, progressing_stints: set[int]
     ) -> int | None:
         """Follow the counting stint without treating mirrored rows as new sets."""
-        confirmed_index = cls._current_valid_stint_index(tyre_history)
-        if confirmed_index is None:
-            return None
-        stints = tyre_history["stints"]
-        current_index = tyre_history.get("current_tyres_stint_index")
-        initializing = (
-            not isinstance(current_index, int)
-            or current_index < confirmed_index
-            or current_index >= len(stints)
-        )
-        if initializing:
-            current_index = confirmed_index
-
-        compound = cls._normalize_compound(stints[confirmed_index].get("compound"))
-        for stint_index in range(confirmed_index, len(stints)):
-            if stint_index == current_index:
-                continue
-            stint = stints[stint_index]
-            if stint.get("source_seen") is False:
-                continue
-            if not initializing and stint_index not in progressing_stints:
-                continue
-            candidate_compound = cls._normalize_compound(stint.get("compound"))
-            if compound not in (None, "UNKNOWN") and candidate_compound not in (
-                None,
-                "UNKNOWN",
-                compound,
-            ):
-                continue
-            # Same-set rows use cumulative tyre age. Equal counters can be a
-            # mirrored phantom; only independent progress establishes a switch.
-            # Keep an established row through its own downward corrections.
-            total_laps = stint.get("total_laps") or 0
-            if total_laps > (stints[current_index].get("total_laps") or 0):
-                current_index = stint_index
-        return current_index
+        return current_tyre_counter(tyre_history, progressing_stints)
 
     @classmethod
     def _current_tyre_values(cls, tyre_history: dict, stint_index: int) -> dict:
@@ -7289,6 +7557,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         lines = (payload or {}).get("Lines", {})
         if not isinstance(lines, dict):
             return False
+        self._capture_modular_grid_positions(lines)
         drivers = self._state["drivers"]
         changed = False
         stints_changed = False
@@ -7331,6 +7600,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
 
             tyres = entry["tyres"]
             tyre_history = entry["tyre_history"]
+            previous_stint_index = tyre_history.get("current_stint_index")
 
             progressing_stints: set[int] = set()
             for stint_idx, stint_data in stint_items:
@@ -7354,6 +7624,10 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 tyre_history["current_stint_index"] = current_stint_index
                 stints_changed = True
 
+            if payload.get("_f1_snapshot") is True and tyre_history.pop(
+                "replay_counter_restored", False
+            ):
+                progressing_stints.clear()
             tyre_stint_index = self._current_tyre_stint_index(
                 tyre_history, progressing_stints
             )
@@ -7367,6 +7641,13 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 if tyres != current_tyres:
                     tyres.update(current_tyres)
                     stints_changed = True
+            if observe_tyre_boundaries(
+                entry,
+                previous_index=previous_stint_index,
+                snapshot=payload.get("_f1_snapshot") is True,
+                session_lap=self._state.get("lap_current"),
+            ):
+                stints_changed = True
 
             # Extract the latest stint entry for lap time updates
             latest = stint_items[-1][1]
@@ -7378,7 +7659,13 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                         lap_num = int(lap_num_raw) if lap_num_raw is not None else None
                     except (TypeError, ValueError):
                         lap_num = None
-                    if self._ingest_completed_lap(rn, lap_time, lap_num):
+                    if self._ingest_completed_lap(
+                        rn,
+                        lap_time,
+                        lap_num,
+                        explicit_number=lap_num_raw,
+                        snapshot=payload.get("_f1_snapshot") is True,
+                    ):
                         changed = True
 
         if stints_changed:
@@ -7431,15 +7718,17 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 changed = True
         if "TotalLaps" in stint_data:
             total_laps = stint_data.get("TotalLaps")
+            total_seen = lap_count(total_laps) is not None
+            if stint.get("total_laps_seen") != total_seen:
+                stint["total_laps_seen"] = total_seen
+                changed = True
             total_laps_val = int(total_laps) if str(total_laps or "").isdigit() else 0
             if stint.get("total_laps") != total_laps_val:
                 stint["total_laps"] = total_laps_val
                 changed = True
         if "StartLaps" in stint_data:
             start_laps = stint_data.get("StartLaps")
-            start_laps_val = (
-                int(start_laps) if str(start_laps or "").isdigit() else None
-            )
+            start_laps_val = lap_count(start_laps)
             if stint.get("start_laps") != start_laps_val:
                 stint["start_laps"] = start_laps_val
                 changed = True
@@ -7499,7 +7788,13 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         return False
 
     def _record_lap_for_history(
-        self, rn: str, lap_time: str, lap_num: int | None = None
+        self,
+        rn: str,
+        lap_time: str,
+        lap_num: int | None = None,
+        *,
+        explicit_number: Any = None,
+        snapshot: bool = False,
     ) -> bool:
         """Record a completed lap time in the driver's lap history.
 
@@ -7516,36 +7811,22 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         timing = entry.get("timing", {})
         current_position = timing.get("position")
 
-        # Determine lap number: use provided lap_num when available
-        last_lap_num = lap_history.get("last_recorded_lap", 0)
-        try:
-            use_lap_num = int(lap_num) if lap_num is not None else None
-        except (TypeError, ValueError):
-            use_lap_num = None
-        if not use_lap_num or use_lap_num <= 0:
-            use_lap_num = last_lap_num + 1
+        use_lap_num, changed = record_lap_time(
+            lap_history,
+            lap_time,
+            lap_num,
+            explicit_number=explicit_number,
+            snapshot=snapshot,
+        )
 
         # Capture grid position on first lap if not already set
         if use_lap_num == 1 and lap_history.get("grid_position") is None:
             lap_history["grid_position"] = current_position
 
-        # Store the lap time (just the time, position is tracked separately)
-        lap_key = str(use_lap_num)
-        prev_time = lap_history["laps"].get(lap_key)
-        if prev_time == lap_time and last_lap_num >= use_lap_num:
-            return self._mark_sector_lap_completed(entry, use_lap_num)
-        lap_history["laps"][lap_key] = lap_time
-        if last_lap_num < use_lap_num:
-            lap_history["last_recorded_lap"] = use_lap_num
-        # Keep completed_laps in sync with highest seen lap
-        with suppress(Exception):
-            completed = lap_history.get("completed_laps", 0) or 0
-            if isinstance(completed, int) and completed < use_lap_num:
-                lap_history["completed_laps"] = use_lap_num
-
-        self._update_fastest_lap(rn, use_lap_num, lap_time)
-        self._mark_sector_lap_completed(entry, use_lap_num)
-        return True
+        if changed:
+            self._update_fastest_lap(rn, use_lap_num, lap_time)
+        sectors_changed = self._mark_sector_lap_completed(entry, use_lap_num)
+        return changed or sectors_changed
 
     def _mark_sector_lap_completed(self, entry: dict[str, Any], lap_num: int) -> bool:
         """Mark current sector progress as a completed lap."""
@@ -7810,7 +8091,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
     def _merge_lapcount(self, payload: dict) -> None:
         # payload may be either {CurrentLap, TotalLaps} or wrapped
         curr = payload.get("CurrentLap") or payload.get("LapCount")
-        total = payload.get("TotalLaps")
+        total = payload.get("TotalLaps", self._state.get("lap_total"))
         try:
             curr_i = int(curr) if curr is not None else None
         except Exception:
@@ -7825,6 +8106,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         for entry in self._state["drivers"].values():
             entry.setdefault("laps", {})
             entry["laps"].update({"lap_current": curr_i, "lap_total": total_i})
+            observe_tyre_boundaries(entry, session_lap=curr_i)
         # Recompute leader as lap and position updates can interact
         self._recompute_leader_from_state()
 
@@ -7846,16 +8128,7 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
 
     @staticmethod
     def _normalize_compound(value: Any) -> str | None:
-        if not isinstance(value, str):
-            return value if value is None else str(value)
-        comp = value.strip().upper()
-        if not comp:
-            return None
-        if comp in {"INTER", "INTERS", "INTERMEDIATES"}:
-            return "INTERMEDIATE"
-        if comp in {"WETS", "FULLWET", "FULL WET", "FULL_WET"}:
-            return "WET"
-        return comp
+        return normalize_compound(value)
 
     @staticmethod
     def _sort_compounds(compounds: set[str]) -> list[str]:
@@ -7992,7 +8265,13 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             return
         if self._state.get("frozen") and not self._replay_mode:
             return
-        if self._merge_timingdata(td):
+        observe = getattr(self._bus, "consumed_observation", None)
+        observation = (
+            observe(td, self._delay) if callable(observe) else pending_observation()
+        )
+        observation_changed = self._state.get("race_trace_observation") != observation
+        self._state["race_trace_observation"] = observation
+        if self._merge_timingdata(td) or observation_changed:
             self._schedule_deliver()
 
     def _on_timingapp(self, ta: dict) -> None:
@@ -8020,6 +8299,14 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
         changed = False
         for rn, info in payload.items():
             if not isinstance(info, dict):
+                continue
+            # Apply the filter in delivery order, after any queued session reset.
+            # An otherwise unused row can still introduce a new driver.
+            if (
+                rn in drivers
+                and "PitStops" not in info
+                and info.get("Position") is None
+            ):
                 continue
 
             entry = drivers.setdefault(rn, {})
@@ -8088,6 +8375,8 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
             entry.setdefault(
                 "tyre_history", {"stints": [], "current_stint_index": None}
             )
+            if restore_tyre_boundaries(entry, history_data.get("tyre_boundaries")):
+                changed = True
             lap_history = entry.setdefault(
                 "lap_history",
                 {
@@ -8105,6 +8394,10 @@ class LiveDriversCoordinator(DataUpdateCoordinator):
                 completed_laps = history_data.get("completed_laps")
                 if laps or grid_pos:
                     lap_history["laps"] = dict(laps)
+                    metadata = history_data.get("lap_metadata")
+                    lap_history["lap_metadata"] = (
+                        deepcopy(metadata) if isinstance(metadata, dict) else {}
+                    )
                     lap_history["grid_position"] = grid_pos
                     lap_history["last_recorded_lap"] = last_lap
                     if isinstance(completed_laps, int):

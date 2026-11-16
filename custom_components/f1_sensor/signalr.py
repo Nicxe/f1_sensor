@@ -17,6 +17,12 @@ from homeassistant.core import HomeAssistant
 
 from .helpers import normalize_live_timing_auth_header
 from .providers import ProviderRegistry
+from .race_trace_observation import (
+    OBSERVATION_STREAMS,
+    RaceTraceObservationSource,
+    consumed_observation,
+    pending_observation,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -31,11 +37,9 @@ def timing_source_payload(
     source_time: float | None = None,
     snapshot: bool = False,
 ) -> StreamPayload:
-    """Preserve event time and snapshot provenance for lifecycle decisions."""
-    if stream not in {
-        "TimingData",
+    """Preserve timing and lifecycle provenance without changing provider objects."""
+    if stream not in OBSERVATION_STREAMS | {
         "Heartbeat",
-        "SessionInfo",
         "SessionStatus",
         "SessionData",
     } or not isinstance(payload, dict):
@@ -67,6 +71,8 @@ HUB_DATA = '[{"name":"Streaming"}]'
 CORE_NEGOTIATE_URL = "https://livetiming.formula1.com/signalrcore/negotiate"
 CORE_CONNECT_URL = "wss://livetiming.formula1.com/signalrcore"
 RECORD_SEP = "\x1e"
+_LIVE_RECEIVE_BATCH_MAX_ITEMS = 64
+_LIVE_RECEIVE_BATCH_MAX_SECONDS = 0.005
 
 # Capability matrix for the current SignalR live implementation.
 # Public live streams are always subscribed during live sessions. Auth-gated
@@ -685,6 +691,54 @@ class LiveBus:
         self._retry_delay: float = 0
         self._outage_logged = False
         self._reset_retry_delay()
+        self._observation_source: RaceTraceObservationSource | None = None
+        self._observation_delay: Any = None
+        self._observation_replay_session: Callable[[], str | None] = lambda: None
+        self._observation_source_provider: Callable[[], str] | None = None
+        self._transport_ready: Callable[[], bool] | None = None
+
+    def configure_observations(
+        self,
+        entry_id: str,
+        delay_controller: Any,
+        replay_session_id: Callable[[], str | None],
+        *,
+        source_provider: Callable[[], str] | None = None,
+        transport_ready: Callable[[], bool] | None = None,
+    ) -> None:
+        """Bind provenance to existing entry/source owners, without new listeners."""
+        self._observation_source = RaceTraceObservationSource(entry_id)
+        self._observation_delay = delay_controller
+        self._observation_replay_session = replay_session_id
+        self._observation_source_provider = source_provider
+        self._transport_ready = transport_ready
+
+    def consumed_observation(self, payload: Any, delay_seconds: int) -> dict[str, Any]:
+        """Check that a delayed callback still belongs to its received delay epoch."""
+        raw = payload.get("_f1_observation") if isinstance(payload, dict) else None
+        context = raw.get("context") if isinstance(raw, dict) else None
+        source = self._observation_source
+        if (
+            source is None
+            or not isinstance(context, dict)
+            or context.get("source_epoch") != source.epoch
+            or context.get("entry_id") != source.entry_id
+        ):
+            return pending_observation("source_changed")
+        return consumed_observation(
+            payload,
+            delay_epoch=getattr(self._observation_delay, "epoch", 0),
+            delay_seconds=delay_seconds,
+        )
+
+    @property
+    def observation_epoch(self) -> str | None:
+        """Identify the current raw-input generation for a prepared replay handoff."""
+        return (
+            self._observation_source.epoch
+            if self._observation_source is not None
+            else None
+        )
 
     @property
     def auth_enabled(self) -> bool:
@@ -738,7 +792,27 @@ class LiveBus:
 
         return _unsub
 
+    def _transport_start_allowed(self) -> bool:
+        """Leave replay catch-up ownership with its controller until handoff."""
+        if (
+            self._observation_source_provider is None
+            or self._observation_source_provider() != "replay"
+        ):
+            return True
+        return self._transport_factory is not None and (
+            self._transport_ready is None or self._transport_ready()
+        )
+
+    def _client_source_is_current(self, source: str) -> bool:
+        return (
+            self._observation_source_provider is None
+            or self._observation_source_provider() == source
+        )
+
     async def start(self) -> None:
+        if not self._transport_start_allowed():
+            _LOGGER.debug("LiveBus start deferred during replay preparation")
+            return
         if self._running:
             _LOGGER.debug("LiveBus start requested but already running")
             return
@@ -761,17 +835,47 @@ class LiveBus:
     async def _run(self) -> None:
         try:
             while self._running:
+                if not self._transport_start_allowed():
+                    break
                 retry_reason = "connection closed"
                 self._connection_state = LiveConnectionState.CONNECTING
+                client_source = (
+                    "replay" if self._transport_factory is not None else "live"
+                )
                 client = self._create_client()
                 self._client = client
                 try:
                     if self._expect_heartbeat:
                         self._last_heartbeat_at = self._monotonic()
                     await client.ensure_connection()
+                    processed = 0
+                    deadline = self._monotonic() + _LIVE_RECEIVE_BATCH_MAX_SECONDS
                     async for payload in client.messages():
+                        if not self._client_source_is_current(client_source):
+                            break
                         if self._process_payload(payload):
                             self._mark_connection_live()
+                        processed += 1
+                        if (
+                            processed >= _LIVE_RECEIVE_BATCH_MAX_ITEMS
+                            or self._monotonic() >= deadline
+                        ):
+                            # Buffered websocket reads may return without yielding.
+                            # Finish each feed/snapshot before letting other work run.
+                            await asyncio.sleep(0)
+                            if not self._running or not self._client_source_is_current(
+                                client_source
+                            ):
+                                return
+                            if self._client is None:
+                                # The heartbeat guard closed this transport to retry.
+                                break
+                            if self._client is not client:
+                                return
+                            processed = 0
+                            deadline = (
+                                self._monotonic() + _LIVE_RECEIVE_BATCH_MAX_SECONDS
+                            )
                 except SignalRAuthenticationError:
                     retry_reason = "authorization was rejected"
                     if self._auth_enabled:
@@ -796,12 +900,15 @@ class LiveBus:
                         retry_reason = f"cleanup failed: {type(err).__name__}"
 
                 self._maybe_log_summary()
+                if not self._client_source_is_current(client_source):
+                    break
                 if self._running:
                     await self._wait_before_retry(retry_reason)
         except asyncio.CancelledError:
             raise
         finally:
             if self._task is None or self._task is asyncio.current_task():
+                self._running = False
                 self._connection_state = LiveConnectionState.STOPPED
 
     def _process_payload(self, payload: Any) -> bool:
@@ -898,8 +1005,24 @@ class LiveBus:
 
     def _dispatch(self, stream: str, data: StreamPayload) -> None:
         with suppress(Exception):
+            source = (
+                self._observation_source_provider()
+                if self._observation_source_provider is not None
+                else ("replay" if self._transport_factory is not None else "live")
+            )
+            # Observation ownership covers pre-transport catch-up without
+            # changing the existing provider normalization contract.
             provider = "replay" if self._transport_factory is not None else "f1_live"
             data = self._provider_registry.normalize(provider, stream, data).payload
+            if self._observation_source is not None:
+                data = self._observation_source.stamp(
+                    stream,
+                    data,
+                    source=source,
+                    replay_session_id=self._observation_replay_session(),
+                    delay_epoch=getattr(self._observation_delay, "epoch", 0),
+                    delay_seconds=getattr(self._observation_delay, "current", 0),
+                )
             # Update counters
             self._cnt[stream] = self._cnt.get(stream, 0) + 1
             self._stream_frames[stream] = self._stream_frames.get(stream, 0) + 1
@@ -928,7 +1051,8 @@ class LiveBus:
         if not _LOGGER.isEnabledFor(logging.DEBUG):
             return
         now = self._monotonic()
-        if (now - self._last_logged) < self._log_interval:
+        elapsed = now - self._last_logged
+        if elapsed < self._log_interval:
             return
         self._last_logged = now
         with suppress(Exception):
@@ -951,8 +1075,8 @@ class LiveBus:
                     parts.append(f"{stream}:{count}/{total} (none)")
             if parts:
                 _LOGGER.debug(
-                    "LiveBus summary (last %.0fs): %s",
-                    self._log_interval,
+                    "LiveBus summary (last %.1fs): %s",
+                    elapsed,
                     ", ".join(parts),
                 )
             # Reset window counters
@@ -1120,7 +1244,10 @@ class LiveBus:
         }
 
     async def swap_transport(
-        self, transport_factory: Callable[[], LiveTransport] | None
+        self,
+        transport_factory: Callable[[], LiveTransport] | None,
+        *,
+        preserve_observation_epoch: str | None = None,
     ) -> None:
         """Hot-swap transport for replay mode.
 
@@ -1134,7 +1261,7 @@ class LiveBus:
             await self.async_close()
 
         self._transport_factory = transport_factory
-        self.reset_for_replay()
+        self.reset_for_replay(preserve_observation_epoch=preserve_observation_epoch)
 
         # For replay mode (transport_factory provided), always start the bus
         # For restoring to live (transport_factory=None), only restart if it was running
@@ -1146,8 +1273,15 @@ class LiveBus:
             _LOGGER.info("Restarting LiveBus with live transport")
             await self.start()
 
-    def reset_for_replay(self) -> None:
+    def reset_for_replay(
+        self, *, preserve_observation_epoch: str | None = None
+    ) -> None:
         """Clear retained frames when live/replay session ownership changes."""
+        if self._observation_source is not None and not (
+            self._transport_factory is not None
+            and preserve_observation_epoch == self._observation_source.epoch
+        ):
+            self._observation_source.reset()
         self._last_payload.clear()
         self._cnt.clear()
         self._stream_frames.clear()

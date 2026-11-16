@@ -52,6 +52,7 @@ test('empty and low-coverage strategy remains explicit instead of producing a pa
   const snapshot = makeDemo().preview.analysis, m = normalizeConfig({ modules: [{ type: 'strategy' }] }).modules[0];
   snapshot.strategy.stints[0].adjusted_median_clean_pace = null; snapshot.strategy.stints[0].sample_count = 0;
   snapshot.strategy.stints[0].confidence = 0; snapshot.strategy.stints[0].degradation_seconds_per_lap = null;
+  snapshot.strategy.stints[0].lap_time_trend.status = 'insufficient_data';
   const model = strategyModel(snapshot, m);
   const row = model.rows.find(item => item.number === '16');
   assert.equal(row.clean_pace, null); assert.equal(row.clean_samples, 0); assert.equal(row.analysis_quality, 0); assert.equal(row.degradation, null);
@@ -101,12 +102,12 @@ test('strategy comparisons retain both teammates, exact pace, stop laps and obse
   const comparison = strategyModel(snapshot, m('teammates'));
   assert.equal(comparison.total, 1); assert.equal(comparison.rows[0].incident_drivers, 'LEC / HAM');
   assert.deepEqual(comparison.rows[0].comparison_pace, [{ driver: 'LEC', value: 81.12 }, { driver: 'HAM', value: 81.32 }]);
-  assert.equal(comparison.rows[0].pace_leader, 'LEC'); assert.equal(comparison.rows[0].comparison_gap, .2);
+  assert.equal(comparison.rows[0].pace_leader, 'LEC'); assert.equal(comparison.rows[0].comparison_gap, -.2);
   const outcome = strategyModel(snapshot, m('pit_outcomes')).rows[0];
   assert.equal(outcome.strategy_outcome, 'undercut_succeeded');
   assert.deepEqual(outcome.comparison_stops, [{ driver: 'HAM', value: 10 }, { driver: 'LEC', value: 12 }]);
   assert.deepEqual(outcome.exchange_positions[0], { driver: 'HAM', before: 3, after: 2 });
-  snapshot.strategy.teammate_comparisons[0].delta_seconds = 0;
+  snapshot.strategy.teammate_comparisons[0].matched_comparison.delta_seconds = 0;
   assert.equal(strategyModel(snapshot, m('teammates')).rows[0].equal_pace, true);
   assert.equal(strategyModel(snapshot, m('teammates')).rows[0].pace_leader, null);
 });

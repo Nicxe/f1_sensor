@@ -183,3 +183,144 @@ def test_aborted_without_started_session_retains_pre(started):
         _map_session_status_payload({"Status": "Aborted", "Started": started}, None)
         == "pre"
     )
+
+
+@pytest.mark.parametrize("session_name", ["Qualifying", "Sprint Qualifying"])
+@pytest.mark.parametrize(
+    "now", ["2026-11-07T18:02:23.309Z", "2026-11-07T20:03:17.903Z"]
+)
+async def test_qualifying_red_flag_retains_session_before_and_after_scheduled_end(
+    hass, live_entry, freezer, session_name, now
+):
+    """Issue 1007: a suspended session remains identifiable until it finishes."""
+    freezer.move_to(now)
+    entry, registry = live_entry
+    bus = registry["live_bus"]
+    bus.inject_message(
+        "SessionInfo",
+        {
+            "Key": 11408,
+            "Type": "Qualifying",
+            "Name": session_name,
+            "StartDate": "2026-11-07T15:00:00",
+            "EndDate": "2026-11-07T16:00:00",
+            "GmtOffset": "-03:00:00",
+        },
+    )
+    bus.inject_message("SessionData", {"Series": {"0": {"QualifyingPart": 2}}})
+    bus.inject_message("SessionStatus", {"Status": "Started", "Started": "Started"})
+    await hass.async_block_till_done()
+    assert _state(hass, entry, "current_session").state == session_name
+
+    bus.inject_message("SessionStatus", {"Status": "Aborted", "Started": "Started"})
+    await hass.async_block_till_done()
+    assert _state(hass, entry, "session_status").state == "suspended"
+    current = _state(hass, entry, "current_session")
+    assert current.state == session_name
+    assert current.attributes["active"] is False
+    assert current.attributes["live_status"] == "Aborted"
+    bus.inject_message("TrackStatus", {"Status": "5", "Message": "Red"})
+    await hass.async_block_till_done()
+    assert _state(hass, entry, "current_session").state == session_name
+    assert _state(hass, entry, "track_status").state == "RED"
+
+    # Repeated snapshots and cleared track flags must retain the interruption.
+    bus.inject_message("TrackStatus", {"Status": "1", "Message": "AllClear"})
+    bus.inject_message("SessionStatus", {"Status": "Aborted", "Started": "Started"})
+    await hass.async_block_till_done()
+    assert _state(hass, entry, "current_session").state == session_name
+    assert _state(hass, entry, "session_status").state == "suspended"
+
+    bus.inject_message("SessionStatus", {"Status": "Started", "Started": "Started"})
+    await hass.async_block_till_done()
+    assert _state(hass, entry, "current_session").attributes["active"] is True
+    bus.inject_message("SessionData", {"Series": {"1": {"QualifyingPart": 3}}})
+    for status, phase in [
+        ("Finished", "finished"),
+        ("Finalised", "finalised"),
+        ("Ends", "ended"),
+    ]:
+        bus.inject_message("SessionStatus", {"Status": status, "Started": "Finished"})
+        await hass.async_block_till_done()
+        assert _state(hass, entry, "session_status").state == phase
+        assert _state(hass, entry, "current_session").state == "unknown"
+
+    registry["live_state"].set_state(False, "finished-Qualifying")
+    await hass.async_block_till_done()
+    assert _state(hass, entry, "current_session").state in ("unknown", "unavailable")
+    registry["live_state"].set_state(True, "live-Practice 1")
+    bus.inject_message(
+        "SessionInfo",
+        {"Key": 11409, "Type": "Practice", "Name": "Practice 1", "Number": 1},
+    )
+    bus.inject_message("SessionStatus", {"Status": "Inactive", "Started": "Inactive"})
+    await hass.async_block_till_done()
+    assert _state(hass, entry, "current_session").state == "unknown"
+    bus.inject_message("SessionStatus", {"Status": "Started", "Started": "Started"})
+    await hass.async_block_till_done()
+    assert _state(hass, entry, "current_session").state == "Practice 1"
+
+
+@pytest.mark.parametrize(
+    ("end_date", "gmt_offset"),
+    [
+        ("2026-11-07T16:00:00", "-03:00:00"),
+        ("2026-11-07T22:00:00", "+03:00:00"),
+        ("2026-11-07T19:00:00Z", "-03:00:00"),
+        ("2026-11-07T16:00:00-03:00", "+03:00:00"),
+        ("2026-11-07T19:00:00", None),
+        ("2026-11-07T19:00:00", "invalid"),
+    ],
+)
+async def test_current_session_stale_fallback_uses_session_timezone(
+    hass, live_entry, freezer, end_date, gmt_offset
+):
+    """Pre-session metadata expires after its UTC end, not the circuit clock."""
+    freezer.move_to("2026-11-07T18:15:00Z")
+    entry, registry = live_entry
+    bus = registry["live_bus"]
+    bus.inject_message(
+        "SessionInfo",
+        {
+            "Key": 11403,
+            "Type": "Qualifying",
+            "Name": "Qualifying",
+            "EndDate": end_date,
+            "GmtOffset": gmt_offset,
+        },
+    )
+    bus.inject_message("SessionStatus", {"Status": "Inactive", "Started": "Inactive"})
+    await hass.async_block_till_done()
+    assert _state(hass, entry, "current_session").state == "Qualifying"
+    assert _state(hass, entry, "session_status").state == "pre"
+
+    freezer.move_to("2026-11-07T19:06:00Z")
+    bus.inject_message("SessionStatus", {"Status": "Inactive", "Started": "Inactive"})
+    await hass.async_block_till_done()
+    assert _state(hass, entry, "current_session").state == "unknown"
+
+
+@pytest.mark.parametrize("end_date", [None, "invalid"])
+async def test_current_session_missing_end_waits_for_explicit_terminal_status(
+    hass, live_entry, freezer, end_date
+):
+    """Missing or malformed dates must not invent a terminal session state."""
+    freezer.move_to("2026-11-07T20:04:00Z")
+    entry, registry = live_entry
+    bus = registry["live_bus"]
+    bus.inject_message(
+        "SessionInfo",
+        {
+            "Key": 11403,
+            "Type": "Qualifying",
+            "Name": "Qualifying",
+            "EndDate": end_date,
+            "GmtOffset": "-03:00:00",
+        },
+    )
+    bus.inject_message("SessionStatus", {"Status": "Inactive", "Started": "Inactive"})
+    await hass.async_block_till_done()
+    assert _state(hass, entry, "current_session").state == "Qualifying"
+    bus.inject_message("SessionStatus", {"Status": "Finalised", "Started": "Finished"})
+    await hass.async_block_till_done()
+    assert _state(hass, entry, "current_session").state == "unknown"

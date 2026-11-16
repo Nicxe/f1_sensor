@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
-from datetime import datetime
 import inspect
 import json
 import logging
@@ -11,6 +10,7 @@ from pathlib import Path
 
 from homeassistant.core import HomeAssistant
 
+from .replay_timestamp import parse_replay_timestamp_ms
 from .track_map import (
     TRACK_MAP_POSITION_STREAM,
     parse_position_z_line,
@@ -69,6 +69,7 @@ class ReplaySignalRClient:
         self._frames: list[ReplayFrame] = []
         self._closed = False
         self._loaded = False
+        self.invalid_timestamp_count = 0
 
     async def ensure_connection(self) -> None:
         """Load frames from disk."""
@@ -114,6 +115,7 @@ class ReplaySignalRClient:
         if not self._path.exists():
             raise FileNotFoundError(f"Replay dump not found: {self._path}")
         frames: list[ReplayFrame] = []
+        self.invalid_timestamp_count = 0
         prev_ts: float | None = None
         stream_hint = self._stream_hint
         static_root: str | None = None
@@ -136,6 +138,9 @@ class ReplaySignalRClient:
                         if not positions:
                             continue
                         current_ts = self._parse_timestamp(ts_part)
+                        if current_ts is None:
+                            self.invalid_timestamp_count += 1
+                            continue
                         delay = self._compute_delay(current_ts, prev_ts)
                         prev_ts = current_ts
                         frames.append(
@@ -162,6 +167,9 @@ class ReplaySignalRClient:
                         )
                         continue
                     current_ts = self._parse_timestamp(ts_part)
+                    if current_ts is None:
+                        self.invalid_timestamp_count += 1
+                        continue
                     delay = self._compute_delay(current_ts, prev_ts)
                     prev_ts = current_ts
                     if (
@@ -181,6 +189,11 @@ class ReplaySignalRClient:
             raise RuntimeError(
                 f"Failed to parse replay dump {self._path}: {err}"
             ) from err
+        if self.invalid_timestamp_count:
+            _LOGGER.debug(
+                "Skipped %d replay lines with invalid timestamps",
+                self.invalid_timestamp_count,
+            )
         return frames
 
     def _compute_delay(self, current: float | None, prev_ts: float | None) -> float:
@@ -192,19 +205,9 @@ class ReplaySignalRClient:
 
     @staticmethod
     def _parse_timestamp(value: str) -> float | None:
-        """Return seconds since start for HH:MM:SS.mmm strings."""
-        text = value.strip()
-        fmt = "%H:%M:%S.%f" if "." in text else "%H:%M:%S"
-        try:
-            parsed = datetime.strptime(text, fmt)
-        except ValueError:
-            return None
-        return (
-            parsed.hour * 3600
-            + parsed.minute * 60
-            + parsed.second
-            + (parsed.microsecond / 1_000_000)
-        )
+        """Return elapsed seconds using the archive's millisecond precision."""
+        milliseconds = parse_replay_timestamp_ms(value)
+        return milliseconds / 1000 if milliseconds is not None else None
 
     @staticmethod
     def _split_line(line: str) -> tuple[str, str]:

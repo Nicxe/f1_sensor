@@ -12,7 +12,7 @@ from homeassistant.components.sensor import (
     SensorEntity,
     SensorStateClass,
 )
-from homeassistant.const import Platform, UnitOfTemperature
+from homeassistant.const import PERCENTAGE, Platform, UnitOfTemperature
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.event import (
@@ -66,6 +66,7 @@ from .entity import (
     set_default_entity_id,
 )
 from .favorite_driver import FavoriteDriverController
+from .live_window import _to_utc
 from .race_weather import weather_icon
 from .replay_entities import F1ReplayStatusSensor
 from .runtime import F1ConfigEntry, entry_value
@@ -90,8 +91,6 @@ async def _async_setup_points_progression(sensor) -> None:
             sensor._attr_extra_state_attributes = dict(
                 getattr(last, "attributes", {}) or {}
             )
-    removal = sensor.coordinator.async_add_listener(sensor._handle_coordinator_update)
-    sensor.async_on_remove(removal)
     sensor.async_write_ha_state()
 
 
@@ -113,6 +112,10 @@ async def async_setup_entry(
         ),
         "weather": (F1WeatherSensor, data.get("race_weather_coordinator")),
         "track_weather": (F1TrackWeatherSensor, data.get("weather_data_coordinator")),
+        "session_rain_risk": (
+            F1SessionRainRiskSensor,
+            data.get("session_rain_risk_coordinator"),
+        ),
         "race_lap_count": (F1RaceLapCountSensor, data.get("lap_count_coordinator")),
         "last_race_results": (F1LastRaceSensor, data["last_race_coordinator"]),
         "season_results": (F1SeasonResultsSensor, data["season_results_coordinator"]),
@@ -640,8 +643,6 @@ class _CoordinatorStreamSensorBase(F1BaseEntity, SensorEntity):
         await super().async_added_to_hass()
         updated = self._update_from_coordinator()
         self._handle_stream_state(updated)
-        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
-        self.async_on_remove(removal)
         try:
             reg = entry_runtime_registry(self.hass, self._entry_id)
             self._session_info_coordinator = reg.get("session_info_coordinator")
@@ -678,8 +679,6 @@ class _ChampionshipPredictionBase(F1BaseEntity, RestoreEntity, SensorEntity):
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
-        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
-        self.async_on_remove(removal)
 
         init = self._extract_current()
         updated = init is not None
@@ -688,7 +687,18 @@ class _ChampionshipPredictionBase(F1BaseEntity, RestoreEntity, SensorEntity):
         else:
             if self._is_stream_active():
                 last = await self.async_get_last_state()
-                if last and last.state not in (None, "unknown", "unavailable"):
+                context = getattr(self.coordinator, "prediction_context", {})
+                if (
+                    last
+                    and last.state not in (None, "unknown", "unavailable")
+                    and isinstance(context, dict)
+                    and context.get("session_key")
+                    and context.get("session_type") in {"race", "sprint"}
+                    and all(
+                        last.attributes.get(key) == value
+                        for key, value in context.items()
+                    )
+                ):
                     self._attr_native_value = last.state
                     self._attr_extra_state_attributes = dict(
                         getattr(last, "attributes", {}) or {}
@@ -1063,8 +1073,6 @@ class F1FiaDocumentsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         await super().async_added_to_hass()
         await self._restore_last_state()
         self._update_from_coordinator(force=True)
-        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
-        self.async_on_remove(removal)
         self.async_write_ha_state()
 
     async def _restore_last_state(self) -> None:
@@ -1242,8 +1250,6 @@ class F1TrackWeatherSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         else:
             self._clear_state()
         self._handle_stream_state(updated)
-        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
-        self.async_on_remove(removal)
         self._safe_write_ha_state()
 
     async def async_will_remove_from_hass(self) -> None:
@@ -1358,8 +1364,6 @@ class F1TrackStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                 self._clear_state()
         self._handle_stream_state(updated)
         # Listen for coordinator pushes
-        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
-        self.async_on_remove(removal)
         if self._session_status_coordinator is not None:
             status_removal = self._session_status_coordinator.async_add_listener(
                 self._handle_session_status_update
@@ -1465,8 +1469,6 @@ class F1TopThreePositionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             else:
                 self._clear_state()
         self._handle_stream_state(updated)
-        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
-        self.async_on_remove(removal)
         self.async_write_ha_state()
 
     def _extract_state(self) -> dict | None:
@@ -1758,8 +1760,6 @@ class F1SessionStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             else:
                 self._clear_state()
         self._handle_stream_state(updated)
-        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
-        self.async_on_remove(removal)
         # Subscribe to SessionInfo for meeting/session metadata
         try:
             reg = entry_runtime_registry(self.hass, self._entry_id)
@@ -1848,8 +1848,6 @@ class F1SessionClockBaseSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             self._attr_extra_state_attributes = dict(
                 getattr(last, "attributes", {}) or {}
             )
-        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
-        self.async_on_remove(removal)
         self._handle_coordinator_update()
 
     @staticmethod
@@ -1999,8 +1997,6 @@ class F1CurrentSessionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
         # Wire listeners first so _live_status() reflects current coordinator state
-        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
-        self.async_on_remove(removal)
         # Also listen to SessionStatus so we can clear state when session ends
         try:
             reg = entry_runtime_registry(self.hass, self._entry_id)
@@ -2021,23 +2017,26 @@ class F1CurrentSessionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                 attrs = dict(getattr(last, "attributes", {}) or {})
                 self._attr_extra_state_attributes = attrs
                 # If saved payload indicates the session ended long ago, clear state on startup
-                ended_by_attrs = False
-                try:
+                ended_by_attrs = self._mapped_live_status() in (
+                    "finished",
+                    "finalised",
+                    "ended",
+                )
+                with suppress(Exception):
                     end_iso = attrs.get("end") or attrs.get("EndDate")
                     if end_iso and not self._is_replay_active():
-                        end_dt = datetime.datetime.fromisoformat(
-                            str(end_iso).replace("Z", "+00:00")
+                        end_dt = _to_utc(
+                            str(end_iso),
+                            attrs.get("gmt_offset") or attrs.get("GmtOffset"),
                         )
-                        if end_dt.tzinfo is None:
-                            end_dt = end_dt.replace(tzinfo=datetime.UTC)
                         now_utc = datetime.datetime.now(datetime.UTC)
-                        if now_utc >= (end_dt + datetime.timedelta(minutes=5)):
+                        if end_dt and now_utc >= (
+                            end_dt + datetime.timedelta(minutes=5)
+                        ):
                             # Also consider live status if available
                             st = str(self._live_status() or "").strip()
                             if st not in ("Started", "Green", "GreenFlag"):
                                 ended_by_attrs = True
-                except Exception:
-                    ended_by_attrs = False
                 if ended_by_attrs:
                     # Keep last label in attributes, but clear current state
                     if last.state:
@@ -2062,14 +2061,18 @@ class F1CurrentSessionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         else:
             self._clear_state()
 
-        # Initialize from coordinator if available, but avoid clearing state at startup
+        # Fresh terminal status takes precedence over a restored session label.
         init = self._extract_current()
         updated = init is not None
         if init is not None and self._is_stream_active():
-            self._apply_payload(init, allow_clear=False)
+            self._apply_payload(
+                init,
+                allow_clear=self._mapped_live_status()
+                in ("finished", "finalised", "ended"),
+            )
             with suppress(Exception):
                 getLogger(__name__).debug(
-                    "CurrentSession: Initialized from coordinator (no clear on startup): %s",
+                    "CurrentSession: Initialized from coordinator: %s",
                     init,
                 )
         self._handle_stream_state(updated)
@@ -2111,6 +2114,23 @@ class F1CurrentSessionSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         return _live_models.CurrentSessionModel._clear_state(self)
 
 
+class F1SessionRainRiskSensor(F1BaseEntity, SensorEntity):
+    """Numeric Race Control assessment for the verified current session."""
+
+    _device_category = "officials"
+    _attr_translation_key = "session_rain_risk"
+    _attr_icon = "mdi:weather-rainy"
+    _attr_native_unit_of_measurement = PERCENTAGE
+
+    @property
+    def native_value(self) -> int | float | None:
+        return (self.coordinator.data or {}).get("percentage")
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return dict(self.coordinator.data or {})
+
+
 class F1RaceControlSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     """Expose the latest Race Control message as an easy-to-use sensor."""
 
@@ -2130,8 +2150,6 @@ class F1RaceControlSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
-        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
-        self.async_on_remove(removal)
 
         payload = self._extract_current()
         updated = payload is not None
@@ -2241,8 +2259,6 @@ class F1TrackLimitsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
-        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
-        self.async_on_remove(removal)
 
         reg = entry_runtime_registry(self.hass, self._entry_id)
         live_state = reg.get("live_state")
@@ -2465,8 +2481,6 @@ class F1InvestigationsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
-        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
-        self.async_on_remove(removal)
 
         reg = entry_runtime_registry(self.hass, self._entry_id)
         live_state = reg.get("live_state")
@@ -2649,8 +2663,6 @@ class F1TeamRadioSensor(
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
-        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
-        self.async_on_remove(removal)
 
         payload = self._extract_current()
         updated = payload is not None
@@ -2727,8 +2739,6 @@ class F1PitStopsSensor(
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
-        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
-        self.async_on_remove(removal)
 
         init = self._extract_current()
         updated = init is not None
@@ -2876,8 +2886,6 @@ class F1RaceLapCountSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             else:
                 self._clear_state()
         self._handle_stream_state(updated)
-        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
-        self.async_on_remove(removal)
         self._safe_write_ha_state()
         # No staleness timer: we keep last known value until new feed data arrives
 
@@ -3033,8 +3041,6 @@ class F1DriverListSensor(F1BaseEntity, RestoreEntity, SensorEntity):
                     getLogger(__name__).info(
                         "DriverList: Bootstrapped from Ergast/Jolpica standings (no live feed / no restore-state yet)"
                     )
-        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
-        self.async_on_remove(removal)
         self.async_write_ha_state()
 
     def _handle_coordinator_update(self) -> None:
@@ -3247,8 +3253,6 @@ class F1StartingGridSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         updated = self._update_from_coordinator()
         if not updated:
             await self._restore_if_relevant()
-        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
-        self.async_on_remove(removal)
         self.async_write_ha_state()
 
     def _handle_coordinator_update(self) -> None:
@@ -3357,7 +3361,7 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
     """
 
     _device_category = "drivers"
-    _unrecorded_attributes = frozenset({"drivers"})
+    _unrecorded_attributes = frozenset({"drivers", "race_trace_observation"})
     _PIT_OUT_HOLD_SECONDS = 6.0
 
     _attr_translation_key = "driver_positions"
@@ -3414,8 +3418,6 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
         self._handle_stream_state(updated)
 
-        removal = self.coordinator.async_add_listener(self._handle_coordinator_update)
-        self.async_on_remove(removal)
         self.async_write_ha_state()
 
     async def _restore_state(self) -> None:

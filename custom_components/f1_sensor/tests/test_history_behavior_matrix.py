@@ -67,7 +67,7 @@ def test_history_scalar_normalizers_and_session_kinds() -> None:
     assert history._session_kind("Race", None) == "race"
     assert history._session_kind("Test", None) == "other"
     assert history._combine_date_time(None, None) is None
-    assert history._combine_date_time("2026-09-01", None) == ("2026-09-01T00:00:00Z")
+    assert history._combine_date_time("2026-09-01", None) is None
 
 
 @pytest.mark.asyncio
@@ -155,8 +155,75 @@ def test_lap_store_deleted_and_reinstated_race_control_messages() -> None:
 
     assert store._duration_seconds("bad") is None
     assert store._matching_lap(99, None) is None
-    assert store._matching_lap(4, None) is not None
+    assert store._matching_lap(4, None) is None
     assert store.diagnostics()["updates"] >= 3
+
+
+def test_lap_store_skips_gap_deltas_but_keeps_late_timing_and_legal_revisions(
+    monkeypatch,
+) -> None:
+    bus = _Bus()
+    provider = "f1_live"
+    store = LapAnalysisStore(bus, source_provider=lambda: provider)
+    timing = bus.callbacks["TimingData"]
+    track = bus.callbacks["TrackStatus"]
+    race_control = bus.callbacks["RaceControlMessages"]
+    track({"Status": "1"})
+    first_lap = _timing_lap()
+    first_lap["Lines"]["4"]["Sectors"].pop("2")
+    timing(first_lap)
+    first = store.get_lap(4, 1)
+    normalize = Mock(wraps=history.normalize_lap_record)
+    monkeypatch.setattr(history, "normalize_lap_record", normalize)
+
+    gap = {"Lines": {"4": {"GapToLeader": "+1.15", "Position": "2"}}}
+    track({"Status": "7"})
+    timing(gap)
+    assert store.get_lap(4, 1) == first
+    normalize.assert_not_called()
+
+    timing(
+        {
+            "Lines": {
+                "4": {
+                    "Sectors": {
+                        "2": {"Value": "30.000", "Segments": {"0": {"Status": 2049}}}
+                    }
+                }
+            }
+        }
+    )
+    completed = store.get_lap(4, 1)
+    assert completed["sector_durations"] == [30, 30, 30]
+    assert completed["minisectors"] == [{"sector": 3, "index": 0, "status": 2049}]
+    assert completed["quality"]["pace_suitability"] == "eligible"
+    normalize.assert_called_once()
+
+    race_control({"Message": "CAR 4 LAP TIME 1:30.000 DELETED - TRACK LIMITS"})
+    timing({"Lines": {"4": {"LastLapTime": {"Value": "1:29.900"}}}})
+    corrected = store.get_lap(4, 1)
+    assert corrected["lap_duration"] == 89.9
+    assert corrected["quality"]["deleted"] is True
+
+    race_control({"Message": "CAR 4 LAP TIME 1:29.900 REINSTATED"})
+    reinstated = store.get_lap(4, 1)
+    assert reinstated["quality"]["deleted"] is False
+    assert reinstated["quality"]["coverage"]["race_control"] == "observed"
+    normalize.reset_mock()
+    timing(gap)
+    assert store.get_lap(4, 1) == reinstated
+    normalize.assert_not_called()
+
+    provider = "replay"
+    timing(gap)
+    assert store.get_lap(4, 1)["provider"] == "replay"
+    normalize.assert_called_once()
+    store.reset_for_replay()
+    timing(gap)
+    assert store.get_lap(4, 1) is None
+    timing(_timing_lap(time="1:31.000"))
+    assert store.get_lap(4, 1)["lap_duration"] == 91.0
+    assert store.get_lap(4, 1)["quality"]["deleted"] is None
 
 
 @pytest.mark.asyncio

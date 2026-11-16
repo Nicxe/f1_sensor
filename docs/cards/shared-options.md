@@ -62,6 +62,12 @@ Under **Module options**, choose **When data is unavailable**:
 
 When the browser loses its Home Assistant connection, the card shows a clear disconnected notice. Retained values are reading snapshots, not proof of a current live state. Replay, archive and telemetry controls show their own connection state. Spoiler protection still takes precedence over retained or frozen content.
 
+Status explanations distinguish waiting for a confirmed upcoming session, waiting for observations, a failed source update and an unsupported function. An inactive source alone does not establish that the session has ended. A quiet Race Control feed is not marked stale just because no new incident has occurred.
+
+Championship projection columns explain whether session identity or prediction data is still missing, or whether the session is not a Race or Sprint. Published standings remain separate. Track Map also distinguishes an authentication problem from an accepted token with no observed car positions; token validity alone does not confirm position access or coverage.
+
+Replay reports a conflicting archive identity separately from a cache that needs rebuilding with the current timing format. Follow the displayed loading or session-selection guidance. When a loaded recording has insufficient identity metadata, its status details explain that its identity could not be verified.
+
 Entity-backed modules can keep their last captured content when a source becomes unavailable, even if its attributes disappear. Filters continue to apply to that saved content. A different installation, session, replay seek, Live Delay or spoiler state clears these snapshots; they are also released when the card is removed or the page reloads. An available empty result replaces the saved result instead of reviving older rows.
 
 **Freeze view** captures a reading snapshot in this card. Its values remain at the capture point, identified by the reading-snapshot notice. **Resume** returns to current data. Freezing does not pause backend replay, change Live Delay or change automations. The button is shown by default; clear **Show Freeze view button** under **Layout and shared focus** if you do not want it on a card.

@@ -109,15 +109,28 @@ class CardDataStore:
     def _context(self):
         info = getattr(self.data.get("session_info_coordinator"), "data", None)
         info = info if isinstance(info, dict) else {}
-        replay = (
-            self._replay_snapshot.get("state", "idle") not in {"idle", "selected"}
-            or self.data.get("operation_mode") == "development"
-        )
-        session = (
-            self._replay_snapshot.get("selected_session_id")
-            if replay
-            else info.get("Key") or info.get("SessionKey") or info.get("Path")
-        )
+        controller = self.data.get("replay_controller")
+        active = getattr(controller, "replay_active", None)
+        development = self.data.get("operation_mode") == "development"
+        if isinstance(active, bool):
+            # UI selection can change while the previous transport still emits.
+            replay = active or development
+            session = (
+                controller.active_session_id
+                if active
+                else info.get("Key") or info.get("SessionKey") or info.get("Path")
+            )
+        else:
+            # Legacy managers do not expose actual transport ownership.
+            replay = (
+                self._replay_snapshot.get("state", "idle") not in {"idle", "selected"}
+                or development
+            )
+            session = (
+                self._replay_snapshot.get("selected_session_id")
+                if replay
+                else info.get("Key") or info.get("SessionKey") or info.get("Path")
+            )
         tracker = self.data.get("live_state")
         delay = self.data.get("live_delay_controller")
         return (
@@ -276,6 +289,10 @@ class CardDataStore:
 
     def snapshot(self, key: str) -> dict[str, Any]:
         """Read a protected projection without acquiring any background demand."""
+        return deepcopy(self._snapshot(key))
+
+    def _snapshot(self, key: str) -> dict[str, Any]:
+        """Retain an owned envelope internally; copy it before calling consumers."""
         context_token = self._check_context()
         manager = self.hass.data.get(DOMAIN, {}).get("no_spoiler_manager")
         is_qualifying, qualifying_part = _session_status_mapping_context(
@@ -290,6 +307,14 @@ class CardDataStore:
             status, reason = "unsupported", "unsupported_dataset"
         elif key not in NON_SPOILER_PRODUCTS and (manager is None or manager.is_active):
             status, reason = "blocked", "no_spoiler"
+        elif (
+            key in LIVE_PRODUCTS
+            and context_token[1] is None
+            and getattr(self.data.get("replay_controller"), "replay_active", None)
+            is True
+        ):
+            # A coordinator update cannot assign an unidentified active replay.
+            status, reason = "loading", "waiting_for_current_context"
         elif key in self._waiting_for_source:
             status, reason = "loading", "waiting_for_current_context"
         elif key == "session_context":
@@ -326,13 +351,34 @@ class CardDataStore:
                         model.hass = self.hass
                         self._models[key] = model
                     self._hydrate(key, model)
-                    projection = model.snapshot()
+                    projection = (
+                        model._snapshot_for_owner()
+                        if key == "driver_positions"
+                        else model.snapshot()
+                    )
                 else:
                     projection = projector(coordinator.data)
                 payload = {
                     "state": projection.value,
                     "attributes": projection.attributes,
                 }
+                if key == "driver_positions":
+                    # This additive reference belongs only to modular card data;
+                    # shared models and sensor attributes retain their contract.
+                    reference = getattr(
+                        coordinator, "modular_starting_grid_reference", None
+                    )
+                    info = getattr(
+                        self.data.get("session_info_coordinator"), "data", None
+                    )
+                    session_key = info.get("Key") if isinstance(info, dict) else None
+                    payload["attributes"]["starting_grid_reference"] = (
+                        deepcopy(reference)
+                        if reference is not None
+                        and session_key is not None
+                        and reference["session_key"] == str(session_key)
+                        else None
+                    )
                 if key in LIVE_PRODUCTS and not model.available:
                     status, reason, payload = "unavailable", "source_inactive", None
                 elif not getattr(coordinator, "last_update_success", True):
@@ -380,7 +426,9 @@ class CardDataStore:
             if payload is not None and not self.closed:
                 self._persisted[key] = {
                     "context": list(context_token),
-                    "payload": deepcopy(payload),
+                    "payload": payload
+                    if key == "driver_positions"
+                    else deepcopy(payload),
                     "model_state": (
                         self._models[key].export_state()
                         if key in self._models
@@ -392,7 +440,7 @@ class CardDataStore:
                     self._storage.async_delay_save(
                         lambda: {"products": self._persisted}, 30
                     )
-        return deepcopy(self._snapshots[key])
+        return self._snapshots[key]
 
     @callback
     def subscribe(self, keys: Iterable[str], listener: Callable) -> Callable:
@@ -482,7 +530,7 @@ class CardDataStore:
         if cancel := self._delayed.pop(key, None):
             cancel()
         self._last_sent[key] = monotonic()
-        message = self.snapshot(key)
+        message = self._snapshot(key)
         identity = (message["generation"], message["revision"])
         if self._published.get(key) == identity:
             return

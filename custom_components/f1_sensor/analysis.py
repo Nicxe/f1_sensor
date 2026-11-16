@@ -7,12 +7,16 @@ from collections.abc import Awaitable, Callable, Mapping, Sequence
 from contextlib import suppress
 from copy import deepcopy
 from dataclasses import dataclass, replace
+from datetime import UTC, datetime
 import hashlib
 import math
-from statistics import median
+import re
+from statistics import median, quantiles
 from typing import Any
 
-from .history import LapAnalysisStore
+from .history import LapAnalysisStore, merge_analysis_session_info
+from .lap_history import MAX_TYRE_STINTS_PER_DRIVER, confirmed_race_trace_lap
+from .race_trace_observation import OBSERVATION_STREAMS, pending_observation
 
 PHASE4_ANALYSIS_STREAMS = frozenset(
     {
@@ -114,9 +118,75 @@ def _utc_text(payload: Mapping[str, Any]) -> str | None:
     return None
 
 
+def _event_timestamp(payload: Mapping[str, Any]) -> str | None:
+    """Expose a verified event instant without changing raw identity material."""
+    for key in ("Utc", "utc", "Timestamp", "timestamp", "Date"):
+        value = _text(payload.get(key))
+        if not value:
+            continue
+        match = re.fullmatch(
+            r"[0-9]{4}-[0-9]{2}-[0-9]{2}T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]"
+            r"(?:\.[0-9]+)?(?P<zone>[Zz]|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])?",
+            value,
+        )
+        if match is None:
+            return None
+        if match["zone"] is None:
+            if key not in {"Utc", "utc"}:
+                return None
+            value += "Z"
+        elif match["zone"] == "z":
+            value = value[:-1] + "Z"
+        try:
+            datetime.fromisoformat(value)
+        except ValueError:
+            return None
+        # Validation must not reserialize and truncate the provider's fractions.
+        return value
+    return None
+
+
 def _stable_id(*parts: object) -> str:
     value = "|".join(str(part or "") for part in parts)
     return hashlib.sha1(value.encode(), usedforsecurity=False).hexdigest()[:20]
+
+
+def _race_control_fingerprint(
+    item: Mapping[str, Any], message: str, source_key: str
+) -> tuple[str | None, ...]:
+    """Identify an incident, not its transport row or mutable lap metadata."""
+    timestamp = _event_timestamp(item)
+    cars = sorted(
+        {
+            value
+            for field in ("RacingNumber", "CarNumber")
+            if (value := _text(item.get(field))) is not None
+        }
+    )
+    return (
+        timestamp,
+        # Without a verified instant, equal text is not evidence that two
+        # different source rows describe the same incident.
+        source_key if timestamp is None else None,
+        _utc_text(item) if timestamp is None else None,
+        message,
+        _text(item.get("Category") or item.get("CategoryType")),
+        _text(item.get("Flag")),
+        _text(item.get("Scope")),
+        _text(item.get("Sector")),
+        ",".join(cars),
+        _text(item.get("Status")),
+        _text(item.get("Mode")),
+    )
+
+
+@dataclass(slots=True)
+class _RaceControlIdentity:
+    """Retain the first timeline identity and the row allowed to revise it."""
+
+    identity: str
+    event_id: str
+    source_key: str | None
 
 
 def _deep_merge(target: dict[str, Any], delta: Mapping[str, Any]) -> None:
@@ -149,6 +219,8 @@ class TimelineEvent:
     confidence: float = 1.0
     final: bool = False
     supporting_signals: tuple[str, ...] = ()
+    race_trace_marker: dict[str, Any] | None = None
+    focus_observation: dict[str, Any] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         """Return the stable WebSocket event contract."""
@@ -170,6 +242,7 @@ class TimelineEvent:
             "confidence": round(max(0.0, min(1.0, self.confidence)), 2),
             "final": self.final,
             "supporting_signals": list(self.supporting_signals),
+            "focus_observation": deepcopy(self.focus_observation),
         }
 
 
@@ -181,6 +254,10 @@ class UnifiedTimelineStore:
         self._events: OrderedDict[str, TimelineEvent] = OrderedDict()
         self._sequence = 0
 
+    def get(self, event_id: str) -> TimelineEvent | None:
+        """Return a retained event without advancing its sequence or revision."""
+        return self._events.get(event_id)
+
     def upsert(self, event: TimelineEvent) -> TimelineEvent:
         """Insert an event or revise its existing contract."""
         current = self._events.get(event.event_id)
@@ -190,6 +267,26 @@ class UnifiedTimelineStore:
                 revision=current.revision,
                 sequence=current.sequence,
             )
+            if candidate.focus_observation and current.focus_observation:
+                if candidate.focus_observation.get(
+                    "context"
+                ) == current.focus_observation.get("context"):
+                    retained = replace(
+                        candidate, focus_observation=current.focus_observation
+                    )
+                    if retained == current:
+                        return current
+            if candidate.race_trace_marker and current.race_trace_marker:
+                # Receiving an unchanged pit row again is not a new event or
+                # revision. Keep its original observation and frozen anchor.
+                retained_marker = {
+                    **candidate.race_trace_marker,
+                    "observation_cursor": current.race_trace_marker[
+                        "observation_cursor"
+                    ],
+                }
+                if replace(candidate, race_trace_marker=retained_marker) == current:
+                    return current
             if candidate == current:
                 return current
             event = replace(
@@ -213,6 +310,20 @@ class UnifiedTimelineStore:
     def snapshot(self) -> list[dict[str, Any]]:
         """Return events in their stable sequence order."""
         return [event.as_dict() for event in self._events.values()]
+
+    def marker_snapshot(self, token: str) -> list[dict[str, Any]]:
+        """Project markers from the existing bounded, revisioned event store."""
+        return [
+            {
+                **deepcopy(event.race_trace_marker),
+                "event_id": event.event_id,
+                "revision": event.revision,
+                "description": event.description,
+            }
+            for event in self._events.values()
+            if event.race_trace_marker is not None
+            and event.race_trace_marker.get("context_token") == token
+        ]
 
 
 def _linear_slope(samples: list[tuple[int, float]]) -> float | None:
@@ -292,47 +403,22 @@ def _compound_crossover_indications(
     return indications
 
 
-def _position_at(
-    laps: Sequence[Mapping[str, Any]], driver: int, lap_number: int
-) -> int | None:
-    return next(
-        (
-            position
-            for item in laps
-            if _as_int(item.get("driver_number")) == driver
-            and _as_int(item.get("lap_number")) == lap_number
-            and (position := _as_int(item.get("position"))) is not None
-        ),
-        None,
-    )
-
-
 def _strategy_outcomes(
-    laps: Sequence[Mapping[str, Any]],
+    lap_stints: Mapping[int, Sequence[tuple[int, int]]],
+    positions: Mapping[tuple[int, int], int],
     driver_meta: Mapping[str, Mapping[str, Any]],
 ) -> list[dict[str, Any]]:
     """Classify teammate pit-cycle outcomes when order is observable."""
-    driver_laps: dict[int, list[Mapping[str, Any]]] = {}
-    for item in laps:
-        driver = _as_int(item.get("driver_number"))
-        lap_number = _as_int(item.get("lap_number"))
-        if driver is not None and lap_number is not None:
-            driver_laps.setdefault(driver, []).append(item)
-    for values in driver_laps.values():
-        values.sort(key=lambda item: _as_int(item.get("lap_number")) or 0)
-
     transitions: dict[int, list[int]] = {}
-    for driver, values in driver_laps.items():
+    for driver, values in lap_stints.items():
         previous_stint: int | None = None
-        for item in values:
-            stint = _as_int(item.get("stint_index")) or 0
-            lap_number = _as_int(item.get("lap_number"))
+        for lap_number, stint in sorted(values, key=lambda value: value[0]):
             if previous_stint is not None and stint > previous_stint and lap_number:
                 transitions.setdefault(driver, []).append(lap_number)
             previous_stint = stint
 
     teams: dict[str, list[int]] = {}
-    for driver in driver_laps:
+    for driver in lap_stints:
         team = _text(driver_meta.get(str(driver), {}).get("team"))
         if team:
             teams.setdefault(team, []).append(driver)
@@ -363,10 +449,10 @@ def _strategy_outcomes(
             )
             before_lap = min(first_stop, second_stop) - 1
             after_lap = max(first_stop, second_stop) + 1
-            earlier_before = _position_at(laps, earlier_driver, before_lap)
-            later_before = _position_at(laps, later_driver, before_lap)
-            earlier_after = _position_at(laps, earlier_driver, after_lap)
-            later_after = _position_at(laps, later_driver, after_lap)
+            earlier_before = positions.get((earlier_driver, before_lap))
+            later_before = positions.get((later_driver, before_lap))
+            earlier_after = positions.get((earlier_driver, after_lap))
+            later_after = positions.get((later_driver, after_lap))
             if None in (earlier_before, later_before, earlier_after, later_after):
                 continue
             before_order = earlier_before < later_before
@@ -419,6 +505,240 @@ def _confidence_label(value: float) -> str:
     return "low"
 
 
+def _pace_eligible(lap: Mapping[str, Any]) -> bool:
+    duration = _as_float(lap.get("lap_duration"))
+    return (
+        _mapping(lap.get("quality")).get("pace_suitability") == "eligible"
+        and duration is not None
+        and duration > 0
+    )
+
+
+def _pair_exclusion(first: Mapping[str, Any], second: Mapping[str, Any]) -> str | None:
+    if not _pace_eligible(first) or not _pace_eligible(second):
+        return "pace_not_eligible"
+    contexts = [_mapping(lap.get("strategy_context")) for lap in (first, second)]
+    compounds = [_text(context.get("compound")) for context in contexts]
+    if any(compound is None or compound == "UNKNOWN" for compound in compounds):
+        return "unknown_compound"
+    if compounds[0] != compounds[1]:
+        return "compound_mismatch"
+    ages = [_as_int(context.get("tyre_age_at_lap_start")) for context in contexts]
+    if any(age is None or age < 0 for age in ages):
+        return "unknown_tyre_age"
+    if abs(ages[0] - ages[1]) > 2:
+        return "tyre_age_difference"
+    phases = [_text(context.get("green_phase_id")) for context in contexts]
+    if any(phase is None for phase in phases):
+        return "unknown_green_phase"
+    if phases[0] != phases[1]:
+        return "different_green_phase"
+    return None
+
+
+def _matched_comparison(
+    laps: Sequence[Mapping[str, Any]], first: int, second: int
+) -> dict[str, Any]:
+    """Compare explicit same-lap pairs; legacy medians are not paired evidence."""
+    by_driver: dict[int, dict[int, Mapping[str, Any]]] = {first: {}, second: {}}
+    for lap in laps:
+        driver = _as_int(lap.get("driver_number"))
+        number = _as_int(lap.get("lap_number"))
+        if driver in by_driver and number is not None and number > 0:
+            by_driver[driver][number] = lap
+    possible = sorted(set(by_driver[first]) | set(by_driver[second]))
+    pairs: list[dict[str, Any]] = []
+    reasons: dict[str, int] = {}
+    for number in possible:
+        first_lap = by_driver[first].get(number)
+        second_lap = by_driver[second].get(number)
+        reason = (
+            "missing_driver_lap"
+            if first_lap is None or second_lap is None
+            else _pair_exclusion(first_lap, second_lap)
+        )
+        if reason:
+            reasons[reason] = reasons.get(reason, 0) + 1
+            continue
+        first_time = _as_float(first_lap.get("lap_duration"))
+        second_time = _as_float(second_lap.get("lap_duration"))
+        first_context = _mapping(first_lap.get("strategy_context"))
+        second_context = _mapping(second_lap.get("strategy_context"))
+        pairs.append(
+            {
+                "lap_number": number,
+                "first_seconds": first_time,
+                "second_seconds": second_time,
+                "delta_seconds": round(first_time - second_time, 3),
+                "tyre_age_laps": [
+                    first_context["tyre_age_at_lap_start"],
+                    second_context["tyre_age_at_lap_start"],
+                ],
+                "compound": first_context["compound"],
+                "green_phase_id": first_context["green_phase_id"],
+            }
+        )
+    differences = [pair["delta_seconds"] for pair in pairs]
+    ready = len(pairs) >= 3
+    delta = round(float(median(differences)), 6) if ready else None
+    quartiles = quantiles(differences, method="inclusive") if ready else None
+    return {
+        "status": "ready" if ready else "insufficient_data",
+        "reason": None if ready else "insufficient_matched_pairs",
+        "method": "matched_lap_differences",
+        "drivers": [first, second],
+        "minimum_pairs": 3,
+        "maximum_tyre_age_difference": 2,
+        "possible_pairs": len(possible),
+        "used_pairs": len(pairs),
+        "excluded_pairs": len(possible) - len(pairs),
+        "excluded_reason_counts": dict(sorted(reasons.items())),
+        "lap_range": [pairs[0]["lap_number"], pairs[-1]["lap_number"]]
+        if pairs
+        else None,
+        "pairs": pairs,
+        "delta_seconds": delta,
+        "q1_seconds": round(quartiles[0], 6) if quartiles else None,
+        "q3_seconds": round(quartiles[2], 6) if quartiles else None,
+        "faster_driver": first
+        if delta is not None and delta < 0
+        else second
+        if delta is not None and delta > 0
+        else None,
+    }
+
+
+def _latest_green_phase(laps: Sequence[Mapping[str, Any]]) -> str | None:
+    """Select the last observed phase before applying pace-quality filters."""
+    observed = [
+        (number, phase)
+        for lap in laps
+        if (number := _as_int(lap.get("lap_number"))) is not None
+        and (
+            phase := _text(_mapping(lap.get("strategy_context")).get("green_phase_id"))
+        )
+        is not None
+    ]
+    return max(observed, default=(0, None))[1]
+
+
+def _lap_time_trend(
+    laps: Sequence[Mapping[str, Any]], stint_index: int
+) -> dict[str, Any]:
+    stint_laps = [
+        lap
+        for lap in laps
+        if _as_int(_mapping(lap.get("strategy_context")).get("stint_index"))
+        == stint_index
+    ]
+    phase = _latest_green_phase(stint_laps)
+    samples: list[tuple[int, int, float]] = []
+    for lap in stint_laps:
+        context = _mapping(lap.get("strategy_context"))
+        age = _as_int(context.get("tyre_age_at_lap_start"))
+        number = _as_int(lap.get("lap_number"))
+        if (
+            _pace_eligible(lap)
+            and phase is not None
+            and context.get("green_phase_id") == phase
+            and age is not None
+            and age >= 0
+            and number is not None
+        ):
+            samples.append((number, age, _as_float(lap.get("lap_duration"))))
+    samples.sort()
+    ages = [item[1] for item in samples]
+    enough = len(samples) >= 5 and max(ages) - min(ages) >= 4
+    reason = (
+        None
+        if enough
+        else "insufficient_laps"
+        if len(samples) < 5
+        else "insufficient_age_span"
+    )
+    return {
+        "status": "ready" if enough else "insufficient_data",
+        "reason": reason,
+        "method": "ols_lap_time_by_tyre_age",
+        "scope": "latest_observed_green_phase",
+        "seconds_per_lap": _linear_slope(
+            [(age, duration) for _, age, duration in samples]
+        )
+        if enough
+        else None,
+        "sample_count": len(samples),
+        "green_phase_id": phase,
+        "age_range": [min(ages), max(ages)] if ages else None,
+        "lap_range": [samples[0][0], samples[-1][0]] if samples else None,
+        "laps": [item[0] for item in samples],
+    }
+
+
+def _stint_change_estimate(
+    stint: Mapping[str, Any],
+    first: Mapping[str, Any],
+    context_stint_laps: Mapping[
+        tuple[int, int], Sequence[tuple[int, Mapping[str, Any]]]
+    ],
+) -> dict[str, Any]:
+    context = _mapping(first.get("strategy_context"))
+    previous_index = _as_int(context.get("previous_stint_index"))
+    previous_laps = (
+        [
+            lap
+            for number, lap in context_stint_laps.get(
+                (stint["driver_number"], previous_index), ()
+            )
+            if number < stint["first_lap"]
+        ]
+        if previous_index is not None
+        else []
+    )
+    phase = _latest_green_phase(previous_laps)
+    baseline = [
+        lap
+        for lap in previous_laps
+        if phase is not None
+        and _mapping(lap.get("strategy_context")).get("green_phase_id") == phase
+        and _pace_eligible(lap)
+    ]
+    baseline.sort(key=lambda lap: _as_int(lap.get("lap_number")) or 0)
+    duration = _as_float(first.get("lap_duration"))
+    quality = _mapping(first.get("quality"))
+    reason = (
+        "unobserved_stint_transition"
+        if context.get("stint_transition_observed") is not True
+        else "transition_lap_not_observed"
+        if context.get("stint_start_lap") != stint["first_lap"]
+        else "insufficient_baseline"
+        if len(baseline) < 3
+        else "invalid_transition_duration"
+        if duration is None
+        or duration <= 0
+        or quality.get("timing_integrity") != "consistent"
+        or quality.get("inferred") is True
+        else None
+    )
+    baseline_seconds = (
+        round(
+            float(median([_as_float(lap.get("lap_duration")) for lap in baseline])), 3
+        )
+        if len(baseline) >= 3
+        else None
+    )
+    return {
+        "status": "ready" if reason is None else "insufficient_data",
+        "reason": reason,
+        "method": "observed_transition_lap_minus_previous_eligible_median",
+        "seconds": round(duration - baseline_seconds, 3) if reason is None else None,
+        "transition_lap": stint["first_lap"],
+        "baseline_seconds": baseline_seconds,
+        "baseline_laps": [_as_int(lap.get("lap_number")) for lap in baseline],
+        "baseline_green_phase_id": phase,
+        "sample_count": len(baseline),
+    }
+
+
 def analyze_strategy(
     laps: Sequence[Mapping[str, Any]],
     drivers: Mapping[str, Mapping[str, Any]] | None = None,
@@ -426,14 +746,34 @@ def analyze_strategy(
     """Derive conservative stint pace, degradation, and teammate comparisons."""
     driver_meta = drivers or {}
     grouped: dict[tuple[int, int], list[Mapping[str, Any]]] = {}
+    driver_laps: dict[int, list[Mapping[str, Any]]] = {}
+    first_laps: dict[tuple[int, int], Mapping[str, Any]] = {}
+    positions: dict[tuple[int, int], int] = {}
+    lap_stints: dict[int, list[tuple[int, int]]] = {}
+    context_stint_laps: dict[tuple[int, int], list[tuple[int, Mapping[str, Any]]]] = {}
     for lap in laps:
         driver = _as_int(lap.get("driver_number"))
         lap_number = _as_int(lap.get("lap_number"))
-        duration = _as_float(lap.get("lap_duration"))
-        if driver is None or lap_number is None or duration is None:
+        if driver is None or lap_number is None:
             continue
         stint_index = _as_int(lap.get("stint_index")) or 0
-        grouped.setdefault((driver, stint_index), []).append(lap)
+        driver_laps.setdefault(driver, []).append(lap)
+        key = (driver, lap_number)
+        # Keep the first row for stint estimates, and the first valid position
+        # for pit-cycle comparisons. They may come from different duplicate rows.
+        first_laps.setdefault(key, lap)
+        if (position := _as_int(lap.get("position"))) is not None:
+            positions.setdefault(key, position)
+        lap_stints.setdefault(driver, []).append((lap_number, stint_index))
+        context_stint = _as_int(
+            _mapping(lap.get("strategy_context")).get("stint_index")
+        )
+        if context_stint is not None:
+            context_stint_laps.setdefault((driver, context_stint), []).append(
+                (lap_number, lap)
+            )
+        if _as_float(lap.get("lap_duration")) is not None:
+            grouped.setdefault((driver, stint_index), []).append(lap)
 
     stints: list[dict[str, Any]] = []
     driver_adjusted: dict[int, list[float]] = {}
@@ -496,14 +836,19 @@ def analyze_strategy(
             driver_adjusted.setdefault(driver, []).extend(adjusted)
             if compound != "UNKNOWN":
                 compound_times.setdefault(compound, []).extend(adjusted)
-                first_lap_number = _as_int(ordered[0].get("lap_number")) or 0
-                starting_age = _as_int(ordered[0].get("tyre_age_at_start")) or 0
                 compound_age_samples.setdefault(compound, []).extend(
-                    (
-                        float(starting_age + lap_number - first_lap_number),
-                        duration,
+                    (float(age), _as_float(item.get("lap_duration")))
+                    for item in ordered
+                    if _pace_eligible(item)
+                    and (
+                        age := _as_int(
+                            _mapping(item.get("strategy_context")).get(
+                                "tyre_age_at_lap_start"
+                            )
+                        )
                     )
-                    for lap_number, duration in clean_samples
+                    is not None
+                    and age >= 0
                 )
         stints.append(
             {
@@ -520,6 +865,7 @@ def analyze_strategy(
                 "raw_median_pace": raw_median,
                 "adjusted_median_clean_pace": adjusted_median,
                 "degradation_seconds_per_lap": _linear_slope(clean_samples),
+                "lap_time_trend": _lap_time_trend(ordered, stint_index),
                 "confidence": confidence,
                 "confidence_label": _confidence_label(confidence),
                 "excluded_laps": max(0, len(raw_samples) - len(adjusted)),
@@ -529,30 +875,21 @@ def analyze_strategy(
             }
         )
 
-    for index, stint in enumerate(stints):
-        previous = next(
-            (
-                candidate
-                for candidate in reversed(stints[:index])
-                if candidate["driver_number"] == stint["driver_number"]
-            ),
-            None,
-        )
-        first_lap = next(
-            (
-                lap
-                for lap in laps
-                if _as_int(lap.get("driver_number")) == stint["driver_number"]
-                and _as_int(lap.get("lap_number")) == stint["first_lap"]
-            ),
-            None,
-        )
+    previous_stints: dict[int, dict[str, Any]] = {}
+    for stint in stints:
+        driver = stint["driver_number"]
+        previous = previous_stints.get(driver)
+        first_lap = first_laps.get((driver, stint["first_lap"]))
+        previous_stints[driver] = stint
         first_duration = _as_float(first_lap.get("lap_duration")) if first_lap else None
         previous_pace = previous.get("adjusted_median_clean_pace") if previous else None
         stint["pit_loss_seconds"] = (
             round(first_duration - previous_pace, 3)
             if first_duration is not None and previous_pace is not None
             else None
+        )
+        stint["stint_change_estimate"] = _stint_change_estimate(
+            stint, first_lap or {}, context_stint_laps
         )
 
     compound_comparison = [
@@ -572,7 +909,7 @@ def analyze_strategy(
 
     teammate_comparisons: list[dict[str, Any]] = []
     teams: dict[str, list[int]] = {}
-    for driver in driver_adjusted:
+    for driver in {key[0] for key in grouped}:
         team = _text(driver_meta.get(str(driver), {}).get("team"))
         if team:
             teams.setdefault(team, []).append(driver)
@@ -580,23 +917,36 @@ def analyze_strategy(
         if len(team_drivers) != 2:
             continue
         first, second = sorted(team_drivers)
-        first_pace = float(median(driver_adjusted[first]))
-        second_pace = float(median(driver_adjusted[second]))
+        first_samples = driver_adjusted.get(first, [])
+        second_samples = driver_adjusted.get(second, [])
+        first_pace = float(median(first_samples)) if first_samples else None
+        second_pace = float(median(second_samples)) if second_samples else None
+        both = first_pace is not None and second_pace is not None
         teammate_comparisons.append(
             {
                 "team": team,
                 "drivers": [first, second],
                 "median_clean_pace": {
-                    str(first): round(first_pace, 3),
-                    str(second): round(second_pace, 3),
+                    str(first): round(first_pace, 3)
+                    if first_pace is not None
+                    else None,
+                    str(second): round(second_pace, 3)
+                    if second_pace is not None
+                    else None,
                 },
-                "delta_seconds": round(abs(first_pace - second_pace), 3),
-                "faster_driver": first if first_pace <= second_pace else second,
+                "delta_seconds": round(abs(first_pace - second_pace), 3)
+                if both
+                else None,
+                "faster_driver": (first if first_pace <= second_pace else second)
+                if both
+                else None,
+                "matched_comparison": _matched_comparison(
+                    [*driver_laps[first], *driver_laps[second]], first, second
+                ),
                 "confidence": round(
                     min(
                         1.0,
-                        min(len(driver_adjusted[first]), len(driver_adjusted[second]))
-                        / 5,
+                        min(len(first_samples), len(second_samples)) / 5,
                     ),
                     2,
                 ),
@@ -621,7 +971,9 @@ def analyze_strategy(
             compound_age_samples
         ),
         "teammate_comparisons": teammate_comparisons,
-        "undercut_overcut_outcomes": _strategy_outcomes(laps, driver_meta),
+        "undercut_overcut_outcomes": _strategy_outcomes(
+            lap_stints, positions, driver_meta
+        ),
         "assumptions": [
             "Clean laps exclude pit in/out, deleted or inaccurate laps, missing sectors, SC/VSC and the first relevant post-SC lap",
             "Pace and degradation are local estimates, not official strategy or predictions",
@@ -642,14 +994,23 @@ class Phase4AnalysisStore:
         self._bus = bus
         self._lap_analysis = lap_analysis
         self._source_provider = source_provider
+        self._data_provider: str | None = None
         self._timeline = UnifiedTimelineStore()
+        self._race_control_identities: dict[
+            tuple[str | None, ...], _RaceControlIdentity
+        ] = {}
         self._session_id: str | None = None
         self._session_name: str | None = None
+        self._session_info: dict[str, Any] = {}
         self._session_status: str | None = None
         self._track_status: str | None = None
         self._drivers: dict[str, dict[str, Any]] = {}
         self._timing: dict[str, dict[str, Any]] = {}
         self._timing_app: dict[str, dict[str, Any]] = {}
+        self._strategy_tyre_context: dict[int, dict[str, Any]] = {}
+        self._green_phase_sequence = 0
+        self._green_phase_id: str | None = None
+        self._green_phase_baselines: dict[int, int] = {}
         self._strategy_laps: OrderedDict[tuple[int, int], dict[str, Any]] = (
             OrderedDict()
         )
@@ -670,7 +1031,13 @@ class Phase4AnalysisStore:
         self.closed = False
         self._unsubs: list[Callable[[], None]] = []
         self._updates = 0
+        self._race_trace_observation = pending_observation()
+        self._race_trace_anchors: dict[str, dict[str, Any]] = {}
+        self._race_trace_track_status: str | None = None
         self._attach()
+        listen = getattr(bus, "add_observation_reset_listener", None)
+        if callable(listen):
+            self._unsubs.append(listen(self._invalidate_analysis_observations))
 
     def _attach(self) -> None:
         callbacks = {
@@ -704,8 +1071,19 @@ class Phase4AnalysisStore:
     ) -> None:
         if self.closed:
             return
+        if self._data_provider is None:
+            # The controller can change source before transport teardown and
+            # the corresponding store reset have completed.
+            self._data_provider = self._source_provider()
         self._observed_streams.add(stream)
+        if stream in OBSERVATION_STREAMS and stream not in {
+            "SessionInfo",
+            "RaceControlMessages",
+        }:
+            self._observe_race_trace_context(payload)
         handler(payload)
+        if stream == "SessionInfo":
+            self._observe_race_trace_context(payload)
         self._updates += 1
         self._notify_listeners()
 
@@ -737,7 +1115,7 @@ class Phase4AnalysisStore:
         return _unsubscribe
 
     def _provider(self) -> str:
-        return self._source_provider()
+        return self._data_provider or self._source_provider()
 
     def _event(
         self,
@@ -754,6 +1132,8 @@ class Phase4AnalysisStore:
         confidence: float = 1.0,
         signals: tuple[str, ...] = (),
         final: bool = False,
+        race_trace_marker: dict[str, Any] | None = None,
+        focus_observation: dict[str, Any] | None = None,
     ) -> TimelineEvent:
         source = payload or {}
         return self._timeline.upsert(
@@ -763,7 +1143,7 @@ class Phase4AnalysisStore:
                 sequence=0,
                 provider=self._provider(),
                 session_id=self._session_id,
-                occurred_at=_utc_text(source),
+                occurred_at=_event_timestamp(source),
                 offset_ms=_as_int(source.get("offset_ms")),
                 category=category,
                 kind=kind,
@@ -775,16 +1155,24 @@ class Phase4AnalysisStore:
                 confidence=confidence,
                 final=final,
                 supporting_signals=signals,
+                race_trace_marker=race_trace_marker,
+                focus_observation=focus_observation,
             )
         )
 
     def _reset_session(self) -> None:
+        self._invalidate_race_trace(notify=False)
         self._timeline.clear()
+        self._race_control_identities.clear()
         self._session_status = None
         self._track_status = None
         self._drivers.clear()
         self._timing.clear()
         self._timing_app.clear()
+        self._strategy_tyre_context.clear()
+        self._green_phase_sequence = 0
+        self._green_phase_id = None
+        self._green_phase_baselines.clear()
         self._strategy_laps.clear()
         self._previous_positions.clear()
         self._position_candidate.clear()
@@ -799,16 +1187,123 @@ class Phase4AnalysisStore:
         self._penalty_context.clear()
         self._observed_streams.clear()
 
+    def _invalidate_analysis_observations(self) -> None:
+        """Retire RC focus even when No Spoiler resumes the same source epoch."""
+        for retained in self._race_control_identities.values():
+            event = self._timeline.get(retained.event_id)
+            if event is not None and event.focus_observation is not None:
+                self._timeline.upsert(replace(event, focus_observation=None))
+        self._invalidate_race_trace()
+
+    def _invalidate_race_trace(self, *, notify: bool = True) -> None:
+        self._race_trace_observation = pending_observation("context_changed")
+        self._race_trace_anchors.clear()
+        self._race_trace_track_status = None
+        if notify:
+            self._notify_listeners()
+
+    def _observe_race_trace_context(self, payload: Any) -> None:
+        observe = getattr(self._bus, "consumed_observation", None)
+        observation = observe(payload) if callable(observe) else pending_observation()
+        if observation.get("context") != self._race_trace_observation.get("context"):
+            self._invalidate_race_trace(notify=False)
+        self._race_trace_observation = observation
+
+    def _race_trace_marker(self, **fields: Any) -> dict[str, Any] | None:
+        observation = self._race_trace_observation
+        if observation["status"] != "ready":
+            return None
+        return {
+            **fields,
+            "context_token": observation["context"]["token"],
+            "observation_cursor": deepcopy(observation["timing_as_of"]),
+        }
+
+    def _observe_race_trace_lap(self, driver: str, number: Any, value: Any) -> None:
+        observation = self._race_trace_observation
+        lap = confirmed_race_trace_lap(number, value)
+        driver_number = _as_int(driver)
+        if (
+            observation["status"] != "ready"
+            or lap is None
+            or driver_number is None
+            or not 1 <= driver_number <= 99
+        ):
+            return
+        driver = str(driver_number)
+        previous = self._race_trace_anchors.get(driver)
+        if previous is not None and previous["lap_number"] >= lap:
+            return
+        self._race_trace_anchors[driver] = {
+            "lap_number": lap,
+            "basis": "confirmed_completed",
+            "observation_cursor": deepcopy(observation["timing_as_of"]),
+        }
+
+    def _race_trace_reference_anchors(
+        self, payload: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        observation = self._race_trace_observation
+        if observation["status"] != "ready":
+            return {}
+        cursor = observation["timing_as_of"]
+        event_time = cursor["source_time_ms"]
+        if utc := _utc_text(payload):
+            # A provider UTC cannot be compared to a replay-offset clock.
+            if cursor["time_domain"] != "utc":
+                return {}
+            try:
+                timestamp = datetime.fromisoformat(utc.replace("Z", "+00:00"))
+                event_time = int(
+                    timestamp.replace(tzinfo=timestamp.tzinfo or UTC).timestamp() * 1000
+                )
+            except ValueError:
+                return {}
+        return {
+            driver: deepcopy(anchor)
+            for driver, anchor in self._race_trace_anchors.items()
+            if anchor["observation_cursor"]["time_domain"] == cursor["time_domain"]
+            and anchor["observation_cursor"]["source_time_ms"] <= event_time
+            and anchor["observation_cursor"]["sequence"] <= cursor["sequence"]
+        }
+
+    def _race_trace_snapshot(self) -> dict[str, Any]:
+        observation = self._race_trace_observation
+        context = observation["context"]
+        events = self._timeline.marker_snapshot(context["token"]) if context else []
+        as_of = (
+            max(events, key=lambda item: item["observation_cursor"]["sequence"])[
+                "observation_cursor"
+            ]
+            if events
+            else observation["timing_as_of"]
+        )
+        return {
+            "version": 1,
+            "status": observation["status"],
+            "reason": observation["reason"],
+            "context": deepcopy(context),
+            "as_of": deepcopy(as_of),
+            "events": events,
+        }
+
     def reset_for_replay(self) -> None:
         """Reset all accumulated state before replay playback is rebuilt."""
         self._reset_session()
+        self._data_provider = None
         self._session_id = None
         self._session_name = None
+        self._session_info = {}
         self._notify_listeners()
 
     def _on_session_info(self, payload: Any) -> None:
         if not isinstance(payload, Mapping):
             return
+        event_payload = payload
+        payload, identity_changed = merge_analysis_session_info(
+            self._session_info, payload
+        )
+        self._session_info = payload
         meeting = _mapping(payload.get("Meeting"))
         parts = (
             _text(meeting.get("Key") or meeting.get("Id")),
@@ -822,7 +1317,7 @@ class Phase4AnalysisStore:
             self._provider() == "replay"
             and session_id
             and session_id == self._session_id
-            and _text(payload.get("SessionStatus")) == "Inactive"
+            and _text(event_payload.get("SessionStatus")) == "Inactive"
             and self._session_status is not None
         )
         if restarting_same_replay:
@@ -830,7 +1325,7 @@ class Phase4AnalysisStore:
             self._lap_analysis.reset_session()
             self._observed_streams.add("SessionInfo")
         if session_id and session_id != self._session_id:
-            if self._session_id is not None:
+            if identity_changed:
                 self._reset_session()
                 self._observed_streams.add("SessionInfo")
             self._session_id = session_id
@@ -841,7 +1336,7 @@ class Phase4AnalysisStore:
                 category="session",
                 kind="session_available",
                 title=self._session_name or "Session available",
-                payload=payload,
+                payload=event_payload,
                 description=_text(meeting.get("Name") or meeting.get("OfficialName")),
             )
 
@@ -852,6 +1347,9 @@ class Phase4AnalysisStore:
         if status is None or status == self._session_status:
             return
         self._session_status = status
+        if status in {"Aborted", "Suspended", "Inactive"}:
+            self._green_phase_id = None
+            self._green_phase_baselines.clear()
         final = status in {"Finished", "Finalised", "Ends"}
         self._event(
             identity=f"status:{status}",
@@ -869,17 +1367,61 @@ class Phase4AnalysisStore:
         if not isinstance(payload, Mapping):
             return
         status = _text(payload.get("Status") or payload.get("Message"))
-        if status is None or status == self._track_status:
+        if status is None or (
+            status == self._track_status
+            and (status != "1" or self._green_phase_id is not None)
+        ):
             return
         self._track_status = status
+        self._green_phase_id = None
+        self._green_phase_baselines.clear()
+        if status == "1" and self._session_status not in {"Aborted", "Suspended"}:
+            self._green_phase_sequence += 1
+            self._green_phase_id = f"green:{self._green_phase_sequence}"
+            self._green_phase_baselines = {
+                driver: lap
+                for key, timing in self._timing.items()
+                if (driver := _as_int(key)) is not None
+                and (lap := _as_int(timing.get("NumberOfLaps"))) is not None
+            }
         disrupted = status in {"2", "4", "5", "6", "7"}
+        kinds = {"4": "sc", "5": "red_flag", "6": "vsc", "7": "vsc"}
+        marker_kind = kinds.get(status)
+        marker_phase = "ending" if status == "7" else "start"
+        if status == "1":
+            marker_kind = kinds.get(self._race_trace_track_status)
+            marker_phase = "end"
+        marker = (
+            self._race_trace_marker(
+                kind=marker_kind,
+                phase=marker_phase,
+                source="TrackStatus",
+                reference_anchors=self._race_trace_reference_anchors(payload),
+            )
+            if marker_kind
+            else None
+        )
+        self._race_trace_track_status = (
+            status if self._race_trace_observation["status"] == "ready" else None
+        )
+        identity = f"track:{status}:{_utc_text(payload)}"
+        if marker:
+            cursor = marker["observation_cursor"]
+            identity = f"track:{status}:{marker['context_token']}:{cursor['sequence']}"
         self._event(
-            identity=f"track:{status}:{_utc_text(payload)}",
+            identity=identity,
             category="track_status",
             kind="track_status_changed",
             title=_text(payload.get("Message")) or f"Track status {status}",
             payload=payload,
             severity="warning" if disrupted else "success",
+            race_trace_marker=marker,
+            focus_observation={
+                **deepcopy(self._race_trace_observation),
+                "event_time_basis": "single_frame",
+            }
+            if marker
+            else None,
         )
 
     def _on_driver_list(self, payload: Any) -> None:
@@ -918,6 +1460,17 @@ class Phase4AnalysisStore:
         for key, item in _items(payload.get("Lines")):
             target = self._timing_app.setdefault(key, {})
             _deep_merge(target, item)
+            for index, stint in _items(item.get("Stints")):
+                parsed_index = _as_int(index)
+                if (
+                    parsed_index is not None
+                    and 0 <= parsed_index < MAX_TYRE_STINTS_PER_DRIVER
+                ):
+                    self._observe_race_trace_lap(
+                        key, stint.get("LapNumber"), stint.get("LapTime")
+                    )
+            if (driver := _as_int(key)) is not None:
+                self._observe_strategy_tyres(driver)
 
     def _on_timing_data(self, payload: Any) -> None:
         if not isinstance(payload, Mapping):
@@ -926,11 +1479,21 @@ class Phase4AnalysisStore:
         for key, item in _items(payload.get("Lines")):
             target = self._timing.setdefault(key, {})
             _deep_merge(target, item)
+            self._observe_race_trace_lap(
+                key,
+                item.get("NumberOfLaps"),
+                _mapping(item.get("LastLapTime")).get("Value"),
+            )
             if (driver := _as_int(key)) is not None:
+                completed = _as_int(target.get("NumberOfLaps"))
+                if completed is not None and self._green_phase_id is not None:
+                    self._green_phase_baselines.setdefault(driver, completed)
+                self._observe_strategy_tyres(driver)
                 updated_drivers.append(driver)
         self._capture_strategy_laps(updated_drivers)
-        self._detect_position_exchanges()
-        self._detect_battles()
+        positions = self._position_snapshot()
+        self._detect_position_exchanges(positions)
+        self._detect_battles(positions)
 
     def _current_stint(self, driver: int) -> tuple[int, Mapping[str, Any]]:
         app = self._timing_app.get(str(driver), {})
@@ -939,6 +1502,108 @@ class Phase4AnalysisStore:
             return 0, {}
         key, stint = stints[-1]
         return _as_int(key) or 0, stint
+
+    def _observe_strategy_tyres(self, driver: int) -> None:
+        """Anchor tyre age only at an observed start or physical pit change.
+
+        A higher stint index can be a same-set placeholder or lap-time channel.
+        Neither its index nor the first lap we receive proves a tyre change.
+        """
+        observed_stints = _items(self._timing_app.get(str(driver), {}).get("Stints"))
+        candidates = [
+            (index, stint)
+            for key, stint in observed_stints
+            if (index := _as_int(key)) is not None
+            and index >= 0
+            and str(stint.get("TyresNotChanged", "")).lower() in {"0", "false"}
+        ]
+        if not candidates:
+            return
+        index, stint = max(candidates, key=lambda item: item[0])
+        timing = self._timing.get(str(driver), {})
+        completed = _as_int(timing.get("NumberOfLaps"))
+        previous = self._strategy_tyre_context.get(driver)
+        if previous is not None and index < previous["stint_index"]:
+            return
+        if previous is None or index != previous["stint_index"]:
+            previous_index = previous["stint_index"] if previous else None
+            if previous is not None:
+                # An intervening unknown set cannot borrow the older set's
+                # baseline. Explicit same-set placeholders may be skipped.
+                previous_index = max(
+                    (
+                        number
+                        for key, item in observed_stints
+                        if (number := _as_int(key)) is not None
+                        and 0 <= number < index
+                        and str(item.get("TyresNotChanged", "")).lower()
+                        not in {"1", "true"}
+                    ),
+                    default=previous_index,
+                )
+            transition = bool(
+                previous
+                and completed is not None
+                and completed > 0
+                and _as_bool(timing.get("InPit"))
+            )
+            previous = {
+                "stint_index": index,
+                "stint_start_lap": None,
+                "starting_age": None,
+                "observed_completed_lap": completed,
+                "previous_stint_index": previous_index,
+                "stint_transition_observed": transition,
+                "compound": None,
+            }
+            self._strategy_tyre_context[driver] = previous
+        age = _as_int(stint.get("StartLaps"))
+        compound = _text(stint.get("Compound"))
+        if compound and compound.upper() != "UNKNOWN":
+            previous["compound"] = compound.upper()
+        if previous["stint_start_lap"] is not None or age is None or age < 0:
+            return
+        at_start = index == 0 and completed == 0
+        at_transition = (
+            previous["stint_transition_observed"]
+            and completed == previous["observed_completed_lap"]
+            and _as_bool(timing.get("InPit"))
+        )
+        if at_start or at_transition:
+            previous["stint_start_lap"] = completed + 1
+            previous["starting_age"] = age
+
+    def _strategy_context_for_lap(self, driver: int, lap: int) -> dict[str, Any]:
+        tyre = self._strategy_tyre_context.get(driver, {})
+        for key, candidate in _items(
+            self._timing_app.get(str(driver), {}).get("Stints")
+        ):
+            index = _as_int(key)
+            if (
+                index is not None
+                and index > tyre.get("stint_index", -1)
+                and str(candidate.get("TyresNotChanged", "")).lower()
+                not in {"1", "true"}
+            ):
+                # A later unclassified set cannot inherit the old set's age.
+                tyre = {}
+                break
+        start = tyre.get("stint_start_lap")
+        age = tyre.get("starting_age")
+        baseline = self._green_phase_baselines.get(driver)
+        return {
+            "stint_index": tyre.get("stint_index"),
+            "compound": tyre.get("compound"),
+            "stint_start_lap": start,
+            "tyre_age_at_lap_start": age + lap - start
+            if age is not None and start is not None and lap >= start
+            else None,
+            "stint_transition_observed": tyre.get("stint_transition_observed", False),
+            "previous_stint_index": tyre.get("previous_stint_index"),
+            "green_phase_id": self._green_phase_id
+            if baseline is not None and lap > baseline
+            else None,
+        }
 
     def _capture_strategy_laps(self, drivers: Sequence[int] | None = None) -> None:
         if drivers is None:
@@ -981,6 +1646,9 @@ class Phase4AnalysisStore:
                 "compound": compound,
                 "tyre_age_at_start": tyre_age_at_start,
                 "position": position,
+                "strategy_context": deepcopy(existing["strategy_context"])
+                if existing is not None and "strategy_context" in existing
+                else self._strategy_context_for_lap(driver, lap_number),
             }
             is_new = key not in self._strategy_laps
             self._strategy_laps[key] = record
@@ -1004,17 +1672,28 @@ class Phase4AnalysisStore:
         if not isinstance(payload, Mapping):
             return
         source = payload.get("PitTimes", payload.get("Lines", {}))
-        for driver_key, driver_entries in _items(source):
+        entries = source.items() if isinstance(source, Mapping) else ()
+        for driver_key, driver_entries in entries:
             driver = _as_int(driver_key)
             if driver is None:
                 continue
             for item_key, item in _items(driver_entries):
                 pit = _mapping(item.get("PitStop")) or item
-                lap = _as_int(pit.get("Lap") or item.get("Lap"))
+                lap = _as_int(pit.get("Lap") if "Lap" in pit else item.get("Lap"))
+                if "RacingNumber" in pit and _as_int(pit["RacingNumber"]) != driver:
+                    lap = None
                 if lap is not None:
                     self._pit_context.setdefault(driver, set()).add(lap)
+                item_focus = None
+                if self._race_trace_observation.get("status") == "ready" and _text(
+                    item.get("Utc") or item.get("utc")
+                ):
+                    item_focus = {
+                        **deepcopy(self._race_trace_observation),
+                        "event_time_basis": "utc_field",
+                    }
                 self._event(
-                    identity=f"pit:{driver}:{lap}:{item_key}",
+                    identity=f"pit:{driver}:{item_key}",
                     category="pit",
                     kind="pit_stop_completed",
                     title=f"Car {driver} pit stop",
@@ -1024,6 +1703,15 @@ class Phase4AnalysisStore:
                     lap_number=lap,
                     confidence=0.95,
                     signals=("PitStopSeries",),
+                    race_trace_marker=self._race_trace_marker(
+                        kind="pit",
+                        phase="point",
+                        driver_number=driver,
+                        lap_number=lap if lap is not None and 1 <= lap <= 500 else None,
+                        anchor_type="driver_lap",
+                        source="PitStopSeries",
+                    ),
+                    focus_observation=item_focus,
                 )
 
     def _on_race_control(self, payload: Any) -> None:
@@ -1031,27 +1719,51 @@ class Phase4AnalysisStore:
             return
         messages = payload.get("Messages")
         entries = _items(messages) if messages is not None else [("0", payload)]
+        observe = getattr(self._bus, "consumed_observation", None)
+        observation = observe(payload) if callable(observe) else pending_observation()
+        focus_observation = (
+            observation if observation.get("status") == "ready" else None
+        )
+        snapshot = payload.get("_f1_snapshot") is True
         for key, item in entries:
             message = _text(item.get("Message") or item.get("message"))
             if not message:
                 continue
+            source_key = _text(item.get("Id")) or _text(item.get("id")) or key
+            fingerprint = _race_control_fingerprint(item, message, source_key)
+            retained = self._race_control_identities.get(fingerprint)
+            current = self._timeline.get(retained.event_id) if retained else None
+            if current is not None and retained is not None:
+                # A snapshot or republished row has no evidence that its lap
+                # metadata is newer. Only the owning live row may revise it.
+                if snapshot or retained.source_key not in {None, source_key}:
+                    continue
+                identity = retained.identity
+            else:
+                identity = f"rc:{source_key}:{_utc_text(item)}:{message}"
             upper = message.upper()
-            drivers = tuple(
-                sorted(
-                    {
-                        parsed
-                        for token in upper.replace("-", " ").split()
-                        if token.isdecimal()
-                        and (parsed := _as_int(token)) is not None
-                        and 0 < parsed < 100
-                    }
+            numbers = set()
+            for match in re.finditer(
+                r"\bCARS?\s+(\d{1,2}(?:\s*(?:,|AND|&)\s*\d{1,2})*)\b",
+                upper,
+            ):
+                numbers.update(
+                    int(value)
+                    for value in re.findall(r"\d+", match.group(1))
+                    if 0 < int(value) < 100
                 )
-            )[:4]
-            if any(word in upper for word in ("PENALTY", "INVESTIGATION", "NOTED")):
-                lap = _as_int(item.get("Lap"))
-                if lap is not None:
-                    for driver in drivers:
-                        self._penalty_context.setdefault(driver, set()).add(lap)
+            structured = set()
+            for field in ("RacingNumber", "CarNumber"):
+                value = _as_int(item.get(field))
+                if value is not None and 0 < value < 100:
+                    structured.add(value)
+            if len(structured) > 1 or (
+                structured and numbers and not structured <= numbers
+            ):
+                drivers = ()
+            else:
+                numbers = numbers or structured
+                drivers = tuple(sorted(numbers)) if len(numbers) <= 4 else ()
             if "DELETED" in upper:
                 kind = "lap_deleted"
                 category = "lap_control"
@@ -1068,17 +1780,66 @@ class Phase4AnalysisStore:
                 kind = "race_control_message"
                 category = "race_control"
                 severity = "info"
-            self._event(
-                identity=f"rc:{item.get('Id') or item.get('id') or key}:{_utc_text(item)}:{message}",
+            if (
+                current is None
+                and self._timeline.get(_stable_id(self._session_id, category, identity))
+                is not None
+            ):
+                # The provider can reuse a row for a different structured
+                # incident at the same instant. Do not overwrite that event.
+                identity += f":{_stable_id(repr(fingerprint))}"
+            mentioned = {int(value) for value in re.findall(r"\bLAP\s+(\d+)\b", upper)}
+            lap = next(iter(mentioned)) if len(mentioned) == 1 else None
+            if not mentioned and kind not in {"lap_deleted", "lap_reinstated"}:
+                lap = _as_int(item.get("Lap"))
+            if (
+                current is not None
+                and retained is not None
+                and retained.source_key is None
+                and lap != current.lap_number
+            ):
+                # A timestamp-keyed checkpoint has no original row owner.
+                # Establish one only from matching metadata, not a potentially
+                # older republished row that would undo the checkpoint's lap.
+                continue
+            if any(word in upper for word in ("PENALTY", "INVESTIGATION", "NOTED")):
+                penalty_lap = _as_int(item.get("Lap"))
+                if penalty_lap is not None:
+                    for driver in drivers:
+                        self._penalty_context.setdefault(driver, set()).add(penalty_lap)
+            # A late copy cannot acquire a new observation anchor, including
+            # after a delay/source change or an unverified initial snapshot.
+            item_focus = deepcopy(
+                current.focus_observation if current is not None else focus_observation
+            )
+            if item_focus is not None and _text(item.get("Utc") or item.get("utc")):
+                item_focus["event_time_basis"] = "utc_field"
+            event = self._event(
+                identity=identity,
                 category=category,
                 kind=kind,
                 title=message,
                 payload=item,
                 drivers=drivers,
-                lap_number=_as_int(item.get("Lap")),
+                lap_number=lap,
                 severity=severity,
-                signals=("RaceControlMessages",),
+                signals=("RaceControlMessages", "explicit_lap_text")
+                if len(mentioned) == 1
+                else ("RaceControlMessages",),
+                focus_observation=item_focus,
             )
+            self._race_control_identities[fingerprint] = _RaceControlIdentity(
+                identity,
+                event.event_id,
+                None if snapshot and source_key == _utc_text(item) else source_key,
+            )
+        # Share the timeline's bounded retention; no separate history of
+        # transport aliases survives eviction or a session/replay reset.
+        self._race_control_identities = {
+            fingerprint: retained
+            for fingerprint, retained in self._race_control_identities.items()
+            if self._timeline.get(retained.event_id) is not None
+        }
         self._capture_strategy_laps()
 
     def _on_weather(self, payload: Any) -> None:
@@ -1137,8 +1898,7 @@ class Phase4AnalysisStore:
             for context_lap in context.get(driver, ())
         )
 
-    def _detect_position_exchanges(self) -> None:
-        current = self._position_snapshot()
+    def _detect_position_exchanges(self, current: dict[int, int]) -> None:
         if len(set(current.values())) != len(current):
             return
         if len(current) < 2:
@@ -1294,20 +2054,15 @@ class Phase4AnalysisStore:
             ),
         )
 
-    def _detect_battles(self) -> None:
-        positions = self._position_snapshot()
+    def _detect_battles(self, positions: Mapping[int, int]) -> None:
         ordered = sorted(positions, key=positions.get)
+        first_driver_at_position: dict[int, int] = {}
+        for driver, position in positions.items():
+            first_driver_at_position.setdefault(position, driver)
         close_pairs: set[tuple[int, int]] = set()
         for behind in ordered[1:]:
             ahead_position = positions[behind] - 1
-            ahead = next(
-                (
-                    driver
-                    for driver, position in positions.items()
-                    if position == ahead_position
-                ),
-                None,
-            )
+            ahead = first_driver_at_position.get(ahead_position)
             gap = self._gap_to_ahead(behind)
             behind_laps = _as_int(self._timing.get(str(behind), {}).get("NumberOfLaps"))
             ahead_laps = _as_int(self._timing.get(str(ahead), {}).get("NumberOfLaps"))
@@ -1416,6 +2171,7 @@ class Phase4AnalysisStore:
     def snapshot(self) -> dict[str, Any]:
         """Return the bounded Phase 4 dashboard product."""
         strategy = analyze_strategy(list(self._strategy_laps.values()), self._drivers)
+        events = self._timeline.snapshot()
         active_battles = [dict(item) for item in self._active_battles.values()]
         return {
             "protocol_version": 1,
@@ -1427,10 +2183,11 @@ class Phase4AnalysisStore:
             "drivers": list(self._drivers.values()),
             "timing": self._timing_snapshot(),
             "timeline": {
-                "events": self._timeline.snapshot(),
-                "count": len(self._timeline.snapshot()),
+                "events": events,
+                "count": len(events),
             },
             "strategy": strategy,
+            "race_trace_markers": self._race_trace_snapshot(),
             "position_exchanges": list(self._exchange_history),
             "position_exchange_count": self._exchange_total,
             "position_exchange_retained_count": len(self._exchange_history),
@@ -1441,9 +2198,7 @@ class Phase4AnalysisStore:
             },
             "capabilities": {
                 "observed_streams": sorted(self._observed_streams),
-                "timeline": "ready"
-                if self._timeline.snapshot()
-                else "waiting_for_events",
+                "timeline": "ready" if events else "waiting_for_events",
                 "strategy": strategy["status"],
                 "position_exchanges": "ready"
                 if self._previous_positions

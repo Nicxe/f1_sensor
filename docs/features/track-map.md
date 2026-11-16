@@ -72,7 +72,13 @@ If car position data is missing, stale, or incomplete, the card waits instead of
 
 ## Incident location context
 
-When Track Map data is fresh enough, [Incident Detection](/features/incident-detection) can use it as optional location context. This can add a neutral location summary to `f1_sensor_incident` events, such as on-track status, sector, stale state, or pit-lane context.
+When Track Map data is fresh enough, [Incident Detection](/features/incident-detection) can use it as optional location context. This can add a neutral location summary to `f1_sensor_incident` events, such as on-track status, an approximate track section, stale state, or pit-lane context.
+
+The approximate section divides the map outline into three equal lengths. It is not an official timing or marshal sector and is separate from reviewed circuit markings. Stale positions, pit-lane context and equally near sections with conflicting thirds do not produce a current approximate section. Confidence in a car's on-track status does not establish an official sector.
+
+A known mismatch between the session and the outline's circuit or layout also suppresses the approximate section. Where no reviewed layout mapping exists, a displayed third describes the selected outline; it does not verify that outline against the historical season.
+
+For existing automations, `sector` and signals such as `track_map_sector_2` retain their earlier geometry-based meaning. New consumers can read `approximate_track_third` and `sector_basis: geometry_third`; an unknown third is `null`.
 
 Track Map is not required for incident detection. Public confirmed incident alerts continue to work without F1TV Auth and without Track Map.
 

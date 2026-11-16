@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 from .card_data_models import DataSnapshot
 from .data_helpers import (
     _combine_date_time,
+    _published_date,
     _timezone_from_circuit,
     _to_float_value,
     _to_home,
@@ -76,7 +77,9 @@ class NextRaceProjection(ProjectionModel):
         data = self.coordinator.data
         if not data:
             return None
-        _, race = resolve_next_race(data, default_time=default_time)
+        _, race = resolve_next_race(
+            data, default_time=default_time, retain_date_only=True
+        )
         return race
 
 
@@ -132,30 +135,52 @@ class NextRaceModel(NextRaceProjection, ProjectionModel):
         sprint_qualifying = race.get("SprintQualifying", {})
         sprint = race.get("Sprint", {})
         race_start = _combine_date_time(
-            race.get("date"), race.get("time"), force_utc=True
+            race.get("date"), race.get("time"), force_utc=True, require_time=True
         )
         first_start = _combine_date_time(
-            first_practice.get("date"), first_practice.get("time"), force_utc=True
+            first_practice.get("date"),
+            first_practice.get("time"),
+            force_utc=True,
+            require_time=True,
         )
         second_start = _combine_date_time(
-            second_practice.get("date"), second_practice.get("time"), force_utc=True
+            second_practice.get("date"),
+            second_practice.get("time"),
+            force_utc=True,
+            require_time=True,
         )
         third_start = _combine_date_time(
-            third_practice.get("date"), third_practice.get("time"), force_utc=True
+            third_practice.get("date"),
+            third_practice.get("time"),
+            force_utc=True,
+            require_time=True,
         )
         qual_start = _combine_date_time(
-            qualifying.get("date"), qualifying.get("time"), force_utc=True
+            qualifying.get("date"),
+            qualifying.get("time"),
+            force_utc=True,
+            require_time=True,
         )
         sprint_quali_start = _combine_date_time(
-            sprint_qualifying.get("date"), sprint_qualifying.get("time"), force_utc=True
+            sprint_qualifying.get("date"),
+            sprint_qualifying.get("time"),
+            force_utc=True,
+            require_time=True,
         )
         sprint_start = _combine_date_time(
-            sprint.get("date"), sprint.get("time"), force_utc=True
+            sprint.get("date"), sprint.get("time"), force_utc=True, require_time=True
         )
         attrs = {
             "season": race.get("season"),
             "round": race.get("round"),
             "race_name": race.get("raceName"),
+            "race_date": _published_date(race.get("date")),
+            "first_practice_date": _published_date(first_practice.get("date")),
+            "second_practice_date": _published_date(second_practice.get("date")),
+            "third_practice_date": _published_date(third_practice.get("date")),
+            "qualifying_date": _published_date(qualifying.get("date")),
+            "sprint_qualifying_date": _published_date(sprint_qualifying.get("date")),
+            "sprint_date": _published_date(sprint.get("date")),
             "schedule_source": race.get("schedule_source", "jolpica"),
             "race_start_estimated": race.get("race_start_estimated", False),
             "schedule_source_url": race.get("schedule_source_url"),

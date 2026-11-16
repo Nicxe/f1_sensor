@@ -837,6 +837,8 @@ def test_change_payload_is_json_serializable_and_stable() -> None:
             "confidence": None,
             "description": None,
             "sector": None,
+            "approximate_track_third": None,
+            "sector_basis": None,
             "corner": None,
             "pit_lane": None,
             "track_segment": None,

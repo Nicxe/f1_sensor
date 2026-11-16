@@ -202,7 +202,7 @@ def test_strategy_capture_duplicate_invalid_and_trim_paths() -> None:
 
     store._previous_positions = {1: 1, 4: 2}
     store._timing = {"1": {"Position": "1"}, "4": {"Position": "1"}}
-    store._detect_position_exchanges()
+    store._on_timing_data({"Lines": {}})
     assert store._previous_positions == {1: 1, 4: 2}
     assert store._has_lap_context({}, 4, None) is False
     store._timing["bad"] = {"Position": "bad"}

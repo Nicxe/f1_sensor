@@ -279,6 +279,42 @@ class PushLapTracker:
             racing_number, self.driver_snapshot(racing_number)
         )
 
+    def publication_key(self, racing_number: str) -> tuple:
+        """Describe immutable projection inputs without rebuilding public dicts."""
+        driver = self._drivers.get(str(racing_number))
+        delta_key = self._qualifying_deltas.publication_key(racing_number)
+        if driver is None:
+            return delta_key
+        completed = (
+            driver.completed_result is not None
+            and driver.completed_time is not None
+            and self._now is not None
+            and self._now - driver.completed_time < COMPLETED_HOLD_SECONDS
+        )
+        stale = (
+            driver.activity is not None
+            and self._now is not None
+            and self._now - driver.activity > STALE_SECONDS
+        )
+        return (
+            self._supported,
+            self._finalised,
+            self._clear_track,
+            self._session_running,
+            driver.state,
+            driver.confidence,
+            driver.reason,
+            driver.lap,
+            driver.progress,
+            driver.observed_at,
+            self._lap_is_observed(driver),
+            driver.in_pit,
+            driver.outlap,
+            stale,
+            tuple(driver.completed_result.items()) if completed else None,
+            delta_key,
+        )
+
     @staticmethod
     def _set(driver: _Driver, state: str, confidence: str | None, reason: str) -> None:
         driver.state, driver.confidence, driver.reason = state, confidence, reason

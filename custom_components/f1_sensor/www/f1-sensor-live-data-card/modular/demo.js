@@ -21,6 +21,7 @@ export function makeDemo(scene = 'race', language = 'en', entryId = 'demo') {
   put('current_session', active ? name : scene === 'missing' ? 'unavailable' : 'no_session', { season: 2026, meeting_key: 'demo-meeting', session_key: 'demo-session', meeting_name: 'Demo Grand Prix', start: '2026-09-13T13:00:00Z', active, last_label: active || scene === 'ended' ? name : null });
   put('session_status', active ? 'live' : scene === 'ended' ? 'finished' : scene === 'missing' ? 'unavailable' : 'inactive');
   for (const [key, value] of [['session_time_elapsed', 1800], ['session_time_remaining', 5400], ['race_time_to_three_hour_limit', 9000]]) put(key, active ? 'clock' : 'unavailable', { value_seconds: value, session_name: name, session_part: qualifying ? 2 : null, clock_running: active && scene !== 'replay', clock_phase: active ? scene === 'replay' ? 'paused' : 'running' : 'idle', source_quality: 'official' });
+  put('session_rain_risk', active ? '30' : 'unknown', { percentage: active ? 30 : null, session_key: 'demo-session', meeting_key: 'demo-meeting', session_name: name, utc: active ? '2026-09-13T13:15:00Z' : null, message: active ? `RISK OF RAIN FOR F1 ${name.toUpperCase()} IS 30%` : null, source: 'race_control' });
   put('track_status', active ? 'Clear' : 'unavailable');
   put('race_lap_count', active ? '12' : 'unavailable', active ? { total_laps: 53 } : {});
   put('driver_list', String(people.length), { drivers: people });
@@ -37,10 +38,19 @@ export function makeDemo(scene = 'race', language = 'en', entryId = 'demo') {
       sector_2: { time: 30.543 + index * .14, lap: 13, personal_fastest: index === 1 },
     }, personal_best: Object.fromEntries([1, 2, 3].map(n => [`sector_${n}`, { time: [24.321, 30.543, 25.91][n - 1] + index * .1, lap: 10 + n - 1, session_part: qualifying ? 2 : null, personal_fastest: true, overall_fastest: index === 0 }])) },
   })) : [], current_qualifying_part: qualifying ? 2 : null, push_laps_status: ['practice', 'qualifying', 'sprint_qualifying'].includes(scene) ? 'available' : 'unsupported' });
-  put('current_tyres', active ? String(people.length) : 'unavailable', { drivers: people.map((driver, i) => ({ racing_number: driver.racing_number, compound_short: driver.compound, position: i + 1, new: i !== 3, stint_laps: 7 + i })) });
+  put('current_tyres', active ? String(people.length) : 'unavailable', { lap_current: active ? 12 : null, lap_total: active ? 53 : null,
+    drivers: people.map((driver, i) => {
+      const total = 7 + i, before = i === 3 ? 3 : 0, laps = total - before, first = 13 - laps;
+      const compound = { S: 'SOFT', M: 'MEDIUM', H: 'HARD' }[driver.compound];
+      return { racing_number: driver.racing_number, compound_short: driver.compound, position: i + 1, new: i !== 3, stint_laps: total,
+        completed_laps: 12, retired: false, in_pit: i === 3, stint_history_complete: true, stints: [
+          { stint_index: 0, compound: compound === 'MEDIUM' ? 'SOFT' : 'MEDIUM', new: true, first_lap: 1, last_lap: first - 1, stint_laps: first - 1, tyre_age_at_start: 0, total_laps: first - 1, is_current: false, coverage: 'complete' },
+          { stint_index: 1, compound, new: i !== 3, first_lap: first, last_lap: 12, stint_laps: laps, tyre_age_at_start: before, total_laps: total, is_current: true, coverage: 'complete' },
+        ] };
+    }) });
   put('tyre_statistics', active ? 'SOFT' : 'unavailable', { status: 'ready', source_stream: 'TimingAppData', compounds: Object.fromEntries(['SOFT', 'MEDIUM', 'HARD'].map((compound, index) => [compound, { total_laps: 78 + index * 14, sets_used: index + 2, sets_used_total: index + 4, best_times: [{ time_secs: 80.873 + index * .75, racing_number: people[index].racing_number, driver_name: people[index].full_name, driver_tla: people[index].tla, stint_index: 0, new_tyre: true }] }])), deltas: { SOFT: 0, MEDIUM: .75, HARD: 1.5 } });
   put('pitstops', active ? '3' : 'unavailable', { cars: { 16: { count: 2, stops: [{ lap: 5, timestamp: '2026-09-13T13:08:00Z', pit_stop_time: 2.43, pit_lane_time: 23.781, pit_delta: 20.02 }, { lap: 10, timestamp: '2026-09-13T13:20:00Z', pit_stop_time: 2.17, pit_lane_time: 22.9, pit_delta: null }] }, 4: { count: 1, stops: [{ lap: 9, timestamp: '2026-09-13T13:18:00Z', pit_stop_time: 2.5, pit_lane_time: 23.15, pit_delta: 19.521 }] } }, last_update: '2026-09-13T13:20:00Z' });
-  put('investigations', active ? '2' : 'unavailable', { noted: [], under_investigation: [{ drivers: ['NOR', 'VER'], racing_numbers: ['4', '1'], utc: '2026-09-13T13:24:00Z', lap: 11, location: 'TURN 1', reason: 'Demo · causing a collision', after_race: true }], penalties: [{ driver: 'VER', racing_number: '1', utc: '2026-09-13T13:26:00Z', lap: 12, penalty: '5 SECOND TIME PENALTY', reason: 'Demo · leaving the track' }], no_further_action: [{ drivers: ['LEC'], racing_numbers: ['16'], utc: '2026-09-13T13:15:00Z', nfi_utc: '2026-09-13T13:28:00Z', lap: 8, location: 'PIT EXIT', reason: 'Demo · impeding' }] });
+  put('investigations', active ? '2' : 'unavailable', { session_key: 'demo-session', noted: [], under_investigation: [{ drivers: ['NOR', 'VER'], racing_numbers: ['4', '1'], utc: '2026-09-13T13:24:00Z', lap: 11, location: 'TURN 1', reason: 'Demo · causing a collision', after_race: true }], penalties: [{ driver: 'VER', racing_number: '1', utc: '2026-09-13T13:26:00Z', lap: 12, penalty: '5 SECOND TIME PENALTY', reason: 'Demo · leaving the track' }], no_further_action: [{ drivers: ['LEC'], racing_numbers: ['16'], utc: '2026-09-13T13:15:00Z', nfi_utc: '2026-09-13T13:28:00Z', lap: 8, location: 'PIT EXIT', reason: 'Demo · impeding' }] });
   put('track_limits', active ? '2' : 'unavailable', { by_driver: { NOR: { racing_number: '4', deletions: 1, warning: true, penalty: null, violations: [{ utc: '2026-09-13T13:25:00Z', lap: 11, turn: 7, type: 'time_deleted' }, { utc: '2026-09-13T13:27:00Z', lap: 12, turn: 7, type: 'warning' }] } }, total_deletions: 1, total_warnings: 1, total_penalties: 0 });
   put('next_race', '2026-09-20T13:00:00Z', { race_name: 'Demo Grand Prix', circuit_name: 'Demonstration Circuit', circuit_locality: 'Monza', circuit_country: 'Italy', country_flag_url: 'https://flagcdn.com/w80/it.png', circuit_map_url: 'https://example.com/demo-circuit-map.webp', circuit_timezone: 'Europe/Rome', season: '2026', round: 'demo', first_practice_start_utc: '2026-09-18T10:30:00Z', second_practice_start_utc: '2026-09-18T14:00:00Z', third_practice_start_utc: '2026-09-19T10:30:00Z', qualifying_start_utc: '2026-09-19T14:00:00Z', race_start_utc: '2026-09-20T13:00:00Z', defending_winner: { driver_name: 'Charles Leclerc', constructor_name: 'Ferrari', season: '2025' }, defending_pole_sitter: { driver_name: 'Lando Norris', constructor_name: 'McLaren', season: '2025' }, races_held_here: 75, first_f1_race_here: { season: '1950', race_name: 'Demo Grand Prix' }, last_year_podium: { season: '2025', podium: [{ driver_name: 'Charles Leclerc', constructor_name: 'Ferrari' }, { driver_name: 'Lando Norris', constructor_name: 'McLaren' }, { driver_name: 'George Russell', constructor_name: 'Mercedes' }] }, last_5_winners: [{ driver_name: 'Charles Leclerc', constructor_name: 'Ferrari', season: '2025' }, { driver_name: 'Max Verstappen', constructor_name: 'Red Bull Racing', season: '2024' }], top_5_driver_wins_here: [{ driver_name: 'Lewis Hamilton', wins: 5 }], top_5_constructor_wins_here: [{ constructor_name: 'Ferrari', wins: 20 }], dnf_rate_last_5: 12.5, pole_to_win_conversion_last_5: 60 });
   put('weather', '24.5', { race_name: 'Demo Grand Prix', circuit_name: 'Demonstration Circuit', current_temperature: 24.5, current_humidity: 58, current_wind_speed: 3.2, current_wind_speed_unit: 'm/s', current_wind_from_direction_degrees: 225, current_wind_gusts: 5.8, current_cloud_cover: 30, current_visibility: 24000, current_precipitation: 0, current_precipitation_probability: 5, current_weather_code: 2, race_temperature: 22.8, race_humidity: 65, race_wind_speed: 4.1, race_wind_gusts: 7.2, race_wind_from_direction_degrees: 270, race_cloud_cover: 70, race_visibility: 18000, race_weather_code: 61, race_precipitation: 0.4, race_precipitation_probability: 15 });
@@ -49,7 +59,7 @@ export function makeDemo(scene = 'race', language = 'en', entryId = 'demo') {
   put('last_race_results', 'Leclerc', { race_name: 'Demo Grand Prix', round: '14', race_start_utc: '2026-09-06T13:00:00Z', results });
   put('season_results', '2', { races: [{ round: '13', race_name: 'Previous Demo Grand Prix', results: results.map(item => ({ ...item, time: null })) }, { round: '14', race_name: 'Demo Grand Prix', results }] });
   put('sprint_results', '1', { races: [{ round: '13', race_name: 'Demo Sprint', results: results.map((item, index) => ({ ...item, laps: '24', points: String(8 - index) })) }] });
-  put('starting_grid', 'provisional', { status: 'provisional', meeting_name: 'Demo Grand Prix', target_session_name: 'Race', source: 'qualifying', source_updated_at: '2026-09-12T14:30:00Z', grid: people.map((driver, index) => ({ racing_number: driver.racing_number, tla: driver.tla, driver_name: driver.full_name, team_name: driver.team, team_color: driver.team_color, grid_position: index + 1, qualifying_position: index + 1, qualifying_time_secs: 80.123 + index * .2 })) });
+  put('starting_grid', 'provisional', { status: 'provisional', session_key: 'demo-session', grid_context: 'race', meeting_name: 'Demo Grand Prix', target_session_name: 'Race', source: 'qualifying', source_updated_at: '2026-09-12T14:30:00Z', grid: people.map((driver, index) => ({ racing_number: driver.racing_number, tla: driver.tla, driver_name: driver.full_name, team_name: driver.team, team_color: driver.team_color, grid_position: index + 1, qualifying_position: index + 1, qualifying_time_secs: 80.123 + index * .2 })) });
   put('driver_standings', '5', { season: '2026', round: '14', driver_standings: results.map((item, index) => ({ position: item.position, points: String(230 - index * 19), wins: String(index === 0 ? 5 : 2), Driver: item.driver, Constructors: [item.constructor] })) });
   put('constructor_standings', '5', { season: '2026', round: '14', constructor_standings: results.map((item, index) => ({ position: item.position, points: String(410 - index * 31), wins: String(6 - index), Constructor: item.constructor })) });
   put('championship_prediction_drivers', active ? 'LEC' : 'unavailable', { drivers: Object.fromEntries(people.map((driver, index) => [driver.racing_number, { RacingNumber: driver.racing_number, Tla: driver.tla, PredictedPosition: index + 1, PredictedPoints: 250 - index * 20 }])) });
@@ -104,7 +114,17 @@ export function makeDemo(scene = 'race', language = 'en', entryId = 'demo') {
     assumptions: ['Demonstration estimates from sample clean laps'],
   };
   analysis.drivers.push({ driver_number: 44, tla: 'HAM', name: 'Lewis Hamilton', team: 'Ferrari' });
-  analysis.strategy.teammate_comparisons = active ? [{ team: 'Ferrari', drivers: [16, 44], median_clean_pace: { 16: 81.12, 44: 81.32 }, delta_seconds: .2, faster_driver: 16, confidence: .8 }] : [];
+  analysis.strategy.teammate_comparisons = active ? [{ team: 'Ferrari', drivers: [16, 44], median_clean_pace: { 16: 81.12, 44: 81.32 }, delta_seconds: .2, faster_driver: 16, confidence: .8,
+    matched_comparison: { status: 'ready', method: 'matched_lap_differences', drivers: [16, 44], used_pairs: 5, possible_pairs: 8, excluded_pairs: 3,
+      excluded_reason_counts: { pace_not_eligible: 3 }, lap_range: [2, 6], delta_seconds: -.2, q1_seconds: -.2, q3_seconds: -.2, faster_driver: 16,
+      pairs: [2, 3, 4, 5, 6].map(lap => ({ lap_number: lap, first_seconds: 81.12, second_seconds: 81.32, delta_seconds: -.2, tyre_age_laps: [lap - 1, lap - 1], compound: 'HARD', green_phase_id: 'green:1' })) },
+  }] : [];
+  analysis.strategy.stints.forEach((stint, index) => {
+    stint.lap_time_trend = { status: 'ready', method: 'ols_lap_time_by_tyre_age', scope: 'latest_observed_green_phase', seconds_per_lap: .053 + index * .01,
+      sample_count: 6, age_range: [0, 7], lap_range: [1, 8], laps: [1, 2, 4, 5, 7, 8], green_phase_id: 'green:1', reason: null };
+    stint.stint_change_estimate = { status: 'insufficient_data', method: 'observed_transition_lap_minus_previous_eligible_median', seconds: null,
+      baseline_seconds: null, baseline_laps: [], transition_lap: null, sample_count: 0, reason: 'unobserved_stint_transition' };
+  });
   analysis.strategy.compound_crossover_indications = active ? [{ compounds: ['SOFT', 'MEDIUM'], estimated_tyre_age_laps: 8.5, observed_age_range: [5, 12], pace_at_crossover: 82.13, confidence: .75, status: 'observed_range_estimate' }] : [];
   analysis.strategy.undercut_overcut_outcomes = active ? [{ team: 'Ferrari', drivers: [44, 16], earlier_stop_driver: 44, later_stop_driver: 16, stop_laps: { 44: 10, 16: 12 }, positions_before: { 44: 3, 16: 2 }, positions_after: { 44: 2, 16: 3 }, result: 'undercut_succeeded', successful_driver: 44, confidence: .8, supporting_signals: ['stint_transition', 'lap_position_before', 'lap_position_after'] }] : [];
   const map = { entry_id: entry.entry_id, source: scene === 'replay' ? 'replay' : 'live', status: active ? 'active' : 'no_session', generated_at: new Date(now).toISOString(), stream_timestamp: new Date(now).toISOString(), stale: false, stale_after_seconds: 10,
@@ -132,5 +152,36 @@ export function makeDemo(scene = 'race', language = 'en', entryId = 'demo') {
   const minisectorCounts = [6, 7, 9];
   const minisectors = active ? { status: 'ready', reason: null, generation: 'demo-generation', sequence: 1, generated_at: new Date(now).toISOString(), drivers: Object.fromEntries(people.map((person, driverIndex) => [person.racing_number, { sectors: Object.fromEntries(minisectorCounts.map((count, sector) => [String(sector), { segments: Object.fromEntries(Array.from({ length: count }, (_, segment) => [String(segment), segment === (driverIndex + sector) % count ? 2051 : segment % 4 === 0 ? 2049 : segment === count - 1 && driverIndex === 3 ? 2064 : 2048])) }])) }])) }
     : { status: 'unavailable', reason: 'source_inactive', generation: 'demo-generation', sequence: 0, generated_at: new Date(now).toISOString(), drivers: {} };
-  return { hass: { states, locale: { language, time_format: '24', time_zone: 'Europe/Stockholm' }, language, config: { time_zone: 'Europe/Stockholm' }, themes: { darkMode: true } }, preview: { entries: [entry], events, now, analysis, map, minisectors, history, telemetry } };
+  // Only the labelled sample preview constructs this synthetic direct contract.
+  // Actual cards still require the integration's advertised metadata/envelopes.
+  const traceMarkerContext = { token: `demo-${scene}-markers`, entry_id: entry.entry_id, source: replaying ? 'replay' : 'live',
+    session_id: `demo-${scene}`, source_epoch: `demo-${scene}`, delay_epoch: 0, delay_seconds: 45 };
+  const traceCursor = sequence => ({ sequence, source_time_ms: (replaying ? 1800000 : now) + sequence * 1000,
+    time_domain: replaying ? 'replay_offset' : 'utc' });
+  analysis.status = 'ready';
+  analysis.race_trace_markers = { version: 1, status: 'ready', reason: null, context: traceMarkerContext, as_of: traceCursor(95), events: [
+    { event_id: 'demo-pit', revision: 1, kind: 'pit', phase: 'point', driver_number: 16, lap_number: 11, anchor_type: 'driver_lap',
+      source: 'PitStopSeries', context_token: traceMarkerContext.token, observation_cursor: traceCursor(90) },
+    { event_id: 'demo-vsc', revision: 1, kind: 'vsc', phase: 'start', source: 'TrackStatus', context_token: traceMarkerContext.token,
+      observation_cursor: traceCursor(80), reference_anchors: Object.fromEntries(people.map(person => [person.racing_number,
+        { lap_number: 10, basis: 'confirmed_completed', observation_cursor: traceCursor(79) }])) },
+  ] };
+  const raceTrace = () => {
+    const source = replaying ? 'replay' : 'live';
+    const protection = states[entry.global_entities.no_spoiler_mode]?.state;
+    const context = { session_id: `demo-${scene}`, replay_generation: 0, delay_seconds: 45 };
+    const drivers = (states[entry.entities.driver_positions]?.attributes?.drivers ?? []).map(driver => ({ ...driver,
+      lap_metadata: Object.fromEntries(Object.keys(driver.laps ?? {}).map(lap => [lap, { association: 'confirmed', reason: null }])) }));
+    const snapshots = {
+      session_context: { state: source, attributes: { no_spoiler: protection === 'off' ? false : protection === 'on' ? true : null } },
+      driver_positions: { state: drivers.length, attributes: { lap_history_version: 1, lap_history_session_type: name, drivers,
+        race_trace_observation: { version: 1, status: 'ready', reason: null, context: traceMarkerContext, timing_as_of: traceCursor(100) } } },
+    };
+    return { entry_id: entry.entry_id, data_api: { lap_history_version: 1, enabled: ['session_context', 'driver_positions'] },
+      card_data: Object.fromEntries(Object.entries(snapshots).map(([dataset, payload]) => [dataset, { status: 'ready', data: {
+        protocol_version: 1, entry_id: entry.entry_id, dataset, generation: `demo-${scene}`, revision: 1, source, context,
+        status: dataset === 'session_context' || drivers.length ? 'ready' : 'loading', payload, timestamps: { received_at: new Date(now).toISOString() },
+      } }])) };
+  };
+  return { hass: { states, locale: { language, time_format: '24', time_zone: 'Europe/Stockholm' }, language, config: { time_zone: 'Europe/Stockholm' }, themes: { darkMode: true } }, preview: { entries: [entry], events, now, analysis, map, minisectors, history, telemetry, raceTrace } };
 }

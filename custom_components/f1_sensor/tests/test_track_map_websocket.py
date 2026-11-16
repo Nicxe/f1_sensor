@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 import json
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import Mock
 
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.f1_sensor import track_map_websocket
+from custom_components.f1_sensor import track_map, track_map_websocket
 from custom_components.f1_sensor.const import DOMAIN
 from custom_components.f1_sensor.feature_plan import TRACK_MAP_STREAMS
 from custom_components.f1_sensor.providers import ProviderRegistry
@@ -471,6 +473,55 @@ def test_v2_annotations_clear_on_geometry_rebuild_and_reconnect(hass) -> None:
         > replacement["binding"]["session_generation"]
     )
     reconnected.subscriptions.pop(72)()
+
+
+def test_track_map_v2_updates_reuse_geometry_until_it_changes(hass, monkeypatch):
+    store = _store(hass)
+    store.update_session_info(_singapore_session())
+    geometry_payload = Mock(wraps=track_map._geometry_payload)
+    v1_payload = Mock(wraps=track_map_websocket._v1_payload)
+    monkeypatch.setattr(track_map, "_geometry_payload", geometry_payload)
+    monkeypatch.setattr(track_map_websocket, "_v1_payload", v1_payload)
+    connection = FakeConnection()
+    _ws_subscribe_track_map_snapshot(
+        hass,
+        connection,
+        {
+            "id": 29,
+            "type": TRACK_MAP_WS_SUBSCRIBE_TYPE,
+            "entry_id": "entry-1",
+            "protocol_version": 2,
+            "throttle_ms": 0,
+        },
+    )
+    try:
+        first = connection.events[-1][1]["snapshot"]
+        first_x = first["track"]["points"][0][0]
+        first["track"]["points"][0][0] += 1000
+        hub = track_map_websocket._TRACK_MAP_HUBS[store]
+        assert hub.full_payload(2)["snapshot"]["track"]["points"][0][0] == first_x
+        geometry_payload.reset_mock()
+        store.update_positions([_position()])
+        delta = connection.events[-1][1]
+        assert delta["changes"]["1"]["x"] == 100
+        assert "track" not in delta["patch"]
+        geometry_payload.assert_not_called()
+        v1_payload.assert_not_called()
+
+        geometry = store.geometry
+        assert geometry is not None
+        store.set_geometry(replace(geometry, rotation=1.25))
+        track_patch = connection.events[-1][1]["patch"]["track"]
+        track_patch["points"][0][0] += 1000
+        assert hub.full_payload(2)["snapshot"]["track"]["points"][0][0] == first_x
+
+        geometry_payload.reset_mock()
+        store.set_geometry(None)
+        assert connection.events[-1][1]["patch"]["track"] is None
+        geometry_payload.assert_called_once_with(None)
+        assert first["track"]["points"]
+    finally:
+        connection.subscriptions.pop(29)()
 
 
 def test_track_map_v1_and_v2_clients_share_one_store_broadcast(hass) -> None:

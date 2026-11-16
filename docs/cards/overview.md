@@ -48,7 +48,7 @@ In the F1 Sensor integration settings, **Install bundled dashboard cards** contr
 
 New installations leave legacy cards disabled. Existing installations keep them enabled until you choose otherwise. [Migrate existing legacy cards](/cards/modular-migration) before switching them off, then reload the browser. Saved legacy cards cannot render while their card types are disabled. The F1 Sensor card and your entities are unaffected by switching off legacy cards.
 
-These resources are shared by Home Assistant. If you have several F1 Sensor installations, legacy cards remain available while any enabled installation with dashboard cards enabled requests them. Independently installed HACS resources are not removed by this option.
+These resources are shared by Home Assistant. If you have several F1 Sensor installations, legacy cards remain available while any enabled installation with dashboard cards enabled requests them. Independently installed Marketplace or HACS resources are not removed by this option.
 
 ## Choose a starting preset
 
@@ -69,7 +69,7 @@ The card combines the following modules in one visual editor. [Choose a focused 
 
 | Purpose | Modules |
 | --- | --- |
-| Plan a weekend | Overview, Schedule, Weather |
+| Plan a weekend | Overview, Schedule, Weather, Precipitation radar (beta) |
 | Follow a session | [Timing](/cards/timing), [Minisectors](/cards/minisectors), Race Control, [Team Radio (experimental)](/cards/team-radio), Tyres, [Pit stops](/cards/pit-stops), Incidents |
 | Review results | Results, Championship, Historical archive, Season progression |
 | Analyse a session | Lap history chart, Session timeline, Strategy analysis, Battles and position changes, Track map |
@@ -106,6 +106,8 @@ The focused guides in the finder cover Timing, Minisectors, Team Radio, Pit stop
 
 Add **Overview** and start with the meeting, circuit and countdown fields. Optional session status, track status, lap progress and session clocks use the data available for the card's selected installation and session.
 
+Select **Session rain risk** to show the percentage published by Race Control with its session label, for example **30 % · Practice 3**. The field hides when no valid assessment is available; an explicit **0 %** remains visible. Open the value to read the original message and its timestamp. It does not require a Race Control module or an enabled sensor entity. See [Session Rain Risk](/entities/session-rain-risk).
+
 Use [Next Race](/entities/next-race) for schedule fields, [Current Session](/entities/current-session) for the session label and the [clock comparison](/reference/overview#which-session-clock) to choose the appropriate timer.
 
 ### Schedule module {/* #calendar-module */}
@@ -119,6 +121,48 @@ The dashboard module uses [next-race](/entities/next-race) and [season schedule]
 Add **Weather** and choose its content under **Module options**: current conditions, race-start forecast, track conditions or an overview/automatic view. Choose metrics or a compact list, then select the fields you want.
 
 Forecasts and session measurements have different sources and availability. See the [weather comparison](/reference/overview#which-weather-entity) and [Track Weather](/entities/track-weather) before interpreting a missing value as current conditions.
+
+The optional **Session rain risk** field uses [Race Control's assessment](/entities/session-rain-risk) for the identified session. It stays separate from **Rain probability** in the weather provider's forecast and **Rain detected** in track observations. When the field is selected, missing data hides it while a published **0 %** is shown.
+
+### Precipitation radar module (beta) {/* #radar-module */}
+
+Add **Precipitation radar (beta)** to see nearby precipitation in relation to the circuit's geographical outline. The map initially follows the next race from the selected F1 Sensor installation. When the next circuit changes, the map follows it. If the next circuit is unknown, no circuit is selected automatically.
+
+This beta uses a community weather service. It does not guarantee ground-radar coverage at every circuit or predict the exact minute rain reaches the track. Check the image time and data-quality notice when interpreting the map.
+
+Under **Module options**, set **Default map zoom** from 5 to 14; the default is 13. You can also hide the circuit selector with **Show circuit selector**, which is enabled by default. When the selector is visible, you can temporarily view another circuit from the season calendar. Hiding it returns the map to the next race. The zoom buttons adjust the current view, and the scale bar helps you judge the distance between the track and approaching rain.
+
+Turn off **Show explanations** for a more compact map. This hides the general text below the map and the timeline explanation. Image times, playback controls, the colour scale, data-quality information, source credits and any current status or circuit-layout warning remain visible.
+
+The timeline focuses on the 30 minutes before and after the latest available precipitation image. Use **Play**, **Pause** or the timeline to compare those images, and **Latest** to return to the newest recent image. Each image shows its time and whether it is recent data or a forecast; the map also shows the latest image's age and the available time step. LibreWXR currently supplies ten-minute steps. The card does not invent intermediate images or calculate a precise rain arrival time.
+
+Use the colour scale to compare precipitation intensity. Its labelled swatches are reference colours; their dBZ values describe the provider's image intensity, not measured rainfall in mm/h. The same scale applies to all precipitation, including snow. Map smoothing and transparency can soften the colours you see. Expand **Image intensity · dBZ** for the explanation.
+
+Circuit outlines come from [F1 Circuits](https://github.com/bacinger/f1-circuits/tree/8094e957b8d6aa8b9f4510c93968556cccd30e02), a community dataset. These geographical lines help locate the track but are not surveyed boundaries or a guarantee of the layout used for a particular race weekend. Madrid's mapped outline is shown dashed because it may differ from the current race layout. If no outline is available, the map keeps the calendar location marker and explains the missing outline.
+
+LibreWXR combines ground radar, satellite precipitation estimates and weather models over an OpenStreetMap base map. Zooming closer enlarges the available weather data; it does not improve its resolution. Satellite estimates can cover several kilometres per data cell. See [LibreWXR's coverage documentation](https://github.com/JoshuaKimsey/LibreWXR/blob/c917725f5cabf62aaeb8e87978498f8be9719761/docs/coverage.md) for the source differences.
+
+The data-quality information stays visible in compact mode. **Local coverage unverified** means the service does not identify the actual source and original observation time at the circuit. This applies even when the images load successfully, including at Baku, Shanghai, Melbourne, Lusail and Yas Marina. The displayed age is the image's age; it does not verify the age of local observations. A clear map does not confirm dry weather. Expand the quality notice for more detail.
+
+**Current weather only:** The module shows the provider's current weather timeline. It does not reproduce the weather from a recorded F1 session or follow Live Delay. During replay or delayed viewing, select **Show current weather** to view it. This does not override Global No Spoiler or a frozen view. Changing the replay or delay context can require confirmation again.
+
+Requests and playback stop when the module is hidden, leaves the visible area, is removed, or is blocked by the card's viewing controls. Returning to the module loads the map without automatically restarting the animation; select **Play** to resume. Pausing the animation keeps the visible map's periodic updates active.
+
+If a map request fails or exceeds its 15-second timeout, the card clears the image and offers **Try again**. Use it after the connection is available again, then select **Play** if needed. The module does not repeatedly retry a failed request in the background. The public weather service is provided on a best-effort basis; precipitation accuracy and race-weekend reliability have not been validated.
+
+Your browser fetches weather images directly from LibreWXR and base-map tiles from OpenStreetMap. No weather API key is required. The requests use the circuit area, not your device's location, and do not include your Home Assistant login or F1 TV credentials. The services receive your network address; OpenStreetMap also receives your Home Assistant site's origin as the browser referrer. Keep the visible source credits. See [LibreWXR's terms](https://librewxr.net/terms.html) and [OpenStreetMap's privacy policy](https://osmfoundation.org/wiki/Privacy_Policy) for the providers' policies.
+
+For a compact map that always follows the next race:
+
+```yaml
+type: custom:f1-sensor-card
+modules:
+  - type: radar
+    options:
+      zoom: 13
+      show_circuit_selector: false
+      show_explanation: false
+```
 
 ### Race Control module {/* #race-control-module */}
 
@@ -140,9 +184,60 @@ Published [driver standings](/entities/driver-standings) and [constructor standi
 
 ### Lap history chart module {/* #lap-chart-module */}
 
-Add **Lap history chart**. Choose lap time or change between laps, select drivers and a lap range, and use a chart, table or both. Limit the number of driver series when you want a clearer comparison.
+Add **Lap history chart**. Choose lap time, change between laps or **Race Trace**, select drivers and a lap range, and use a chart, table or both. Existing lap-time and lap-change configurations keep their behavior.
 
 The module uses the session's [observed driver timing](/entities/driver-positions). Use [Historical archive](/features/historical-results) for another year's published results or available historical lap data. Classification and lap coverage are separate.
+
+**Race Trace** compares accumulated recorded lap times in an identified **Race** or **Sprint**, live or in replay. It requires no additional F1 TV access beyond the timing data already available to the card.
+
+1. Select **Race Trace** as the measure.
+2. Choose a fixed **Reference driver** and up to three comparison drivers. The reference counts toward the four-driver limit. Leaving the comparison selection empty shows only the reference.
+3. Leave **Reset after lap** at `0` to use the earliest common completed lap with confirmed timing association, or choose an explicit lap. The card shows the actual anchor, including when recording starts late.
+4. Choose **Chart**, **Table** or **Both**. Adjust **First lap** and **Last lap** to change the displayed interval.
+
+Each comparison starts at zero **after** the anchor lap. The anchor's lap time is not included in the sum:
+
+```text
+Delta at lap n = sum of (driver lap time − reference lap time)
+                for laps after the anchor through lap n
+```
+
+Positive values mean the driver has accumulated more recorded lap time than the reference since the anchor; negative values mean less. For example, with an anchor after lap 1:
+
+| Lap | Reference | Comparison driver | Accumulated delta |
+| --- | --- | --- | --- |
+| 1 | 90.0 s | 91.0 s | 0.0 s |
+| 2 | 90.0 s | 89.5 s | −0.5 s |
+| 3 | 91.0 s | 92.0 s | +0.5 s |
+| 4 | 90.0 s | 110.0 s | +20.5 s |
+
+The automatic anchor stays fixed for the same session context, reference and driver selection. Receiving an older lap later does not move it. Changing the displayed interval does not reset the sum; use **Reset after lap** for that. Changing the reference or comparison drivers establishes a new comparison. Shared driver focus does not replace the reference.
+
+A missing, invalid or uncertain lap breaks that driver's line and all following cumulative values. A missing reference lap affects every comparison. Filling the gap or receiving an accepted correction recalculates the following values. If the locked anchor becomes unavailable, the view waits for that anchor to return or for you to choose another one. It never silently restarts at zero.
+
+Race Trace compares the same lap numbers, with a maximum of 500 laps. It does **not** measure the simultaneous gap between cars, distance to the leader or wall-clock race time. Crossings are not evidence of an overtake, and fewer recorded laps do not prove a retirement or lapping. Recorded pit and neutralised laps remain included; no red-flag pause is added or subtracted. An official lap-time deletion alone does not remove an otherwise available recorded duration.
+
+[Live Delay and No Spoiler](/cards/shared-options) apply to the graph, table and event details. Older backends without the required [lap-history contract](/reference/card-data-api#lap-history-for-race-trace) show Race Trace as unsupported while existing lap-time charts remain available. A supported backend waits when session identity or confirmed lap data is still missing.
+
+**Event markers** are optional and start disabled. Select **Pit stop**, **Safety Car**, **Virtual Safety Car** or **Red flag** to add observed events. In YAML, the `event_markers` option defaults to `[]` and accepts `pit`, `sc`, `vsc` and `red_flag`.
+
+Pit markers use an explicit driver and lap. Global flag markers use the reference driver's last confirmed completed lap at the event observation, labelled **after observed reference lap**. This does not locate the event at an exact instant or mean that it affected the whole lap. Events without a safe anchor remain in the timeline rather than being assigned a guessed lap.
+
+Start, ending announcement and observed end are separate points. **Ending announced** does not mean the track is clear. Missing starts or ends are not filled in, and no shaded interval or invented endpoint is drawn. Markers appear in a separate event strip, including when that lap's cumulative delta is missing. Use **Inspect lap** with the keyboard to read details; the table includes the same events. Markers do not change delta values or seek the replay.
+
+Marker history is limited by the shared timeline's 500 retained events, including completed laps for every driver. Earlier pit stops and flags can therefore be missing by the end of a race even when Race Trace still has the full recorded lap history. The markers are not a complete race-event archive.
+
+The base graph remains available when marker data is unsupported or waiting. In particular, events wait if analysis has advanced beyond the timing observation used by the graph. During an interruption, or after the final timing update, they may keep waiting until another timing observation arrives. Older backends with the lap-history contract can therefore show the graph even when they cannot supply markers.
+
+Enabling markers uses the card's shared analysis subscription and the existing F1 connection. Pit markers depend on the available pit-stop feed, which retains its existing live authentication requirement; selecting the option does not unlock that feed.
+
+### Session timeline event focus
+
+In **Session timeline**, enable **Enable event focus** to inspect an event. When the event has a verified timestamp and session context, **Inspect event** shows its available details. If a Race Trace chart in the same card contains the event's confirmed lap, the chart also inspects that lap; its reference driver and anchor do not change.
+
+To share a selection between cards, put them in the same card control group and enable **Share event focus**. Other groups, dashboards, views and connections remain independent. The selection does not change integration sensors or start replay navigation.
+
+Event focus waits when the source, session, delay or No Spoiler state cannot be verified. A Race Control or pit message without a verified event time is not selectable. An observed track-status marker can instead use its verified source frame without inventing an event timestamp. In replay, event focus is available only for a verified track-status frame; batched messages and replay navigation remain unavailable until an individual message can be mapped to a verified position in the loaded recording. The timeline itself remains available under its existing visibility rules.
 
 ### Season progression module {/* #progression-module */}
 

@@ -39,7 +39,7 @@ Beta is the normal prerelease testing channel. Dev contains active unreleased wo
 
 When validating a beta release, focus on the changed areas listed in its release notes and the behavior that affects real dashboards, automations, and update flows:
 
-1. Installing and switching between stable and beta through HACS.
+1. Installing and updating beta releases through Marketplace or HACS, and restoring a backup when returning to stable.
 2. Public live timing without F1TV Auth.
 3. Optional F1TV Auth setup and renewal through the Token Helper.
 4. Track Map behavior in live sessions and Replay Mode.

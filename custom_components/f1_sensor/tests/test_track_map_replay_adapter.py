@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 from datetime import UTC, datetime, timedelta
 import json
@@ -117,6 +118,204 @@ class FakeDelayController:
         self.current = seconds
         for callback in list(self._listeners):
             callback(seconds)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("callback_cost", [0.0, 0.003])
+async def test_live_map_backlog_yields_to_ready_callbacks_and_timers(
+    hass, monkeypatch, callback_cost
+) -> None:
+    clock = SimpleNamespace(now=100.0)
+    monkeypatch.setitem(
+        TrackMapReplayAdapter._drain_delay_queue.__globals__,
+        "time",
+        SimpleNamespace(monotonic=lambda: clock.now),
+    )
+    adapter = TrackMapReplayAdapter(
+        TrackMapStore("entry-1"),
+        FakeBus(),
+        hass=hass,
+        position_source_resolver=lambda: TRACK_MAP_SOURCE_LIVE,
+        delay_controller=FakeDelayController(40),
+    )
+    delivered = []
+    observations = []
+    complete = hass.loop.create_future()
+
+    def deliver(index):
+        delivered.append(index)
+        clock.now += callback_cost
+        if index == 199:
+            complete.set_result(None)
+
+    for index in range(200):
+        adapter._delay_queue.append((0.0, deliver, index))
+    hass.loop.call_soon(adapter._drain_delay_queue)
+    hass.loop.call_soon(lambda: observations.append(("ready", len(delivered))))
+    hass.loop.call_later(0, lambda: observations.append(("timer", len(delivered))))
+    try:
+        await asyncio.wait_for(complete, timeout=5)
+        assert delivered == list(range(200))
+        assert {kind for kind, _ in observations} == {"ready", "timer"}
+        assert all(0 < count < 200 for _, count in observations)
+    finally:
+        await adapter.async_close()
+
+
+@pytest.mark.asyncio
+async def test_live_map_zero_delay_keeps_new_frames_behind_pending_catchup(
+    hass, monkeypatch
+) -> None:
+    clock = SimpleNamespace(now=100.0)
+    monkeypatch.setitem(
+        TrackMapReplayAdapter._drain_delay_queue.__globals__,
+        "time",
+        SimpleNamespace(monotonic=lambda: clock.now),
+    )
+    adapter = TrackMapReplayAdapter(
+        TrackMapStore("entry-1"),
+        FakeBus(),
+        hass=hass,
+        position_source_resolver=lambda: TRACK_MAP_SOURCE_LIVE,
+        delay_controller=FakeDelayController(40),
+    )
+    delivered = []
+    complete = hass.loop.create_future()
+
+    def deliver(index):
+        delivered.append(index)
+        clock.now += 0.003
+        if index == 100:
+            complete.set_result(None)
+
+    for index in range(100):
+        adapter._delay_queue.append((0.0, deliver, index))
+    try:
+        adapter.set_delay(0)
+        assert 0 < len(delivered) < 100
+        adapter._wrap_live_delayed_handler(deliver)(100)
+        await asyncio.wait_for(complete, timeout=5)
+        assert delivered == list(range(101))
+    finally:
+        await adapter.async_close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("retire", ["reset", "close", "replay"])
+async def test_live_map_retiring_source_cancels_pending_catchup(
+    hass, monkeypatch, retire
+) -> None:
+    clock = SimpleNamespace(now=100.0)
+    monkeypatch.setitem(
+        TrackMapReplayAdapter._drain_delay_queue.__globals__,
+        "time",
+        SimpleNamespace(monotonic=lambda: clock.now),
+    )
+    source = SimpleNamespace(value=TRACK_MAP_SOURCE_LIVE)
+    adapter = TrackMapReplayAdapter(
+        TrackMapStore("entry-1"),
+        FakeBus(),
+        hass=hass,
+        position_source_resolver=lambda: source.value,
+        delay_controller=FakeDelayController(40),
+    )
+    delivered = []
+
+    def deliver(index):
+        delivered.append(index)
+        clock.now += 0.003
+
+    for index in range(100):
+        adapter._delay_queue.append((0.0, deliver, index))
+    try:
+        adapter._drain_delay_queue()
+        count = len(delivered)
+        assert 0 < count < 100
+        if retire == "close":
+            await adapter.async_close()
+        elif retire == "replay":
+            source.value = TRACK_MAP_SOURCE_REPLAY
+        else:
+            adapter.reset_for_replay()
+        await hass.async_block_till_done()
+        assert delivered == list(range(count))
+    finally:
+        await adapter.async_close()
+
+
+@pytest.mark.asyncio
+async def test_live_map_reset_inside_callback_retires_the_running_batch(hass):
+    adapter = TrackMapReplayAdapter(
+        TrackMapStore("entry-1"),
+        FakeBus(),
+        hass=hass,
+        position_source_resolver=lambda: TRACK_MAP_SOURCE_LIVE,
+    )
+    delivered = []
+    complete = hass.loop.create_future()
+
+    def deliver_new(value):
+        delivered.append(value)
+        complete.set_result(None)
+
+    def reset(_payload):
+        delivered.append("old first")
+        adapter.reset_for_replay()
+        adapter._delay_queue.append((0.0, deliver_new, "new"))
+
+    adapter._delay_queue.extend(
+        [(0.0, reset, None), (0.0, delivered.append, "old second")]
+    )
+    try:
+        adapter._drain_delay_queue()
+        assert delivered == ["old first"]
+        await asyncio.wait_for(complete, timeout=5)
+        assert delivered == ["old first", "new"]
+    finally:
+        await adapter.async_close()
+
+
+@pytest.mark.parametrize("new_delay", [None, 0, 60])
+def test_live_map_reentrant_arrivals_cannot_bypass_catchup_yield(
+    monkeypatch, new_delay
+):
+    """A callback-created timer cannot run the next batch before its yield."""
+    loop = FakeLoop()
+    loop.now = 100.0
+    monkeypatch.setitem(
+        TrackMapReplayAdapter._drain_delay_queue.__globals__,
+        "time",
+        SimpleNamespace(monotonic=loop.time),
+    )
+    adapter = TrackMapReplayAdapter(
+        TrackMapStore("entry-1"),
+        FakeBus(),
+        hass=SimpleNamespace(loop=loop),
+        position_source_resolver=lambda: TRACK_MAP_SOURCE_LIVE,
+        delay_controller=FakeDelayController(40),
+    )
+    delivered = []
+
+    def deliver(index):
+        delivered.append(index)
+        if index == 0:
+            adapter._queue_live_payload(deliver, 100)
+            if new_delay is not None:
+                adapter.set_delay(new_delay)
+        loop.now += 0.006
+
+    for index in range(100):
+        adapter._delay_queue.append((0.0, deliver, index))
+    try:
+        adapter._drain_delay_queue()
+        before_yield = list(delivered)
+        assert 0 < len(before_yield) < 100
+        loop.advance(0)
+        assert delivered == before_yield
+        loop.advance(0.002)
+        assert len(delivered) > len(before_yield)
+    finally:
+        adapter._clear_delay_queue()
 
 
 class _Response:
@@ -772,6 +971,7 @@ def test_track_map_replay_adapter_does_not_replace_static_geometry() -> None:
 
     assert snapshot["track"]["source"] == TRACK_MAP_STATIC_GEOMETRY_SOURCE
     assert snapshot["track"]["circuit_key"] == "151"
+    assert adapter._geometry_sample_count == 0
     assert (
         store.diagnostics(now=BASE_TIME + timedelta(seconds=1))["fallback_state"]
         == TRACK_MAP_FALLBACK_STATE_STATIC_CATALOG

@@ -39,7 +39,9 @@ from custom_components.f1_sensor.incident_detection import (
 )
 from custom_components.f1_sensor.live_window import LiveAvailabilityTracker
 from custom_components.f1_sensor.replay_mode import (
+    ARCHIVE_IDENTITY_VERSION,
     CACHE_VERSION,
+    NORMALIZATION_VERSION,
     ReplayController,
     ReplayFrame,
     ReplayIndex,
@@ -666,17 +668,26 @@ async def test_replay_absolute_forward_seek_uses_state_checkpoint(
     await controller.async_seek_to_position(120)
     await asyncio.sleep(0)
 
-    assert ("TrackStatus", {"Status": "4"}) in bus.injected
-    assert ("TrackStatus", {"Status": "5"}) in bus.injected
-    assert ("TrackStatus", {"Status": "2"}) not in bus.injected
-    assert ("TrackStatus", {"Status": "3"}) not in bus.injected
+    assert ("TrackStatus", {"Status": "4", "_f1_snapshot": True}) in bus.injected
+    assert (
+        "TrackStatus",
+        {
+            "Status": "5",
+            "_f1_source_time": 120.0,
+            "_f1_source_domain": "replay_offset",
+        },
+    ) in bus.injected
+    assert [
+        payload["Status"] for stream, payload in bus.injected if stream == "TrackStatus"
+    ] == ["4", "5"]
 
     await controller.async_stop()
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("cache_version", [11, 15, 16, 17])
 async def test_replay_cached_index_upgrades_seek_checkpoints(
-    hass, tmp_path: Path
+    hass, tmp_path: Path, cache_version: int
 ) -> None:
     manager = ReplaySessionManager(hass, ENTRY_ID, AsyncMock())
     manager._cache_dir = tmp_path
@@ -698,6 +709,24 @@ async def test_replay_cached_index_upgrades_seek_checkpoints(
         session_dir,
         [
             (0, "SessionInfo", {"Type": "Race", "Name": "Race"}),
+            (
+                10_000,
+                "TimingData",
+                {
+                    "Lines": {
+                        "4": {"NumberOfLaps": 2, "LastLapTime": {"Value": "1:30.000"}}
+                    }
+                },
+            ),
+            (
+                20_000,
+                "TimingData",
+                {
+                    "Lines": {
+                        "4": {"NumberOfLaps": 3, "LastLapTime": {"Value": "1:30.000"}}
+                    }
+                },
+            ),
             (30_000, "TrackStatus", {"Status": "1"}),
         ],
     )
@@ -705,9 +734,15 @@ async def test_replay_cached_index_upgrades_seek_checkpoints(
     index_file.write_text(
         json.dumps(
             {
-                "cache_version": 11,
+                "cache_version": cache_version,
+                "normalization_version": NORMALIZATION_VERSION,
                 "session_id": session.unique_id,
-                "total_frames": 2,
+                "identity_version": ARCHIVE_IDENTITY_VERSION,
+                "archive_identity": {
+                    "status": "missing",
+                    "session_id": session.unique_id,
+                },
+                "total_frames": 4,
                 "duration_ms": 30_000,
                 "session_started_at_ms": 0,
                 "initial_state": {"SessionInfo": {"Type": "Race", "Name": "Race"}},
@@ -724,6 +759,13 @@ async def test_replay_cached_index_upgrades_seek_checkpoints(
     assert index.seek_checkpoints
     assert upgraded["cache_version"] == CACHE_VERSION
     assert upgraded["seek_checkpoints"][0]["state"]["TrackStatus"] == {"Status": "1"}
+    history = upgraded["seek_checkpoints"][0]["state"]["LapHistory"]["4"]
+    assert history["laps"] == {"2": "1:30.000", "3": "1:30.000"}
+    assert history["lap_metadata"] == {
+        "2": {"association": "confirmed", "reason": None},
+        "3": {"association": "confirmed", "reason": None},
+    }
+    assert not manager._http.mock_calls
 
 
 @pytest.mark.asyncio
@@ -757,7 +799,14 @@ async def test_replay_seek_coalesces_position_z_frames(hass, tmp_path: Path) -> 
     ]
 
     assert position_frames == [_position_payload("1", 4)]
-    assert ("TrackStatus", {"Status": "1"}) in bus.injected
+    assert (
+        "TrackStatus",
+        {
+            "Status": "1",
+            "_f1_source_time": 15.0,
+            "_f1_source_domain": "replay_offset",
+        },
+    ) in bus.injected
 
     await controller.async_stop()
 
@@ -972,6 +1021,7 @@ async def test_championship_prediction_preserves_driver_identity_on_sparse_updat
 
     await coordinator.async_config_entry_first_refresh()
     live_state.set_state(True, "replay")
+    bus.inject_message("SessionInfo", {"Key": 1, "Type": "Race", "Name": "Race"})
 
     bus.inject_message(
         "DriverList",

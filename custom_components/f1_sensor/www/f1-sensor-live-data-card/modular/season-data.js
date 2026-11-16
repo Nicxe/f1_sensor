@@ -1,6 +1,6 @@
 const version = new URL(import.meta.url).searchParams.get('v');
 const load = path => import(`${path}${version ? `?v=${encodeURIComponent(version)}` : ''}`);
-const [{ source, array, sessionContext }, { number, positiveInteger, seconds, positionChange, safeImageUrl }, { normalizeTeamName }] = await Promise.all([
+const [{ source, array, sessionContext }, { number, positiveInteger, seconds, positionChange, safeImageUrl, archiveSessionStarted, latestArchiveSession }, { normalizeTeamName }] = await Promise.all([
   load('./data.js'), load('./semantics.js'), load('../platform/branding.js'),
 ]);
 const { defaultFields } = await load('./catalog.js');
@@ -110,8 +110,11 @@ function predictions(hass, entry, teams) {
   const rows = Array.isArray(collection) ? records(collection) : Object.entries(collection ?? {}).filter(([, item]) => item && typeof item === 'object').map(([id, item]) => ({ source_id: id, ...item }));
   const session = sessionContext(hass, entry);
   // A restored projection outside an active race must not look like official standings.
-  const active = session.active && /^(race|sprint)$/i.test(session.name ?? '');
-  return { source: selected, active, rows: active && selected.status === 'available' ? rows : [] };
+  const status = selected.attributes.prediction_status ?? null;
+  const active = status !== null
+    ? Boolean(selected.attributes.session_key) && /^(race|sprint)$/i.test(selected.attributes.session_type ?? '')
+    : session.active && /^(race|sprint)$/i.test(session.name ?? '');
+  return { source: selected, active, status, rows: active && selected.status === 'available' && (status === null || status === 'ready') ? rows : [] };
 }
 export function standingsModel(hass, entry, module, focus = {}) {
   const teams = module.options.competitors === 'teams';
@@ -136,7 +139,7 @@ export function standingsModel(hass, entry, module, focus = {}) {
     };
   }));
   return { ...selectRows(rows, module, teams ? { ...focus, driver: '' } : focus), allRows: rows, source: selected,
-    projection: { requested: module.fields.some(id => id.startsWith('predicted_')) || module.options.sort.startsWith('predicted_'), available: projection.rows.length > 0, source: projection.source, active: projection.active },
+    projection: { requested: module.fields.some(id => id.startsWith('predicted_')) || module.options.sort.startsWith('predicted_'), available: projection.rows.length > 0, source: projection.source, active: projection.active, status: projection.status },
     context: { season: key(attrs.season), round: key(attrs.round), source: 'Jolpica', updated: selected.updated_at, updatedKind: 'ha_state' }, teams,
   };
 }
@@ -237,16 +240,15 @@ export function archivePlan(module, entryId, read, now = Date.now()) {
   const catalogQuery = { type: 'f1_sensor/history/catalog', entry_id: entryId, year };
   const catalogState = read(catalogQuery), catalog = catalogState.status === 'ready' ? catalogState.data?.payload : null;
   const meetings = number(catalog?.year) === year ? records(catalog.meetings).filter(item => positiveInteger(item.round) && Number(item.round) <= 99) : [];
-  const started = item => Number.isFinite(Date.parse(item.start)) && Date.parse(item.start) <= now;
   const eligible = item => options.content === 'classification' ? ['race', 'sprint', 'qualifying'].includes(item.kind) : item.kind === 'race';
   const chronological = meetings.toSorted((a, b) => Number(b.round) - Number(a.round));
   const meeting = pinned ? meetings.find(item => key(item.meeting_key) === pinned.meeting_key) ?? null
     : options.round ? meetings.find(item => key(item.round) === options.round)
-    : chronological.find(item => records(item.sessions).some(session => eligible(session) && started(session))) ?? null;
+    : chronological.find(item => records(item.sessions).some(session => eligible(session) && archiveSessionStarted(session, item.circuit_timezone, now))) ?? null;
   const sessions = records(meeting?.sessions).filter(item => text(item.session_key));
   const requestedSession = pinned?.session_key ?? options.session_key;
   const session = requestedSession ? sessions.find(item => key(item.session_key) === requestedSession) ?? null
-    : sessions.filter(item => eligible(item) && started(item)).toSorted((a, b) => Date.parse(b.start) - Date.parse(a.start))[0] ?? null;
+    : latestArchiveSession(sessions.filter(eligible), meeting?.circuit_timezone, now);
   const requests = [catalogQuery], unsupported = Boolean(session && !eligible(session));
   let resultQuery = null, lapQuery = null;
   if (session && !unsupported) {

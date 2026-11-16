@@ -768,6 +768,33 @@ export const entityCatalog = [
     ]
   },
   {
+    "id": "session-rain-risk",
+    "title": "Session Rain Risk",
+    "href": "/entities/session-rain-risk",
+    "category": "Schedule and weather",
+    "entityIds": [
+      "sensor.f1_session_rain_risk"
+    ],
+    "description": "The rain-risk percentage published by Race Control for the current session.",
+    "availability": "Public live / replay",
+    "scope": "live",
+    "keywords": "rain risk percentage probability session_key meeting_key session_name utc message source race_control practice qualifying sprint forecast unknown unavailable 0 100",
+    "related": [
+      {
+        "label": "Original Race Control messages",
+        "href": "/entities/race-control"
+      },
+      {
+        "label": "Track weather observations",
+        "href": "/entities/track-weather"
+      },
+      {
+        "label": "Weather provider forecast",
+        "href": "/entities/weather-summary"
+      }
+    ]
+  },
+  {
     "id": "session-status",
     "title": "Session Status",
     "href": "/entities/session-status",

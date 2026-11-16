@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+import re
 from zoneinfo import ZoneInfo
 
 from homeassistant.core import HomeAssistant
@@ -43,8 +44,20 @@ def _parse_lap_time_to_secs(t: str) -> float:
 
 
 def _combine_date_time(
-    date_str: str | None, time_str: str | None, *, force_utc: bool = False
+    date_str: str | None,
+    time_str: str | None,
+    *,
+    force_utc: bool = False,
+    require_time: bool = False,
 ) -> str | None:
+    if require_time:
+        if (start := _published_session_start(date_str, time_str)) is None:
+            return None
+        return (
+            start.astimezone(datetime.UTC).isoformat()
+            if force_utc
+            else start.isoformat()
+        )
     if not date_str:
         return None
     if not time_str:
@@ -56,6 +69,33 @@ def _combine_date_time(
             dt = dt.astimezone(datetime.UTC)
         return dt.isoformat()
     except Exception:
+        return None
+
+
+def _published_date(value: object) -> str | None:
+    """Preserve only a real, fully specified calendar date."""
+    if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        return None
+    try:
+        return datetime.date.fromisoformat(value).isoformat()
+    except ValueError:
+        return None
+
+
+def _published_session_start(
+    date_value: object, time_value: object
+) -> datetime.datetime | None:
+    """Read a published, zoned clock time without inventing a missing start."""
+    date = _published_date(date_value)
+    if date is None or not isinstance(time_value, str):
+        return None
+    if not re.fullmatch(
+        r"(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})", time_value
+    ):
+        return None
+    try:
+        return datetime.datetime.fromisoformat(f"{date}T{time_value}")
+    except ValueError:
         return None
 
 

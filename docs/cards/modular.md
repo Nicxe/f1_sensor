@@ -62,6 +62,43 @@ Data availability depends on the source and session. Adding a module does not cr
 
 Use the focused module guides below for options, examples, waiting states and data interpretation. Shared card settings have their own [configuration reference](/cards/shared-options).
 
+### Hide session details and explanations
+
+Select a module and open **Module options**. Turn off **Show session and event details** to hide the session or event line above its content. Each module has its own setting, so you can show the session once and hide repeated lines in the other modules.
+
+Turn off **Show explanations** to hide help text below timing tables and charts. Analysis modules that already have **Show About section** keep that setting for their explanations. Separate content legends, such as the tyre compound legend, keep their own controls. Data availability and connection messages remain visible.
+
+For **Track map**, turn off **Show explanations** to hide the notes below the map, including the previous-season baseline note and the expandable **Track markings** list. **Show experimental notice** controls the experimental text separately while explanations are enabled. Turn off **Show driver positions and status** to hide the expandable driver list. These choices keep the selected track markings and car markers on the map. **Show map status summary** controls the map's own session and status row; lap progress, track status, driver count and the source footer have separate choices.
+
+All these options are on by default. In YAML, place them under the module's `options`:
+
+```yaml
+type: custom:f1-sensor-card
+modules:
+  - id: compact-timing
+    type: timing
+    options:
+      show_context: false
+      show_explanation: false
+  - id: track-map
+    type: map
+    options:
+      show_context: false
+      show_explanation: false
+      show_experimental_notice: false
+      show_driver_list: false
+```
+
+### Choose a minimal Timing view
+
+In **Timing → Module appearance**, set **Module presentation** to **Compact** for colored timing text, smaller tyre marks and lighter table decoration. Choose **Follow card** to use **Card presentation** from **Appearance**. The same card setting supports every module, including results, schedules, analysis, charts and maps. Existing cards keep their current presentation and columns.
+
+Under **Module options**, turn on **Overview rows with expandable details** to show the main race or qualifying values in fewer columns and combine GAP/INT. Open a driver for the remaining selected fields and recent laps. Overview rows apply at any card width. **Compact** only changes presentation and retains your chosen columns.
+
+Choose **Combined column** to show INT and GAP together. Set the primary value in the editor when building the layout; combined columns and overview rows do not add a GAP/INT switch to the card. **Qualifying times to show** can follow the current Q/SQ part or show a chosen part while keeping your saved column choices.
+
+Under **Content and columns**, choose **Position** for the position alone or **Position + change** for the position and places gained or lost from the confirmed starting grid for the same session. The default is **Position**. Driver status badges, dimmed retired rows and tyre age beside the compound remain separate choices. Penalty badges follow recorded decisions; a pit visit alone does not prove that a penalty was served. See [compact Timing options](/cards/modular-styling#choose-a-minimal-timing-presentation) for the settings and defaults.
+
 ### Follow push laps
 
 [Follow push laps](/cards/timing#follow-push-laps) to group or filter likely attempts during practice and qualifying.
@@ -74,6 +111,35 @@ Use the focused module guides below for options, examples, waiting states and da
 
 [Configure Pit stops](/cards/pit-stops) and keep reported visits separate from timed stop records.
 
+### Show tyre history
+
+Add **Tyres**, open **Module options** and choose **History** under **Tyre content**. Each driver gets a horizontal timeline with one segment per known stint. Completed segments remain visible after a tyre change. All drivers share the same session-lap scale; each driver's bar grows with their own completed laps.
+
+Select a driver to expand all their known stints directly below the row. Select the same driver again to close the details. The table shows the compound, race-lap range, laps driven in that stint, tyre age before fitting and total tyre age. For a completed stint, the total is the age at removal; for the current stint, it is the latest reported age.
+
+A used tyre can start with earlier mileage. For example, **14** laps in this stint plus **3** before fitting means **17** total. Those earlier three laps do not lengthen the segment on the session-lap timeline. Compound letters accompany the colours, and used tyres have a pattern as well.
+
+**Show lap progress** controls the **Lap 44 / 71** text above the timeline and is on by default. Turn it off to hide that text while keeping the lap scale and stint bars.
+
+**Show compound legend** controls the explanation below the timeline and is on by default. Turn it off to remove the complete legend row. In YAML, configure these choices as follows:
+
+```yaml
+type: custom:f1-sensor-card
+modules:
+  - id: tyre-history
+    type: tyres
+    options:
+      content: history
+      show_lap_progress: false
+      show_legend: true
+```
+
+:::info
+The view shows known history for the selected session. Connecting late, restarting the integration or receiving an incomplete source snapshot can leave earlier stints or lap boundaries unavailable. Unknown values appear as **—**, not zero. **0** before fitting means a known starting age of zero laps. See [Current Tyres](/entities/current-tyres) for the underlying fields.
+:::
+
+During replay, seeking restores the recorded history up to the selected position. Seeking backwards removes later stints from the view. When an older replay cache is loaded, the integration rebuilds its history index from the cached recording; it can only restore observations present in that recording. If **Freeze view** is active, choose **Resume** after seeking to display the history for the new position.
+
 ### Compare practice lap times
 
 [Compare practice best laps](/cards/timing#compare-practice-lap-times) against the fastest valid session best.
@@ -85,6 +151,12 @@ Use the focused module guides below for options, examples, waiting states and da
 ### Show minisectors
 
 [Add minisector status](/cards/minisectors) beside sector times or in a separate module. The source does not provide a time for each minisector.
+
+### Show session rain risk
+
+Select **Session rain risk** in an **Overview** or **Weather** module's fields. The value shows Race Control's published percentage for the identified session, such as **30 % · Practice 3**. It remains hidden when no matching assessment is available and shows a published **0 %**.
+
+This field is separate from the weather provider's forecast probability and the track's rain-detection indicator. Open its details for the original message and timestamp. See [Session Rain Risk](/entities/session-rain-risk) for availability and session behavior.
 
 ### Compare driver details
 
@@ -99,6 +171,68 @@ Use the focused module guides below for options, examples, waiting states and da
 <span id="give-the-card-enough-space" />
 
 [Arrange columns and card width](/cards/layout#arrange-modules-in-columns), including [giving the card enough space](/cards/layout#give-the-card-enough-space). Home Assistant sets the outer width; module columns fit inside it.
+
+## Stack modules beside a taller module
+
+Choose **Independent stacks** as the card's layout to place several modules
+under each other beside a taller module. All stacks belong to the same
+**F1 Sensor** card.
+
+For example, give **Timing** three of four columns and place **Tyre history**
+and **Track map** in a stack using the remaining column. Track map starts
+directly below Tyre history, even while Timing continues beside both. An
+**Overview** stack can span the full card width above them.
+
+Open **Modules → Arrange modules** to move a module into a stack, reorder the
+modules within it or change the stack's width. You can drag from a module's
+handle into the marked position in a stack, or select the module and use
+**Move to stack**. **Undo** reverses a completed arrangement change.
+
+Each module keeps its natural height. Expanding tyre history pushes the next
+module down within its own stack. Stack groups have no visible frame in the
+finished card. Hidden modules leave no empty slot. On narrow cards, stacks
+move below each other and keep their internal order. Home Assistant still
+controls the [space available to the whole card](/cards/layout#give-the-card-enough-space).
+
+<details>
+  <summary>Optional YAML example</summary>
+
+```yaml
+type: custom:f1-sensor-card
+layout: stacks
+columns: 4
+modules:
+  - id: overview
+    type: overview
+  - id: timing
+    type: timing
+  - id: tyres
+    type: tyres
+    options:
+      content: history
+  - id: track-map
+    type: map
+stacks:
+  - id: overview-stack
+    column_span: full
+    modules:
+      - overview
+  - id: timing-stack
+    column_span: 3
+    modules:
+      - timing
+  - id: side-stack
+    column_span: 1
+    modules:
+      - tyres
+      - track-map
+```
+
+The `modules` list defines the content once. Each stack refers to those saved
+module ids in its display order. Set `column_span` on the stack to choose its
+width; all modules in that stack use that width.
+
+</details>
 
 ## Choose and lock a session
 
