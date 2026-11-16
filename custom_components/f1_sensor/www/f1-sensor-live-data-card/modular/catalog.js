@@ -484,6 +484,7 @@ export const MODULES = {
     direction: { type: 'enum', values: ['asc', 'desc'], default: 'asc', label: 'Direction' },
     rows: { type: 'integer', min: 1, max: 100, default: 30, label: 'Maximum rows' },
     show_compound_name: { type: 'boolean', default: true, label: 'Show compound name' },
+    show_lap_progress: { type: 'boolean', default: true, label: 'Show lap progress' },
     show_legend: { type: 'boolean', default: true, label: 'modular.tyre_history_legend' },
     best_times_limit: { type: 'integer', min: 1, max: 500, default: 3, label: 'Fastest stints per compound' },
   }, ['current_tyres', 'tyre_statistics', 'driver_list'], { spoiler: true, focus: ['driver', 'team'] }),

@@ -464,7 +464,7 @@ export class F1SensorCardEditor extends LitElement {
         if (module.type === 'telemetry' && key === 'selected') return this.telemetryPicker(module);
         if (module.type === 'race_control' && ['limit', 'order'].includes(key) && module.options.presentation === 'latest_message') return '';
         if (module.type === 'team_radio' && key === 'messages_to_show' && module.options.presentation === 'latest_message') return '';
-        if (module.type === 'tyres' && (key === 'show_legend' && module.options.content !== 'history' || ['show_compound_name', 'best_times_limit'].includes(key) && module.options.content === 'history')) return '';
+        if (module.type === 'tyres' && (['show_legend', 'show_lap_progress'].includes(key) && module.options.content !== 'history' || ['show_compound_name', 'best_times_limit'].includes(key) && module.options.content === 'history')) return '';
         if (module.type === 'tyres' && module.options.content === 'history' && key === 'sort') return this.select(title, ['position', 'driver', 'tyre_age'].includes(value) ? value : 'position', ['position', 'driver', 'tyre_age'].map(value => [value, this.optionName(value)]), value => this.setOption(key, value));
         if (module.type === 'strategy' && key === 'presentation' && module.options.content !== 'stints') return '';
         if (module.type === 'strategy' && key === 'minimum_clean_laps' && !['stints', 'compound_comparison'].includes(module.options.content)) return '';

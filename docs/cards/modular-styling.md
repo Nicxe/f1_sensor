@@ -82,6 +82,8 @@ spacing with the current timing presentation.
 
 Existing saved cards keep their current presentation. The separate-column **Show live gap toggle** remains available for those layouts. Compact only changes presentation and retains your chosen columns. Overview rows move secondary fields into expandable details; qualifying focus remains a separate choice.
 
+Compact Timing fits the position, driver and GAP/INT columns to their content and aligns their headings and values to the left. Sector and lap-time columns use the remaining width and align their values to the right; your chosen column order stays unchanged.
+
 Under **Content and columns**, choose **Position** for the position alone or **Position + change** to include places gained or lost from the confirmed starting grid for the same race or sprint. Selecting either column replaces the other in the same location. **Position** remains the default. Existing saved position-change choices keep their column location. The same alternatives are available under **Driver details**.
 
 Under **Content and columns**, replace **S1**, **S2** or **S3** with the corresponding **S1 with minisectors**, **S2 with minisectors** or **S3 with minisectors** field. Compact presentation aligns sector times at the top and shows small minisector indicators underneath. Plain sector fields remain the default.
