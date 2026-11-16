@@ -1,0 +1,463 @@
+{
+  "source": "https://livetiming.formula1.com/static/2026/2026-11-01_Mexico_City_Grand_Prix/2026-11-01_Race/",
+  "session_key": 11404,
+  "meeting_key": 1298,
+  "session_started_at_ms": 802499,
+  "scope": "Recorded LAW30 tyre/count/pit fields only; timestamps and selected values unchanged; intermediate laps 4-9 omitted",
+  "frames": [
+    {
+      "t": 1047,
+      "s": "TimingData",
+      "p": {
+        "Lines": {
+          "30": {
+            "InPit": true,
+            "PitOut": false,
+            "Retired": false,
+            "Stopped": false
+          }
+        }
+      }
+    },
+    {
+      "t": 3563,
+      "s": "SessionStatus",
+      "p": {
+        "Status": "Inactive",
+        "Started": "Inactive"
+      }
+    },
+    {
+      "t": 4043,
+      "s": "LapCount",
+      "p": {
+        "CurrentLap": 1,
+        "TotalLaps": 71
+      }
+    },
+    {
+      "t": 309238,
+      "s": "TimingAppData",
+      "p": {
+        "Lines": {
+          "30": {
+            "Stints": {
+              "0": {
+                "LapFlags": 0,
+                "Compound": "MEDIUM",
+                "New": "true",
+                "TyresNotChanged": "0",
+                "TotalLaps": 0,
+                "StartLaps": 0
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "t": 675535,
+      "s": "TimingData",
+      "p": {
+        "Lines": {
+          "30": {
+            "InPit": false
+          }
+        }
+      }
+    },
+    {
+      "t": 772674,
+      "s": "TimingData",
+      "p": {
+        "Lines": {
+          "30": {
+            "InPit": true
+          }
+        }
+      }
+    },
+    {
+      "t": 802499,
+      "s": "SessionStatus",
+      "p": {
+        "Status": "Started",
+        "Started": "Started"
+      }
+    },
+    {
+      "t": 814258,
+      "s": "TimingData",
+      "p": {
+        "Lines": {
+          "30": {
+            "InPit": false
+          }
+        }
+      }
+    },
+    {
+      "t": 834335,
+      "s": "TimingAppData",
+      "p": {
+        "Lines": {
+          "30": {
+            "Stints": {
+              "1": {
+                "LapFlags": 0,
+                "Compound": "MEDIUM",
+                "New": "true",
+                "TyresNotChanged": "1",
+                "TotalLaps": 0,
+                "StartLaps": 0
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "t": 887932,
+      "s": "LapCount",
+      "p": {
+        "CurrentLap": 2
+      }
+    },
+    {
+      "t": 900260,
+      "s": "TimingData",
+      "p": {
+        "Lines": {
+          "30": {
+            "NumberOfLaps": 1
+          }
+        }
+      }
+    },
+    {
+      "t": 904313,
+      "s": "TimingAppData",
+      "p": {
+        "Lines": {
+          "30": {
+            "Stints": {
+              "0": {
+                "TotalLaps": 1
+              },
+              "1": {
+                "TotalLaps": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "t": 969180,
+      "s": "LapCount",
+      "p": {
+        "CurrentLap": 3
+      }
+    },
+    {
+      "t": 982706,
+      "s": "TimingData",
+      "p": {
+        "Lines": {
+          "30": {
+            "NumberOfLaps": 2
+          }
+        }
+      }
+    },
+    {
+      "t": 984320,
+      "s": "TimingAppData",
+      "p": {
+        "Lines": {
+          "30": {
+            "Stints": {
+              "0": {
+                "TotalLaps": 2
+              },
+              "1": {
+                "TotalLaps": 2
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "t": 984555,
+      "s": "TimingAppData",
+      "p": {
+        "Lines": {
+          "30": {
+            "Stints": {
+              "1": {
+                "LapTime": "1:22.376",
+                "LapNumber": 2,
+                "LapFlags": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "t": 1050040,
+      "s": "LapCount",
+      "p": {
+        "CurrentLap": 4
+      }
+    },
+    {
+      "t": 1065663,
+      "s": "TimingData",
+      "p": {
+        "Lines": {
+          "30": {
+            "NumberOfLaps": 3
+          }
+        }
+      }
+    },
+    {
+      "t": 1069316,
+      "s": "TimingAppData",
+      "p": {
+        "Lines": {
+          "30": {
+            "Stints": {
+              "0": {
+                "TotalLaps": 3
+              },
+              "1": {
+                "TotalLaps": 3
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "t": 1130938,
+      "s": "LapCount",
+      "p": {
+        "CurrentLap": 5
+      }
+    },
+    {
+      "t": 1211668,
+      "s": "LapCount",
+      "p": {
+        "CurrentLap": 6
+      }
+    },
+    {
+      "t": 1292945,
+      "s": "LapCount",
+      "p": {
+        "CurrentLap": 7
+      }
+    },
+    {
+      "t": 1396957,
+      "s": "LapCount",
+      "p": {
+        "CurrentLap": 8
+      }
+    },
+    {
+      "t": 1503157,
+      "s": "LapCount",
+      "p": {
+        "CurrentLap": 9
+      }
+    },
+    {
+      "t": 1583997,
+      "s": "LapCount",
+      "p": {
+        "CurrentLap": 10
+      }
+    },
+    {
+      "t": 1664668,
+      "s": "LapCount",
+      "p": {
+        "CurrentLap": 11
+      }
+    },
+    {
+      "t": 1695145,
+      "s": "TimingData",
+      "p": {
+        "Lines": {
+          "30": {
+            "NumberOfLaps": 10
+          }
+        }
+      }
+    },
+    {
+      "t": 1699391,
+      "s": "TimingAppData",
+      "p": {
+        "Lines": {
+          "30": {
+            "Stints": {
+              "0": {
+                "TotalLaps": 10
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "t": 1746233,
+      "s": "LapCount",
+      "p": {
+        "CurrentLap": 12
+      }
+    },
+    {
+      "t": 1778177,
+      "s": "TimingData",
+      "p": {
+        "Lines": {
+          "30": {
+            "InPit": true,
+            "NumberOfPitStops": 1
+          }
+        }
+      }
+    },
+    {
+      "t": 1780927,
+      "s": "TimingData",
+      "p": {
+        "Lines": {
+          "30": {
+            "NumberOfLaps": 11
+          }
+        }
+      }
+    },
+    {
+      "t": 1784385,
+      "s": "TimingAppData",
+      "p": {
+        "Lines": {
+          "30": {
+            "Stints": {
+              "0": {
+                "TotalLaps": 11
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "t": 1800949,
+      "s": "TimingData",
+      "p": {
+        "Lines": {
+          "30": {
+            "InPit": false,
+            "PitOut": true
+          }
+        }
+      }
+    },
+    {
+      "t": 1804397,
+      "s": "TimingAppData",
+      "p": {
+        "Lines": {
+          "30": {
+            "Stints": {
+              "1": {
+                "Compound": "UNKNOWN",
+                "New": "false",
+                "TotalLaps": 0
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "t": 1814390,
+      "s": "TimingAppData",
+      "p": {
+        "Lines": {
+          "30": {
+            "Stints": {
+              "1": {
+                "Compound": "SOFT",
+                "TyresNotChanged": "0",
+                "TotalLaps": 3,
+                "StartLaps": 3
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "t": 1827293,
+      "s": "LapCount",
+      "p": {
+        "CurrentLap": 13
+      }
+    },
+    {
+      "t": 1828919,
+      "s": "TimingData",
+      "p": {
+        "Lines": {
+          "30": {
+            "PitOut": false
+          }
+        }
+      }
+    },
+    {
+      "t": 1882265,
+      "s": "TimingData",
+      "p": {
+        "Lines": {
+          "30": {
+            "NumberOfLaps": 12
+          }
+        }
+      }
+    },
+    {
+      "t": 1884393,
+      "s": "TimingAppData",
+      "p": {
+        "Lines": {
+          "30": {
+            "Stints": {
+              "1": {
+                "TotalLaps": 4
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "t": 1908234,
+      "s": "LapCount",
+      "p": {
+        "CurrentLap": 14
+      }
+    }
+  ]
+}

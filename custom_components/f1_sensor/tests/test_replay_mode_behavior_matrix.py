@@ -694,9 +694,9 @@ async def test_replay_manager_selection_load_unload_and_cache_helpers(
     output = tmp_path / "lines.txt"
     manager._write_lines_file(output, ["a", "b"])
     assert output.read_text(encoding="utf-8") == "a\nb\n"
-    assert manager._parse_timestamp_to_ms("bad") == 0
+    assert manager._parse_timestamp_to_ms("bad") is None
     assert manager._parse_timestamp_to_ms("01:02:03") == 3_723_000
-    assert manager._parse_timestamp_to_ms("01:02:bad") == 0
+    assert manager._parse_timestamp_to_ms("01:02:bad") is None
     assert manager._parse_datetime(None, None) is None
     assert manager._parse_datetime("bad", None) is None
     assert manager._parse_datetime("2026-09-01T12:00:00Z", None) == datetime(
@@ -808,6 +808,13 @@ async def test_cached_replay_index_is_reused_without_downloading(
         json.dumps(
             {
                 "cache_version": replay_mode.CACHE_VERSION,
+                "normalization_version": replay_mode.NORMALIZATION_VERSION,
+                "identity_version": replay_mode.ARCHIVE_IDENTITY_VERSION,
+                "session_id": session.unique_id,
+                "archive_identity": {
+                    "status": "missing",
+                    "session_id": session.unique_id,
+                },
                 "total_frames": 3,
                 "duration_ms": 20,
                 "session_started_at_ms": 1,

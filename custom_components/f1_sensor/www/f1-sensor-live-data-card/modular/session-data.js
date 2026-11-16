@@ -1,6 +1,6 @@
 const version = new URL(import.meta.url).searchParams.get('v');
 const load = path => import(`${path}${version ? `?v=${encodeURIComponent(version)}` : ''}`);
-const [{ source, array, sessionContext }, { number, positiveInteger, seconds, compoundMeta }, { selectRows }] = await Promise.all([
+const [{ source, array, sessionContext, sessionPhase }, { number, positiveInteger, seconds, compoundMeta }, { selectRows }] = await Promise.all([
   load('./data.js'), load('./semantics.js'), load('./season-data.js'),
 ]);
 const object = value => value && typeof value === 'object' && !Array.isArray(value) ? value : {};
@@ -26,9 +26,30 @@ function context(hass, entry, selected) {
 }
 const compoundMatches = (value, module) => !module.options.compounds.length || module.options.compounds.includes(compoundMeta(value).key ?? 'UNKNOWN');
 
+function tyreHistory(item, ended) {
+  const rn = key(item.racing_number);
+  const stints = unique(records(item.stints).map(raw => {
+    const index = count(raw.stint_index);
+    if (index === null) return {};
+    const first = positiveInteger(raw.first_lap), last = positiveInteger(raw.last_lap), laps = count(raw.stint_laps);
+    const current = typeof raw.is_current === 'boolean' ? raw.is_current : null;
+    return { id: `${rn}:${index}`, stint_index: index,
+      tyre: text(raw.compound), tyre_new: typeof raw.new === 'boolean' ? raw.new : null,
+      first_lap: first, last_lap: last, stint_laps: laps, start_age: count(raw.tyre_age_at_start), total_age: count(raw.total_laps),
+      is_current: current, status: ended || current === false ? 'completed' : current === true ? 'current' : null,
+      coverage: raw.coverage === 'complete' ? 'complete' : 'partial',
+      drawable: first !== null && last !== null && last >= first && laps !== 0,
+    };
+  })).sort((a, b) => a.stint_index - b.stint_index);
+  // Feed indexes can skip phantom/continuation entries. Only a complete history
+  // anchored at lap one establishes each physical set's ordinal in the session.
+  const numbered = item.stint_history_complete === true && stints[0]?.first_lap === 1;
+  return stints.map((stint, index) => ({ ...stint, stint_number: numbered ? index + 1 : null }));
+}
+
 export function tyresModel(hass, entry, module, focus = {}) {
-  const statistics = module.options.content === 'statistics';
-  const selected = source(hass, entry, statistics ? 'tyre_statistics' : 'current_tyres'), attrs = selected.attributes;
+  const statistics = module.options.content === 'statistics', history = module.options.content === 'history';
+  const selected = source(hass, entry, statistics ? 'tyre_statistics' : 'current_tyres'), attrs = history && selected.status !== 'available' ? {} : selected.attributes;
   const people = roster(hass, entry);
   let rows;
   if (statistics) {
@@ -40,14 +61,31 @@ export function tyresModel(hass, entry, module, focus = {}) {
       return { id: compound, tyre: compound, compound_best: runs[0]?.time ?? null, compound_gap: number(object(attrs.deltas)[compound]),
         compound_laps: count(item.total_laps), new_sets: count(item.sets_used), total_stints: count(item.sets_used_total), best_runs: runs };
     });
-  } else rows = records(attrs.drivers).map(item => ({ ...person(people, key(item.racing_number), item), position: positiveInteger(item.position),
-    tyre: text(item.compound ?? item.compound_short), tyre_age: count(item.stint_laps), tyre_new: typeof item.new === 'boolean' ? item.new : null }));
-  rows = unique(rows).filter(row => compoundMatches(row.tyre, module));
+  } else {
+    const ended = history && sessionPhase(hass, entry) === 'finished';
+    rows = records(attrs.drivers).map(item => {
+      const row = { ...person(people, key(item.racing_number), item), position: positiveInteger(item.position),
+        tyre: text(item.compound ?? item.compound_short), tyre_age: count(item.stint_laps), tyre_new: typeof item.new === 'boolean' ? item.new : null };
+      if (!history) return row;
+      const stints = tyreHistory(item, ended || item.retired === true), current = stints.findLast(stint => stint.is_current === true) ?? (ended ? stints.at(-1) : null);
+      return { ...row, tyre: current?.tyre ?? row.tyre, tyre_age: current ? current.total_age : row.tyre_age,
+        stints, completed_laps: count(item.completed_laps), retired: typeof item.retired === 'boolean' ? item.retired : null,
+        in_pit: typeof item.in_pit === 'boolean' ? item.in_pit : null, history_complete: item.stint_history_complete === true };
+    });
+  }
+  const allRows = unique(rows);
+  rows = allRows.filter(row => history && row.stints.length ? row.stints.some(stint => compoundMatches(stint.tyre, module)) : compoundMatches(row.tyre, module));
+  // The axis belongs to the session and must not change when focus, compounds or
+  // row limits hide competitors. Tyre age before fitting never extends a bar.
+  const axisTotal = positiveInteger(attrs.lap_total), observed = history ? allRows.flatMap(row => [row.completed_laps, ...row.stints.map(stint => stint.last_lap)]).filter(value => value !== null) : [];
+  const axisMax = history ? Math.max(axisTotal ?? 0, ...observed) || null : null;
   // Aggregate compound data cannot be filtered by a driver: the source has already
   // combined all competitors. Preserve pins for returning to the current-tyre view.
-  const options = statistics ? { ...module.options, sort: ['position', 'driver', 'tyre_age'].includes(module.options.sort) ? 'compound_best' : module.options.sort } : module.options;
-  const selection = statistics ? { ...module, options, driver: '', team: '' } : module;
-  return { ...selectRows(rows, selection, statistics ? {} : focus), allRows: rows, source: selected, statistics,
+  const options = statistics ? { ...module.options, sort: ['position', 'driver', 'tyre_age'].includes(module.options.sort) ? 'compound_best' : module.options.sort }
+    : history ? { ...module.options, sort: ['position', 'driver', 'tyre_age'].includes(module.options.sort) ? module.options.sort : 'position' } : module.options;
+  const selection = statistics ? { ...module, options, driver: '', team: '' } : { ...module, options };
+  return { ...selectRows(rows, selection, statistics ? {} : focus), allRows: rows, source: selected, statistics, history,
+    ...(history ? { axis: { min: 0, max: axisMax, current: count(attrs.lap_current), total: axisTotal } } : {}),
     waiting: attrs.status === 'waiting_for_compound_data', context: context(hass, entry, selected), countKind: statistics ? 'compounds' : 'competitors' };
 }
 

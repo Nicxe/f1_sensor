@@ -56,7 +56,9 @@ def test_feature_plan_static_only_has_zero_live_demand() -> None:
     assert plan.stream_reasons == {}
 
 
-@pytest.mark.parametrize("feature", ["driver_positions", "pitstops"])
+@pytest.mark.parametrize(
+    "feature", ["driver_positions", "pitstops", "championship_prediction"]
+)
 def test_session_scoped_features_request_identity_without_session_sensor(
     feature,
 ) -> None:

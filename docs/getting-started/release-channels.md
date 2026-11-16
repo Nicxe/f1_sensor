@@ -24,7 +24,7 @@ Do not use beta or dev builds as your only production Home Assistant installatio
 Stable releases are published from the `main` branch.
 This is the recommended channel for daily use, dashboards, automations, and household routines that need predictable behavior.
 
-Install stable releases through [HACS](/getting-started/installation) or from the latest non-pre-release package on the GitHub releases page.
+Install stable releases through [Marketplace or HACS](/getting-started/installation) or from the latest non-pre-release package on the GitHub releases page.
 
 ## Beta channel
 
@@ -38,16 +38,15 @@ use this channel. It follows the `beta` branch and can describe features that
 are not available in the current stable release. The banner and navigation
 identify it as beta documentation and link back to the stable documentation.
 
-To install or update to beta through HACS:
+To receive beta updates in Home Assistant 2026.11 or later:
 
-1. Open **HACS** in Home Assistant.
-2. Go to **Integrations**.
-3. Open **F1 Sensor**.
-4. Open the three-dot menu.
-5. Select **Redownload**.
-6. Enable **Show beta versions** if the beta release is not visible.
-7. Select the latest beta version.
-8. Restart Home Assistant after installation.
+1. Open **Settings → Devices & services → Marketplace** and find the **F1 Sensor** Marketplace device.
+2. Enable its **Pre-release** entity if it is disabled, then turn on the **Pre-release** switch.
+3. Install the available update from **Settings → Updates**, then restart Home Assistant.
+
+To select a specific available beta, open **Settings → Marketplace → F1 Sensor**, select the three-dot menu and choose **Install another version**. Select the beta and restart Home Assistant after installation. See the [Home Assistant Marketplace guide](https://www.home-assistant.io/integrations/marketplace/) for details.
+
+On supported Home Assistant versions before 2026.11, use HACS: open **F1 Sensor**, choose **Redownload** from its three-dot menu, select the desired beta version and restart Home Assistant.
 
 For testing guidance, see [Beta Testing](/help/beta-tester).
 
@@ -58,7 +57,7 @@ channel. Its planned features are complete, and testing focuses on finding
 problems that would prevent a stable release.
 
 Release candidates are published from the same `beta` branch and installed
-through the same HACS steps as numbered betas. They remain pre-releases intended
+through the same Marketplace or HACS steps as numbered betas. They remain pre-releases intended
 for testing. Read the beta documentation when using an RC.
 
 Every RC includes a complete list of changes since the previous stable version.
@@ -83,16 +82,9 @@ Installing the `dev` branch does not automatically activate Developer mode, and 
 
 ## Switch back to stable
 
-If a beta or dev build causes problems, switch back to the latest stable release.
+If a beta or dev build causes problems, restore a backup made before installing it. Home Assistant recommends restoring a backup rather than installing an earlier version through Marketplace, because the older version may not be compatible with data changed by the newer one.
 
-1. Open **HACS** in Home Assistant.
-2. Go to **Integrations**.
-3. Open **F1 Sensor**.
-4. Select **Redownload**.
-5. Choose the latest stable version instead of a beta version.
-6. Restart Home Assistant.
-
-If you installed files manually from a branch, replace them with the latest stable release archive from GitHub and restart Home Assistant.
+To stop receiving future beta updates, turn off the **Pre-release** switch on the F1 Sensor Marketplace device. On older Home Assistant versions, use the corresponding HACS release settings. Read the [Home Assistant Marketplace guide](https://www.home-assistant.io/integrations/marketplace/#installing-another-version) before changing versions.
 
 ## Reporting issues
 

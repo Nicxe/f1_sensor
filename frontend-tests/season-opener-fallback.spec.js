@@ -1,5 +1,6 @@
 const { test, expect } = require('@playwright/test');
 const AxeBuilder = require('@axe-core/playwright').default;
+const { catalogs, expectedMessage } = require('./localization-fixture.cjs');
 
 const provisionalNotice = 'The race date is confirmed. The start time and countdown use a provisional estimate until the start time is published.';
 
@@ -53,9 +54,20 @@ test('season opener countdown and schedule disclose the provisional start until 
 });
 
 test('untranslated provisional schedule text falls back to the English source catalog', async ({ page }) => {
+  const sparseSwedish = { ...catalogs.sv };
+  delete sparseSwedish['modular.provisional_start_time'];
+  delete sparseSwedish['modular.provisional_race_start_countdown'];
+  await page.route('**/localization/locales/sv.json*', route => route.fulfill({ json: sparseSwedish }));
   await mountFallback(page, { language: 'sv' });
   await expect(page.getByText('Provisional start time', { exact: true })).toHaveCount(2);
   await expect(page.getByText(provisionalNotice, { exact: true })).toBeVisible();
+  await expect(page.getByRole('region', { name: expectedMessage('sv', 'legacy.modular.overview'), exact: true })).toBeVisible();
+});
+
+test('provisional schedule text follows the selected Swedish catalog', async ({ page }) => {
+  await mountFallback(page, { language: 'sv' });
+  await expect(page.getByText(expectedMessage('sv', 'modular.provisional_start_time'), { exact: true })).toHaveCount(2);
+  await expect(page.getByText(expectedMessage('sv', 'modular.provisional_race_start_countdown'), { exact: true })).toBeVisible();
 });
 
 test('a replay overview does not inherit the upcoming season opener estimate', async ({ page }) => {

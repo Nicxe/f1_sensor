@@ -1,6 +1,6 @@
 const version = new URL(import.meta.url).searchParams.get('v');
 const load = path => import(`${path}${version ? `?v=${encodeURIComponent(version)}` : ''}`);
-const [{ LitElement, html, css, repeat }, configAPI, { MODULES, PRESETS, FIELDS, defaultFields, fieldDefinition, moduleFields, timingFields, INCIDENT_SIGNALS, label, moduleTitle, moduleFocusKinds }, { sharedStyles, words }, { watchEntries, HistoryResources }, { visibilityMet }] = await Promise.all([
+const [{ LitElement, html, css, repeat }, configAPI, { MODULES, PRESETS, FIELDS, defaultFields, fieldDefinition, moduleFields, timingFields, INCIDENT_SIGNALS, label, moduleTitle, moduleFocusKinds }, { sharedStyles, words }, { watchEntries, watchCardData, HistoryResources }, { visibilityMet }] = await Promise.all([
   load('../f1-lit-3.3.2.js'), load('./config.js'), load('./catalog.js'), load('./view.js'), load('./connection.js'), load('./visibility.js'),
 ]);
 await load('./arranger.js');
@@ -79,7 +79,7 @@ export class F1SensorCardEditor extends LitElement {
   get language() { return this.hass?.locale?.language ?? this.hass?.language ?? 'en'; }
   w(source, replacements = {}) { return words(this.language, source, replacements); }
   connectedCallback() { super.connectedCallback(); this.requestUpdate(); }
-  disconnectedCallback() { super.disconnectedCallback(); this.archive.close(); this.telemetry.close(); this.stopEntries?.(); this.stopEntries = null; this.connection = null; }
+  disconnectedCallback() { super.disconnectedCallback(); this.archive.close(); this.telemetry.close(); this.stopEntries?.(); this.stopEntries = null; this.connection = null; this.stopTraceRoster?.(); this.stopTraceRoster = null; this.traceRoster = null; this.traceRosterEntry = null; }
   willUpdate() {
     if (this.isConnected && this.hass?.connection && this.connection !== this.hass.connection) {
       this.stopEntries?.(); this.connection = this.hass.connection;
@@ -87,8 +87,33 @@ export class F1SensorCardEditor extends LitElement {
     }
     const entry = this.config?.f1_entry_id ? this.entries.find(item => item.entry_id === this.config.f1_entry_id) : this.entries.length === 1 ? this.entries[0] : null;
     const module = this.config?.modules.find(item => item.id === this.selected);
+    this.syncTraceRoster(entry, module);
     this.telemetry.sync(this.hass, this.isConnected && entry && module?.type === 'telemetry' && spoilerState(this.hass, entry, this.config.context.spoilers) === 'clear' ? telemetryPlan(module, entry, replayModel(this.hass, entry), query => this.telemetry.read(query)).requests : []);
     this.archive.sync(this.hass, this.isConnected && entry && module?.type === 'archive' && spoilerState(this.hass, entry, this.config.context.spoilers) === 'clear' ? archivePlan(module, entry.entry_id, query => this.archive.read(query)).requests : []);
+  }
+  syncTraceRoster(entry, module) {
+    const wanted = this.isConnected && this.hass?.connection && module?.type === 'lap_chart'
+      && module.options.metric === 'cumulative_lap_delta' && entry?.data_api?.enabled?.includes('driver_list');
+    if (!wanted || this.traceRosterEntry !== entry?.entry_id || this.traceRosterConnection !== this.hass?.connection) {
+      this.stopTraceRoster?.(); this.stopTraceRoster = null; this.traceRoster = null;
+      this.traceRosterEntry = null; this.traceRosterConnection = null;
+    }
+    if (wanted && !this.stopTraceRoster) {
+      this.traceRosterEntry = entry.entry_id; this.traceRosterConnection = this.hass.connection;
+      this.stopTraceRoster = watchCardData(this.hass, entry.entry_id, 'driver_list', state => { this.traceRoster = state; this.requestUpdate(); });
+    }
+  }
+  traceDriverChoices(entry) {
+    const selected = entry ? { ...entry, card_data: { ...entry.card_data, driver_list: this.traceRoster } } : null;
+    const drivers = array(source(this.hass, selected, 'driver_list').attributes?.drivers);
+    const choices = new Map();
+    for (const driver of drivers) {
+      const raw = driver?.racing_number;
+      if (!/^[0-9]+$/.test(String(raw)) || Number(raw) < 1 || Number(raw) > 99) continue;
+      const id = String(Number(raw));
+      if (!choices.has(id)) choices.set(id, driver.full_name || driver.name || driver.tla || id);
+    }
+    return [...choices];
   }
   updateConfig(change) {
     try {
@@ -144,6 +169,20 @@ export class F1SensorCardEditor extends LitElement {
   }
   setGroup(group, key, value) { this.updateConfig(config => { config[group][key] = value; return config; }); }
   setModule(key, value) { this.updateConfig(config => { const module = config.modules.find(module => module.id === this.selected); if (module) { module[key] = value; if (['timing', 'archive'].includes(module.type) && key === 'fields') module.options.profile = 'custom'; } return config; }); }
+  toggleField(key, fields, id, checked) {
+    let selected = checked ? [...fields, id] : fields.filter(field => field !== id);
+    const module = this.config.modules.find(module => module.id === this.selected);
+    if (checked && module?.type === 'timing' && ['position', 'position_with_change'].includes(id)) {
+      const index = fields.findIndex(field => ['position', 'position_with_change'].includes(field));
+      selected = fields.filter(field => !['position', 'position_with_change'].includes(field));
+      selected.splice(index < 0 ? selected.length : index, 0, id);
+    }
+    this.setModule(key, selected);
+  }
+  fieldName(module, id) {
+    return module.type === 'timing' && id === 'position'
+      ? this.w('modular.timing_position_column') : label(fieldDefinition(module, id), this.language) || id;
+  }
   setOption(key, value) {
     this.updateConfig(config => {
       const module = config.modules.find(module => module.id === this.selected);
@@ -198,7 +237,7 @@ export class F1SensorCardEditor extends LitElement {
   select(title, value, options, change) {
     return html`<label><span>${title}</span><select aria-label=${title} .value=${value} @change=${event => change(event.target.value)}>${options.map(([key, text]) => html`<option value=${key} .selected=${key === value}>${text}</option>`)}</select></label>`;
   }
-  check(title, value, change) { return html`<label class="check"><input type="checkbox" .checked=${value === true} @change=${event => change(event.target.checked)}><span>${title}</span></label>`; }
+  check(title, value, change, disabled = false) { return html`<label class="check"><input type="checkbox" ?disabled=${disabled} .checked=${value === true} @change=${event => change(event.target.checked)}><span>${title}</span></label>`; }
   focusPicker(kind, title, value, change, inherit = false) {
     const entry = this.config.f1_entry_id ? this.entries.find(item => item.entry_id === this.config.f1_entry_id) : this.entries.length === 1 ? this.entries[0] : null;
     const module = this.config.modules.find(item => item.id === this.selected);
@@ -338,7 +377,8 @@ export class F1SensorCardEditor extends LitElement {
     const archiveState = saved.type === 'archive' ? archiveModel(saved, entry?.entry_id, query => protectedArchive ? { status: 'ready', data: null } : this.archive.read(query)) : null;
     const archiveFields = archiveState?.fields ?? null;
     const module = saved.type === 'timing' ? { ...saved, fields: timingFields(saved, sessionContext(this.hass, entry).name) } : archiveFields ? { ...saved, fields: archiveFields } : saved;
-    const available = moduleFields(module), fields = [...module.fields, ...available.filter(id => !module.fields.includes(id))];
+    const available = moduleFields(module), tyreHistory = module.type === 'tyres' && module.options.content === 'history';
+    const fields = tyreHistory ? ['position', 'tyre_age'] : [...module.fields, ...available.filter(id => !module.fields.includes(id))];
     const index = this.config.modules.findIndex(item => item.id === module.id);
     return html`<section class="selected-module" aria-label=${this.w('modular.selected_module')}><div class="selected-module-heading"><span class="module-number" aria-hidden="true">${index + 1}</span><div><p class="scope-kicker">${this.w('modular.editing_module_value_of_length', { value: index + 1, length: this.config.modules.length })}</p><h4>${moduleTitle(module, this.language)}</h4><p class="scope-description">${this.w('modular.only_this_module_is_affected_by_the_settings_below')}</p></div></div>
       ${this.input(this.w('modular.module_title'), module.title, value => this.setModule('title', value))}
@@ -349,14 +389,18 @@ export class F1SensorCardEditor extends LitElement {
       ` : ''}
       ${this.minisectorOverlap(module) ? html`<p class="notice" role="status">${this.minisectorOverlap(module)}</p>` : ''}
       <details><summary>${this.w('modular.module_appearance')}</summary>
+        ${configAPI.COMPACT_MODULE_TYPES.includes(module.type) ? html`
+          ${this.select(this.w('modular.module_presentation'), module.appearance.presentation, [['inherit', this.w('modular.presentation_inherit')], ['current', this.w('modular.presentation_current')], ['compact', this.w('modular.compact')]], value => this.setModule('appearance', { ...module.appearance, presentation: value }))}
+          <p class="muted">${this.w('modular.compact_module_presentation_help')}</p>
+        ` : ''}
         ${this.check(this.w('modular.show_module_title'), module.show_header, value => this.setModule('show_header', value))}
         ${['timing', 'minisectors', 'results', 'standings', 'archive', 'tyres', 'pit_stops', 'strategy', 'battles', 'timeline', 'incidents'].includes(module.type) ? html`${this.check(this.w('modular.show_table_header'), module.show_table_header, value => this.setModule('show_table_header', value))}<p class="muted">${this.w('modular.hidden_column_labels_remain_available_to_screen_readers_chart_data_tables_always_keep_their')}</p>` : ''}
         <p class="muted">${this.w('modular.session_details_and_status_labels_remain_visible_when_the_title_is_hidden')}</p>
       </details>
       ${['timing', 'archive'].includes(module.type) && module.options.profile !== 'custom' && (module.type !== 'archive' || module.options.content === 'classification') ? html`<p class="muted">${this.w('modular.this_profile_chooses_the_columns_changing_a_checkbox_or_order_switches_to_custom_columns')}</p>` : ''}
-      <details open><summary>${this.w('modular.content_and_columns')}</summary>${module.type === 'map' ? html`<p class="muted"><strong>${this.w('modular.track_markings')} · ${this.w('modular.experimental')}.</strong> ${this.w('modular.track_markings_experimental_note')}</p>` : ''}${repeat(fields, id => id, id => html`<div class="field-row">
-        ${this.check(label(fieldDefinition(module, id), this.language) || id, module.fields.includes(id), checked => this.setModule('fields', checked ? [...module.fields, id] : module.fields.filter(key => key !== id)))}
-        ${module.fields.includes(id) ? html`<button aria-label=${`${this.w('modular.move_up')} ${label(fieldDefinition(module, id), this.language) || id}`} ?disabled=${module.fields.indexOf(id) === 0} @click=${() => { const fields = [...module.fields], index = fields.indexOf(id); [fields[index - 1], fields[index]] = [fields[index], fields[index - 1]]; this.setModule('fields', fields); }}>↑</button><button aria-label=${`${this.w('modular.move_down')} ${label(fieldDefinition(module, id), this.language) || id}`} ?disabled=${module.fields.indexOf(id) === module.fields.length - 1} @click=${() => { const fields = [...module.fields], index = fields.indexOf(id); [fields[index + 1], fields[index]] = [fields[index], fields[index + 1]]; this.setModule('fields', fields); }}>↓</button>` : ''}
+      <details open><summary>${this.w('modular.content_and_columns')}</summary>${module.type === 'map' ? html`<p class="muted"><strong>${this.w('modular.track_markings')} · ${this.w('modular.experimental')}.</strong> ${this.w('modular.track_markings_experimental_note')}</p>` : ''}${tyreHistory ? html`<p class="muted">${this.w('modular.tyre_history_fixed_columns')}</p>` : ''}${module.type === 'timing' ? html`<p class="muted">${this.w('modular.timing_position_change_help')}</p>` : ''}${repeat(fields, id => id, id => html`<div class="field-row">
+        ${this.check(this.fieldName(module, id), module.fields.includes(id), checked => this.toggleField('fields', module.fields, id, checked))}
+        ${module.fields.includes(id) && !tyreHistory ? html`<button aria-label=${`${this.w('modular.move_up')} ${label(fieldDefinition(module, id), this.language) || id}`} ?disabled=${module.fields.indexOf(id) === 0} @click=${() => { const fields = [...module.fields], index = fields.indexOf(id); [fields[index - 1], fields[index]] = [fields[index], fields[index - 1]]; this.setModule('fields', fields); }}>↑</button><button aria-label=${`${this.w('modular.move_down')} ${label(fieldDefinition(module, id), this.language) || id}`} ?disabled=${module.fields.indexOf(id) === module.fields.length - 1} @click=${() => { const fields = [...module.fields], index = fields.indexOf(id); [fields[index + 1], fields[index]] = [fields[index], fields[index + 1]]; this.setModule('fields', fields); }}>↓</button>` : ''}
         ${!available.includes(id) ? html`<small class="muted">${this.w('modular.saved_not_used_by_this_view')}</small>` : ''}
       </div>`)}</details>
       ${module.type === 'timing' ? html`<details><summary>${this.w('modular.driver_details')}</summary>
@@ -364,8 +408,8 @@ export class F1SensorCardEditor extends LitElement {
         <p class="muted">${this.w('modular.driver_details_help')}</p>
         ${module.options.show_driver_details ? html`
           ${this.input(this.w('modular.recent_laps_in_driver_details'), module.options.detail_laps, value => this.setOption('detail_laps', value), 'number')}
-          ${[...module.detail_fields, ...MODULES.timing.fields.filter(id => id !== 'driver' && !module.detail_fields.includes(id))].map(id => html`<div class="field-row">
-            ${this.check(label(fieldDefinition(module, id), this.language) || id, module.detail_fields.includes(id), checked => this.setModule('detail_fields', checked ? [...module.detail_fields, id] : module.detail_fields.filter(key => key !== id)))}
+          ${repeat([...module.detail_fields, ...MODULES.timing.fields.filter(id => id !== 'driver' && !module.detail_fields.includes(id))], id => id, id => html`<div class="field-row">
+            ${this.check(this.fieldName(module, id), module.detail_fields.includes(id), checked => this.toggleField('detail_fields', module.detail_fields, id, checked))}
             ${module.detail_fields.includes(id) ? html`<button aria-label=${`${this.w('modular.move_up')} ${label(fieldDefinition(module, id), this.language) || id}`} ?disabled=${module.detail_fields.indexOf(id) === 0} @click=${() => { const selected = [...module.detail_fields], index = selected.indexOf(id); [selected[index - 1], selected[index]] = [selected[index], selected[index - 1]]; this.setModule('detail_fields', selected); }}>↑</button><button aria-label=${`${this.w('modular.move_down')} ${label(fieldDefinition(module, id), this.language) || id}`} ?disabled=${module.detail_fields.indexOf(id) === module.detail_fields.length - 1} @click=${() => { const selected = [...module.detail_fields], index = selected.indexOf(id); [selected[index + 1], selected[index]] = [selected[index], selected[index + 1]]; this.setModule('detail_fields', selected); }}>↓</button>` : ''}
             ${module.detail_fields.includes(id) && module.fields.includes(id) ? html`<small class="muted">${this.w('modular.already_in_timing_table')}</small>` : ''}
           </div>`)}
@@ -373,6 +417,14 @@ export class F1SensorCardEditor extends LitElement {
       </details>` : ''}
       <details><summary>${this.w('modular.module_options')}</summary>${Object.entries(definition?.options ?? {}).map(([key, option]) => {
         const title = module.type === 'incidents' && module.options.content === 'track_limits_summary' && key === 'rows' ? this.w('modular.maximum_drivers') : label(option, this.language), value = module.options[key];
+        if (module.type === 'radar' && key === 'zoom') return html`${this.select(title, String(value), Array.from({ length: option.max - option.min + 1 }, (_, index) => { const zoom = String(option.min + index); return [zoom, zoom]; }), value => this.setOption(key, Number(value)))}<p class="muted">${this.w('modular.radar_default_zoom_help')}</p>`;
+        if (module.type === 'radar' && key === 'show_circuit_selector') return html`${this.check(title, value, value => this.setOption(key, value))}<p class="muted">${this.w('modular.radar_circuit_selector_help')}</p>`;
+        const trace = module.type === 'lap_chart' && module.options.metric === 'cumulative_lap_delta';
+        if (module.type === 'lap_chart') {
+          if (!trace && ['reference_driver', 'anchor_lap', 'event_markers'].includes(key) || trace && key === 'series_limit') return '';
+          if (trace && key === 'event_markers') return html`<p>${this.w('modular.race_trace_event_markers')}</p><p class="muted">${this.w('modular.race_trace_markers_help')}</p>${option.values.map(id => this.check(this.w(`modular.race_trace_marker_${id}`), value.includes(id), enabled => this.setOption(key, enabled ? [...value, id] : value.filter(item => item !== id))))}`;
+          if (trace && key === 'anchor_lap') return html`${this.input(title, value, value => this.setOption(key, value), 'number')}<p class="muted">${this.w('modular.race_trace_anchor_help')}</p>`;
+        }
         if (module.type === 'archive') {
           const chart = module.options.content !== 'classification';
           if (chart && ['profile', 'sort', 'direction', 'rows'].includes(key) || !chart && ['presentation', 'start_lap', 'end_lap', 'series_limit'].includes(key)) return '';
@@ -389,16 +441,48 @@ export class F1SensorCardEditor extends LitElement {
         }
         if (module.type === 'incidents' && (key === 'summary_sort' && module.options.content !== 'track_limits_summary' || ['order', 'presentation'].includes(key) && module.options.content === 'track_limits_summary')) return '';
         if (module.type === 'telemetry' && key === 'session_id') return '';
-        if (module.type === 'timing' && ['show_driver_details', 'detail_laps'].includes(key)) return '';
+        if (module.type === 'timing' && ['show_driver_details', 'detail_laps', 'presentation', 'position_change'].includes(key)) return '';
+        if (module.type === 'timing') {
+          const combined = module.options.gap_display === 'combined' || module.options.narrow_layout;
+          if (key === 'show_gap_toggle' && combined || key === 'gap_primary' && !combined) return '';
+          const choices = {
+            presentation: [['current', 'modular.timing_presentation_current'], ['minimal', 'modular.timing_presentation_minimal']],
+            gap_display: [['separate', 'modular.timing_gap_separate'], ['combined', 'modular.timing_gap_combined']],
+            gap_primary: [['interval', 'modular.timing_gap_primary_interval'], ['gap', 'modular.timing_gap_primary_gap']],
+            qualifying_focus: [['all', 'modular.timing_qualifying_all'], ['current', 'modular.timing_qualifying_current'], ['q1', 'modular.timing_qualifying_q1'], ['q2', 'modular.timing_qualifying_q2'], ['q3', 'modular.timing_qualifying_q3']],
+          };
+          const help = {
+            presentation: 'modular.timing_presentation_help', narrow_layout: 'modular.timing_overview_rows_help',
+            gap_display: 'modular.timing_gap_display_help',
+            driver_badges: 'modular.timing_driver_badges_help', dim_retired: 'modular.timing_dim_retired_help',
+            tyre_age_inline: 'modular.timing_tyre_age_inline_help', qualifying_focus: 'modular.timing_qualifying_focus_help',
+          };
+          if (choices[key] || help[key]) return html`${choices[key]
+            ? this.select(title, value, choices[key].map(([id, key]) => [id, this.w(key)]), value => this.setOption(key, value))
+            : this.check(title, value, value => this.setOption(key, value))}${help[key] ? html`<p class="muted">${this.w(help[key])}</p>` : ''}`;
+        }
         if (module.type === 'telemetry' && key === 'selected') return this.telemetryPicker(module);
         if (module.type === 'race_control' && ['limit', 'order'].includes(key) && module.options.presentation === 'latest_message') return '';
         if (module.type === 'team_radio' && key === 'messages_to_show' && module.options.presentation === 'latest_message') return '';
+        if (module.type === 'tyres' && (['show_legend', 'show_lap_progress'].includes(key) && module.options.content !== 'history' || ['show_compound_name', 'best_times_limit'].includes(key) && module.options.content === 'history')) return '';
+        if (module.type === 'tyres' && module.options.content === 'history' && key === 'sort') return this.select(title, ['position', 'driver', 'tyre_age'].includes(value) ? value : 'position', ['position', 'driver', 'tyre_age'].map(value => [value, this.optionName(value)]), value => this.setOption(key, value));
         if (module.type === 'strategy' && key === 'presentation' && module.options.content !== 'stints') return '';
         if (module.type === 'strategy' && key === 'minimum_clean_laps' && !['stints', 'compound_comparison'].includes(module.options.content)) return '';
         if (module.type === 'strategy' && key === 'compounds' && ['teammates', 'pit_outcomes'].includes(module.options.content)) return '';
         if (['progression', 'lap_chart'].includes(module.type) && ['source_choice', 'source_list'].includes(option.type)) {
           const entry = this.config.f1_entry_id ? this.entries.find(item => item.entry_id === this.config.f1_entry_id) : this.entries.length === 1 ? this.entries[0] : null;
-          const model = module.type === 'lap_chart' ? lapChartModel(this.hass, entry, module) : progressionModel(this.hass, entry, module);
+          // Reference choices need only the roster, never a valid comparison or lap history.
+          const model = trace ? null : module.type === 'lap_chart' ? lapChartModel(this.hass, entry, module) : progressionModel(this.hass, entry, module);
+          if (trace && key === 'reference_driver') {
+            const choices = this.traceDriverChoices(entry);
+            if (value && !choices.some(([id]) => id === value)) choices.push([value, `${value} · ${this.w('modular.saved_selection')}`]);
+            return this.select(title, value, [['', this.w('modular.race_trace_choose_reference')], ...choices], value => this.setOption(key, value));
+          }
+          if (trace && key === 'selected') {
+            const choices = this.traceDriverChoices(entry).filter(([id]) => id !== module.options.reference_driver);
+            for (const id of value) if (!choices.some(([key]) => key === id)) choices.push([id, `${id} · ${this.w('modular.saved_selection')}`]);
+            return html`<p>${this.w('modular.race_trace_comparison_drivers')}</p><p class="muted">${this.w('modular.race_trace_driver_limit')}</p>${choices.map(([id, name]) => this.check(name, value.includes(id), enabled => this.setOption(key, enabled ? [...value, id] : value.filter(item => item !== id)), !value.includes(id) && value.length >= 3))}`;
+          }
           if (option.type === 'source_list') {
             const choices = model.allSeries.map(item => [item.id, item.name]);
             for (const id of value) if (!choices.some(([key]) => key === id)) choices.push([id, `${id} · ${this.w('modular.saved_selection')}`]);
@@ -432,12 +516,14 @@ export class F1SensorCardEditor extends LitElement {
       <button @click=${() => this.setModule('options', Object.fromEntries(Object.entries(module.options).filter(([key]) => !Object.hasOwn(definition?.options ?? {}, key))))}>${this.w('modular.reset_module_options')}</button></details>
       ${this.visibilitySettings(module)}
       <div class="buttons"><button @click=${() => this.updateConfig(config => configAPI.duplicateModule(config, module.id))}>${this.w('modular.duplicate_module')}</button>
-      <button @click=${() => { const index = this.config.modules.findIndex(item => item.id === module.id); this.updateConfig(config => { config.modules = config.modules.filter(item => item.id !== module.id); return config; }); this.selected = this.config.modules[Math.min(index, this.config.modules.length - 1)]?.id ?? ''; }}>${this.w('modular.remove_module')}</button></div>
+      <button @click=${() => { const index = this.config.modules.findIndex(item => item.id === module.id); this.updateConfig(config => configAPI.removeModule(config, module.id)); this.selected = this.config.modules[Math.min(index, this.config.modules.length - 1)]?.id ?? ''; }}>${this.w('modular.remove_module')}</button></div>
     </section>`;
   }
   optionName(value) {
     const calendarLabels = { none: ['None'], round: ['Round'], circuit: ['Circuit'], location: ['Location'], show: ['Show'], dim: ['Mark past starts'], label: ['Show label'] };
     if (calendarLabels[value]) return this.w(...calendarLabels[value]);
+    if (value === 'history') return this.w('modular.tyre_history');
+    if (value === 'cumulative_lap_delta') return this.w('modular.race_trace_title');
     if (value === 'time_s') return this.w('modular.time_from_lap_start_s');
     if (value === 'distance') return this.w('modular.estimated_distance_m');
     const names = { automatic_conditions: ['Automatic current weather'], classification: ['Published classification'], lap_position: ['Positions at lap completion'], lap_time: ['Lap time'], lap_change: ['Change from previous lap'], track_limits_summary: ['Track limits by driver'], track_limit_deletions: ['Most deleted times first'], weather_overview: ['Current weather and race rain risk'], current_conditions: ['Current circuit weather'], race_forecast: ['Forecast near race start'], track_conditions: ['Track weather observations'], metrics: ['Large metrics'], compact_list: ['Compact list'], latest_message: ['Latest matching message'], recent_messages: ['Recent messages'], include: ['Include'], hide: ['Hide'], teammates: ['Compare teammates'], crossover: ['Compound pace crossover'], pit_outcomes: ['Observed pit-cycle outcomes'], active_battles: ['Current battles'], battle_history: ['Battle history'], position_exchanges: ['Position exchanges'], battle_started: ['Battle started'], battle_ended: ['Battle ended'], position_exchange: ['Position exchange'], likely_on_track_overtake: ['Likely on-track overtake'], code: ['Driver code'], number: ['Racing number'], highlight: ['Highlight selection'], filter: ['Show selection only'], source: ['Source orientation'], raw: ['Original coordinates'], normal: ['Original'], flipped: ['Flipped'], stints: ['Stint pace and quality'], compound_comparison: ['Compare compounds'], custom: ['Custom columns'], auto: ['Follow the session'], practice: ['Practice'], current: ['Current tyres'], statistics: ['Compound statistics'], latest_stop: ['Latest stop per driver'], all_stops: ['All recorded stops'], investigations: ['Investigations and decisions'], track_limits: ['Track limits'], list: ['Event list'], SOFT: ['Soft'], MEDIUM: ['Medium'], HARD: ['Hard'], INTERMEDIATE: ['Intermediate'], WET: ['Wet'], UNKNOWN: ['Unknown compound'], cumulative_points: ['Total points'], points_per_round: ['Points per round'], wins_per_round: ['Wins per round'], chart: ['Chart with optional data table'], table: ['Data table'], both: ['Chart and table'], latest_race: ['Latest race'], race_results: ['Season race results'], sprint_results: ['Season sprint results'], starting_grid: ['Starting grid'], drivers: ['Drivers'], teams: ['Teams'], weekend: ['Next weekend'], season: ['Whole season'], home: ['Home time'], circuit: ['Circuit time'], utc: ['UTC'], asc: ['Ascending'], desc: ['Descending'], coherent: ['Same lap'], latest: ['Latest sectors, with lap labels'], newest: ['Newest first'], oldest: ['Oldest first'], practice_1: ['Practice 1'], practice_2: ['Practice 2'], practice_3: ['Practice 3'], qualifying: ['Qualifying'], sprint_qualifying: ['Sprint qualifying'], sprint: ['Sprint'], race: ['Race'] };
@@ -465,6 +551,8 @@ export class F1SensorCardEditor extends LitElement {
     if (appearance.accent_team && !teams.some(team => team.name === appearance.accent_team)) teamOptions.unshift([appearance.accent_team, `${appearance.accent_team} · ${this.w('modular.saved_selection')}`]);
     const accent = cardAccent(appearance, teams, mode);
     return html`<details><summary>${this.w('modular.appearance')}</summary>
+      ${this.select(this.w('modular.card_presentation'), appearance.presentation, [['current', this.w('modular.presentation_current')], ['compact', this.w('modular.compact')]], value => this.setGroup('appearance', 'presentation', value))}
+      <p class="muted">${this.w('modular.compact_presentation_help')}</p>
       ${this.select(this.w('modular.style'), appearance.style, [['f1', 'F1'], ['ha', 'Home Assistant'], ['minimal', this.w('modular.minimal')]], value => this.setGroup('appearance', 'style', value))}
       ${this.select(this.w('modular.theme'), appearance.mode, [['auto', this.w('modular.automatic')], ['light', this.w('modular.light')], ['dark', this.w('modular.dark')]], value => this.setGroup('appearance', 'mode', value))}
       ${this.select(this.w('modular.density'), appearance.density, [['compact', this.w('modular.compact')], ['comfortable', this.w('modular.normal')], ['spacious', this.w('modular.spacious')]], value => this.setGroup('appearance', 'density', value))}
@@ -519,10 +607,10 @@ export class F1SensorCardEditor extends LitElement {
           ${this.input(this.w('modular.card_title'), this.config.title, value => this.updateConfig(config => ({ ...config, title: value })))}
           ${this.entries.length > 1 || this.config.f1_entry_id ? this.select(this.w('modular.f1_sensor_installation'), this.config.f1_entry_id, [['', this.w('modular.automatic_one_installation')], ...this.entries.map(entry => [entry.entry_id, entry.title])], value => this.updateConfig(config => ({ ...config, f1_entry_id: value }))) : ''}
           <details><summary>${this.w('modular.layout_and_shared_focus')}</summary>
-          ${this.select(this.w('modular.layout'), this.config.layout, [['stack', this.w('modular.stacked_modules')], ['tabs', this.w('modular.tabs')], ['columns', this.w('modular.columns')]], value => this.updateConfig(config => ({ ...config, layout: value })))}
-          ${this.config.layout === 'columns' ? html`
+          ${this.select(this.w('modular.layout'), this.config.layout, [['stack', this.w('modular.stacked_modules')], ['tabs', this.w('modular.tabs')], ['columns', this.w('modular.columns')], ['stacks', this.w('modular.independent_stacks')]], value => this.updateConfig(config => ({ ...config, layout: value })))}
+          ${['columns', 'stacks'].includes(this.config.layout) ? html`
             ${this.select(this.w('modular.maximum_columns'), String(this.config.columns), [2, 3, 4].map(count => [String(count), String(count)]), value => this.updateConfig(config => ({ ...config, columns: Number(value) })))}
-            <p class="muted">${this.w('modular.modules_flow_in_list_order_left_to_right_then_onto_the_next_row_fewer')}</p>
+            <p class="muted">${this.w(this.config.layout === 'stacks' ? 'modular.stacks_layout_help' : 'modular.modules_flow_in_list_order_left_to_right_then_onto_the_next_row_fewer')}</p>
             <p class="muted">${this.w('modular.for_a_wide_card_in_home_assistant_sections_increase_the_section_width_and_enable')}</p>
           ` : ''}
           ${this.focusPicker('driver', this.w('modular.default_driver'), this.config.context.driver, value => this.setGroup('context', 'driver', value))}
@@ -531,6 +619,7 @@ export class F1SensorCardEditor extends LitElement {
           ${this.check(this.w('modular.share_driver_focus_with_a_named_group'), this.config.context.scope === 'group', value => this.updateConfig(config => ({ ...config, context: { ...config.context, scope: value ? 'group' : 'local', group: config.context.group || 'F1' } })))}
           ${this.config.context.scope === 'group' ? this.input(this.w('modular.group_name'), this.config.context.group, value => this.setGroup('context', 'group', value)) : ''}
           ${this.config.context.scope === 'group' ? this.check(this.w('modular.share_temporary_session_selection'), this.config.context.share.includes('selection'), enabled => this.setGroup('context', 'share', enabled ? [...this.config.context.share, 'selection'] : this.config.context.share.filter(item => item !== 'selection'))) : ''}
+          ${this.config.context.scope === 'group' ? this.check(this.w('modular.share_event_focus'), this.config.context.share.includes('event_focus'), enabled => this.setGroup('context', 'share', enabled ? [...this.config.context.share, 'event_focus'] : this.config.context.share.filter(item => item !== 'event_focus'))) : ''}
           <p class="muted">${this.w('modular.groups_share_selected_display_context_in_this_dashboard_view_pinned_cards_keep_their_own')}</p>
           ${this.check(this.w('modular.show_driver_focus_menu'), this.config.context.show_focus_control, value => this.setGroup('context', 'show_focus_control', value))}
           ${this.check(this.w('modular.show_freeze_view_button'), this.config.context.show_freeze_control, value => this.setGroup('context', 'show_freeze_control', value))}

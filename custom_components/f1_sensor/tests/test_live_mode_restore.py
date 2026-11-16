@@ -812,6 +812,8 @@ async def test_championship_prediction_sensors_restore_during_replay(
     }
     coordinator = _build_coordinator(hass, None)
     coordinator.available = True
+    coordinator.prediction_context = {"session_key": "race-a", "session_type": "race"}
+    attributes = {**attributes, **coordinator.prediction_context}
     entity = factory(coordinator, entry_id)
     entity.async_get_last_state = AsyncMock(
         return_value=State(f"sensor.{entity.unique_id}", restored_state, attributes)
@@ -863,6 +865,8 @@ async def test_championship_prediction_sensors_restore_during_auth_live(
     }
     coordinator = _build_coordinator(hass, None)
     coordinator.available = True
+    coordinator.prediction_context = {"session_key": "race-a", "session_type": "race"}
+    attributes = {**attributes, **coordinator.prediction_context}
     entity = factory(coordinator, entry_id)
     entity.async_get_last_state = AsyncMock(
         return_value=State(f"sensor.{entity.unique_id}", restored_state, attributes)
@@ -1276,3 +1280,31 @@ async def test_track_status_recovery_requires_current_active_track_data(
 
     assert hass.states.get(entity.entity_id).state == STATE_UNAVAILABLE
     assert entity.native_value is None
+
+
+@pytest.mark.parametrize("stored_key", [None, "previous-race"])
+async def test_prediction_restore_rejects_missing_or_different_session(
+    hass, stored_key
+):
+    entry_id = "prediction_scope"
+    hass.data.setdefault(DOMAIN, {})[entry_id] = {
+        CONF_OPERATION_MODE: OPERATION_MODE_LIVE,
+        "live_state": _LiveState(True, "replay-mode"),
+        "live_bus": _LiveBus(0.0),
+    }
+    coordinator = _build_coordinator(hass, None)
+    coordinator.available = True
+    coordinator.prediction_context = {"session_key": "race-a", "session_type": "race"}
+    entity = F1ChampionshipPredictionDriversSensor(
+        coordinator, "prediction_scope", entry_id, "F1"
+    )
+    entity.async_get_last_state = AsyncMock(
+        return_value=State(
+            "sensor.prediction_scope",
+            "NOR",
+            {"session_key": stored_key, "session_type": "race"},
+        )
+    )
+    state = await _add_entity_and_get_state(hass, "sensor", entity)
+    assert state.state in {"unknown", "unavailable"}
+    assert not state.attributes.get("drivers")

@@ -63,9 +63,9 @@ const mismatchedPlaceholders = keys.en.filter(key =>
       !== JSON.stringify(placeholders(locales[language][key])),
   ),
 );
-const unexpectedTargetKeys = Object.fromEntries(targetLanguages.map(language => [
+const invalidCatalogValues = Object.fromEntries(Object.keys(locales).map(language => [
   language,
-  keys[language].filter(key => locales.en[key] === undefined),
+  keys[language].filter(key => typeof locales[language][key] !== 'string'),
 ]));
 const missingTargetKeysUseEnglish = targetLanguages.every(language =>
   keys.en
@@ -77,7 +77,7 @@ const missingTargetKeysUseEnglish = targetLanguages.every(language =>
 
 process.stdout.write(JSON.stringify({
   keyCount: keys.en.length,
-  unexpectedTargetKeys,
+  invalidCatalogValues,
   missingTargetKeysUseEnglish,
   mismatchedPlaceholders,
   swedish: translate('sv-SE', 'modular.no_session_data_is_currently_available_your_settings_are_kept'),
@@ -167,9 +167,10 @@ def test_frontend_locales_use_source_keys_fallbacks_and_safe_placeholders() -> N
     payload = json.loads(result.stdout)
     catalogs = _catalogs()
     assert payload["keyCount"] == len(catalogs["en"])
-    assert payload["unexpectedTargetKeys"] == {
-        language: [] for language in catalogs if language != "en"
-    }
+    # Weblate can retain obsolete keys while active source keys evolve.
+    # All values must remain flat strings; active placeholders and fallback
+    # below remain blocking contracts.
+    assert payload["invalidCatalogValues"] == {language: [] for language in catalogs}
     assert payload["missingTargetKeysUseEnglish"] is True
     assert payload["mismatchedPlaceholders"] == []
     assert payload["swedish"] == _message(

@@ -52,6 +52,7 @@ async def test_entity_map_groups_registry_entities_by_config_entry(hass) -> None
                     "disabled_entities": [],
                     "data_api": {
                         "protocol_version": 1,
+                        "lap_history_version": 1,
                         "supported": sorted(DATA_PRODUCTS),
                         "enabled": sorted(DATA_PRODUCTS),
                         "automatic": True,
@@ -67,6 +68,7 @@ async def test_entity_map_groups_registry_entities_by_config_entry(hass) -> None
                     "disabled_entities": [],
                     "data_api": {
                         "protocol_version": 1,
+                        "lap_history_version": 1,
                         "supported": sorted(DATA_PRODUCTS),
                         "enabled": sorted(DATA_PRODUCTS),
                         "automatic": True,

@@ -320,6 +320,39 @@ class QualifyingDeltaTracker:
         if len(self._deleted_laps) > 512:
             self._deleted_laps = set(sorted(self._deleted_laps)[-512:])
 
+    def publication_key(self, number: str) -> tuple:
+        """Track each attempt and its frozen reference without copying results."""
+        context = (self.supported, self.part)
+        if self.supported is not True:
+            return context
+        number = str(number)
+        car = self._cars.get(number)
+        if car is None:
+            return (*context, None)
+
+        def attempt_key(attempt: _Attempt | None) -> tuple | None:
+            if attempt is None:
+                return None
+            reference = attempt.reference
+            return (
+                attempt.lap,
+                attempt.time,
+                tuple(attempt.sectors.get(index) for index in (0, 1, 2)),
+                (
+                    reference.driver,
+                    reference.lap,
+                    reference.time,
+                    reference.sectors,
+                    reference.valid,
+                )
+                if reference is not None
+                else None,
+                (number, attempt.time) in self._deleted,
+                (number, attempt.lap) in self._deleted_laps,
+            )
+
+        return (*context, attempt_key(car.current), attempt_key(car.previous))
+
     def snapshot(self, number: str, effort: Mapping[str, Any]) -> dict[str, Any]:
         """Project only active attempts and the classifier's completed-result hold."""
         result = {**empty_push_lap_delta(), "session_part": self.part}

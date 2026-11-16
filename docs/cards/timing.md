@@ -13,6 +13,10 @@ Live timing must be enabled; live and replay data still depend on the selected s
 
 Timing can follow a session profile or use your selected columns. Choosing your own timing columns keeps them as a custom selection. A module pinned to a driver keeps that driver when you change the card's general focus.
 
+In **Content and columns**, choose **Position** for the position alone or **Position + change** to include places gained or lost from the starting grid for the same race or sprint. Choosing one replaces the other at the same column location. **Position** is the default. The change value uses ▲ for places gained, ▼ for places lost and a dash for no change. A missing starting-position reference also shows a dash; its description explains that the reference is unavailable. The same column choices are available in **Driver details**.
+
+Live comparisons use the confirmed starting grid for the same race or sprint. Replay uses explicit starting positions recorded for that session, rebuilt for the current playback position. If the recording lacks that reference, the change remains unknown.
+
 ## Follow push laps
 
 In a **Timing** module, open **Module options** and choose **Push laps** to

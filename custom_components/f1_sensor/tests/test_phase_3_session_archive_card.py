@@ -22,9 +22,11 @@ REGISTER_PATH = CARD_PATH.with_name("register.js")
 REGISTRY_PATH = CARD_PATH.parent / "platform" / "card-registry.js"
 
 NODE_PROBE = r"""
+(async () => {
 const fs = require("node:fs");
 const action = process.env.F1_ARCHIVE_ACTION;
 const source = fs.readFileSync(process.env.F1_ARCHIVE_CARD_PATH, "utf8");
+const { archiveSessionStarted, latestArchiveSession } = await import(require('node:url').pathToFileURL(require('node:path').join(require('node:path').dirname(process.env.F1_ARCHIVE_CARD_PATH), 'modular/semantics.js')));
 
 function findMatchingBrace(text, openIndex) {
   let depth = 0;
@@ -51,7 +53,7 @@ function renderValue(value) {
   return String(value);
 }
 
-const Card = new Function(`
+const Card = new Function('archiveSessionStarted', 'latestArchiveSession', `
 const DEFAULT_F1_THEME_MODE = "dark";
 const F1_THEME_STYLES = {};
 const css = (strings, ...values) => strings.reduce((out, part, index) => out + part + (index < values.length ? renderValue(values[index]) : ""), "");
@@ -78,7 +80,7 @@ const handleTeamLogoError = () => {};
 ${renderValue.toString()}
 ${extractClass("class F1LastRaceResultsCard extends LitElement {")}
 return F1LastRaceResultsCard;
-`)();
+`)(archiveSessionStarted, latestArchiveSession);
 
 const catalog = {
   year: 2023,
@@ -90,6 +92,7 @@ const catalog = {
       {
         session_key: "jolpica:2023:15:practice:Practice 1",
         name: "Practice 1",
+        start: "2023-09-15T10:00:00Z",
         kind: "practice",
         provider: "jolpica",
         final: true,
@@ -98,6 +101,7 @@ const catalog = {
       {
         session_key: "jolpica:2023:15:qualifying:Qualifying",
         name: "Qualifying",
+        start: "2023-09-16T13:00:00Z",
         kind: "qualifying",
         provider: "jolpica",
         final: true,
@@ -106,6 +110,7 @@ const catalog = {
       {
         session_key: "jolpica:2023:15:race:Race",
         name: "Race",
+        start: "2023-09-17T12:00:00Z",
         kind: "race",
         provider: "jolpica",
         final: true,
@@ -162,6 +167,22 @@ async function staleProbe() {
   return { status: card._archiveStatus, meetingCount: card._archiveCatalog.meetings.length };
 }
 
+async function datesProbe() {
+  const card = new Card(), messages = [];
+  const dates = structuredClone(catalog);
+  const meeting = dates.meetings[0];
+  meeting.circuit_timezone = 'UTC';
+  meeting.sessions[2] = { ...meeting.sessions[2], start: null, date: new Date().toISOString().slice(0, 10), start_precision: 'date' };
+  card.setConfig({ history_year: 2023, history_entry_id: 'entry-1' });
+  card.hass = { callWS: async message => { messages.push(message); return message.type.endsWith('/catalog') ? dates : { results: [] }; } };
+  await card._switchResultScope('archive');
+  const today = card._archiveSessionKey;
+  meeting.sessions[2].date = '2023-09-17';
+  await card._loadArchiveCatalog(true);
+  const past = card._archiveSessionKey;
+  return { today, past, requests: messages.map(message => message.type) };
+}
+
 async function yearNavigationProbe() {
   const messages = [];
   const card = new Card();
@@ -200,10 +221,12 @@ const probes = {
   stale: staleProbe,
   year: yearNavigationProbe,
   columns: columnsProbe,
+  dates: datesProbe,
 };
-probes[action]()
+await probes[action]()
   .then((result) => process.stdout.write(JSON.stringify(result)))
   .catch((error) => { console.error(error); process.exit(1); });
+})().catch(error => { console.error(error); process.exit(1); });
 """
 
 
@@ -249,6 +272,12 @@ def test_results_card_archive_ignores_stale_catalog_responses() -> None:
     result = _run_probe("stale")
 
     assert result == {"status": "empty", "meetingCount": 0}
+
+
+def test_results_card_archive_date_only_start_waits_without_losing_old_races() -> None:
+    result = _run_probe("dates")
+    assert result["today"].endswith(":qualifying:Qualifying")
+    assert result["past"].endswith(":race:Race")
 
 
 def test_results_card_archive_navigates_without_overwriting_start_year() -> None:

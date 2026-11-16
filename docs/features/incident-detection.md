@@ -84,7 +84,9 @@ Candidates are earlier and less certain than confirmed alerts. Keep candidate no
 
 ## Track Map location context
 
-When live or replay Track Map data is available, incident events can include optional location context such as a short location description, sector, pit-lane status, and whether the location is fresh or stale.
+When live or replay Track Map data is available, incident events can include optional location context such as a short description, approximate track section, pit-lane status, and whether the location is fresh or stale.
+
+An approximate section is one of three equal lengths of the map outline, not an official timing sector. The event exposes `approximate_track_third` and `sector_basis`; the older `sector` field and `track_map_sector_*` signals remain compatibility aliases for geometry-based thirds. Stale or ambiguous location data, and geometry explicitly belonging to a different circuit, do not produce a current approximate section in the description. Raw position coordinates are not included in incident events.
 
 Location context can improve confidence or suppress obvious pit-lane false positives when the data is fresh enough. It is not required for incident detection.
 

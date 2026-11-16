@@ -44,6 +44,7 @@ Search by name, standard entity ID or attribute. Open any result for its complet
 <span id="possible-on-track-incident"></span>
 <span id="race-lap"></span>
 <span id="track-weather"></span>
+<span id="session-rain-risk"></span>
 <span id="driver-list"></span>
 <span id="pit-stops"></span>
 <span id="team-radio"></span>

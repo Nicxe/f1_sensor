@@ -63,6 +63,29 @@ def _encoded_cardata_payload(at: datetime, speed: float, rn: str = "10") -> str:
     return '"' + base64.b64encode(compressed).decode() + '"'
 
 
+def test_car_speed_resolves_location_only_for_an_eligible_candidate():
+    calls = []
+
+    def location(racing_number, observed_at):
+        calls.append((racing_number, observed_at))
+        return IncidentLocationContext(
+            status="OnTrack", stale=False, confidence=CONFIDENCE_HIGH
+        )
+
+    detector = IncidentDetector(location_resolver=location)
+    assert detector.process_signals(_car_speed(BASE, 0)) == []
+    assert detector.process_signals(_track(BASE + timedelta(milliseconds=250))) == []
+    assert detector.process_signals(_car_speed(BASE + timedelta(seconds=1), 0)) == []
+    assert calls == []
+
+    at = BASE + timedelta(seconds=3)
+    changes = detector.process_signals(_car_speed(at, 0))
+    assert [(change.phase, change.confidence) for change in changes] == [
+        (PHASE_CANDIDATE, CONFIDENCE_HIGH)
+    ]
+    assert calls == [("10", at)]
+
+
 def _encoded_cardata_data(data: dict) -> str:
     raw = json.dumps(data).encode()
     compressor = zlib.compressobj(wbits=-15)

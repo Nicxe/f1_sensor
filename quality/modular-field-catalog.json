@@ -2,8 +2,8 @@
   "format_version": 1,
   "configuration_version": 3,
   "generated_from": "modular/catalog.js",
-  "field_count": 154,
-  "module_count": 22,
+  "field_count": 156,
+  "module_count": 23,
   "sources": [
     "analysis",
     "analysis/telemetry_compare",
@@ -27,6 +27,7 @@
     "selected_points_progression",
     "selected_result",
     "selected_standings",
+    "session_rain_risk",
     "session_status",
     "session_time_elapsed",
     "session_time_remaining",
@@ -3209,6 +3210,7 @@
         "race_time_to_three_hour_limit",
         "replay_player",
         "replay_status",
+        "session_rain_risk",
         "session_status",
         "session_time_elapsed",
         "session_time_remaining",
@@ -3678,6 +3680,42 @@
               },
               "type": "session_clock",
               "unit": null
+            },
+            {
+              "capability": "public_timing",
+              "filterable": false,
+              "freshness": "session",
+              "generation": "session",
+              "id": "session_rain_risk",
+              "identity": [
+                "entry",
+                "session"
+              ],
+              "label": "modular.session_rain_risk",
+              "mobile": 0,
+              "modes": [
+                "live",
+                "replay"
+              ],
+              "path": "percentage",
+              "presentations": [
+                "summary",
+                "list"
+              ],
+              "sessions": [
+                "all"
+              ],
+              "sortable": false,
+              "source": "session_rain_risk",
+              "spoiler": true,
+              "timestamps": {
+                "source": "utc",
+                "received": "not_provided",
+                "updated": "entity.last_updated",
+                "displayed": "snapshot"
+              },
+              "type": "number",
+              "unit": "%"
             }
           ]
         }
@@ -4628,6 +4666,23 @@
               "unit": null
             }
           ]
+        }
+      ]
+    },
+    {
+      "id": "radar",
+      "label": "modular.radar_title",
+      "sources": [
+        "current_season",
+        "live_delay_number",
+        "next_race",
+        "replay_status"
+      ],
+      "variants": [
+        {
+          "id": "default",
+          "options": {},
+          "fields": []
         }
       ]
     },
@@ -7184,13 +7239,13 @@
                 "session",
                 "driver"
               ],
-              "label": "Estimated degradation",
+              "label": "modular.strategy_trend",
               "mobile": 2,
               "modes": [
                 "live",
                 "replay"
               ],
-              "path": "strategy.stints[].degradation_seconds_per_lap",
+              "path": "strategy.stints[].lap_time_trend.seconds_per_lap",
               "presentations": [
                 "table",
                 "detail"
@@ -7397,7 +7452,7 @@
                 "live",
                 "replay"
               ],
-              "path": "strategy.stints[].pit_loss_seconds",
+              "path": "strategy.stints[].stint_change_estimate.seconds",
               "presentations": [
                 "table",
                 "detail"
@@ -7782,7 +7837,7 @@
                 "session",
                 "comparison"
               ],
-              "label": "Median pace by driver",
+              "label": "modular.strategy_descriptive_pace",
               "mobile": 2,
               "modes": [
                 "live",
@@ -7824,13 +7879,13 @@
                 "session",
                 "comparison"
               ],
-              "label": "Pace difference",
+              "label": "modular.strategy_paired_difference",
               "mobile": 2,
               "modes": [
                 "live",
                 "replay"
               ],
-              "path": "strategy.teammate_comparisons[].delta_seconds",
+              "path": "strategy.teammate_comparisons[].matched_comparison.delta_seconds",
               "presentations": [
                 "table",
                 "detail"
@@ -7851,7 +7906,7 @@
                 "updated": "not_provided",
                 "displayed": "snapshot"
               },
-              "type": "seconds_duration",
+              "type": "seconds_delta",
               "unit": null
             },
             {
@@ -7866,13 +7921,13 @@
                 "session",
                 "comparison"
               ],
-              "label": "Lower median pace",
+              "label": "modular.strategy_paired_leader",
               "mobile": 2,
               "modes": [
                 "live",
                 "replay"
               ],
-              "path": "strategy.teammate_comparisons[].faster_driver",
+              "path": "strategy.teammate_comparisons[].matched_comparison.faster_driver",
               "presentations": [
                 "table",
                 "detail"
@@ -9312,7 +9367,9 @@
         "current_tyres",
         "driver_list",
         "driver_positions",
-        "session_status"
+        "investigations",
+        "session_status",
+        "starting_grid"
       ],
       "variants": [
         {
@@ -9358,6 +9415,48 @@
                 "displayed": "snapshot"
               },
               "type": "integer",
+              "unit": null
+            },
+            {
+              "capability": "public_timing",
+              "comparison": "starting_grid",
+              "filterable": false,
+              "freshness": "session",
+              "generation": "session",
+              "id": "position_with_change",
+              "identity": [
+                "entry",
+                "session",
+                "driver"
+              ],
+              "label": "Position + change",
+              "mobile": 0,
+              "modes": [
+                "live",
+                "replay"
+              ],
+              "path": "current_position + starting_grid.grid[].grid_position",
+              "presentations": [
+                "table",
+                "detail"
+              ],
+              "sessions": [
+                "practice",
+                "qualifying",
+                "sprint_qualifying",
+                "sprint",
+                "race"
+              ],
+              "sortable": true,
+              "source": "driver_positions",
+              "spoiler": true,
+              "timestamps": {
+                "source": "not_provided",
+                "received": "not_provided",
+                "updated": "entity.last_updated",
+                "displayed": "snapshot"
+              },
+              "type": "position_with_change",
               "unit": null
             },
             {
@@ -10979,6 +11078,137 @@
           ]
         },
         {
+          "id": "content=history",
+          "options": {
+            "content": "history"
+          },
+          "fields": [
+            {
+              "capability": "public_timing",
+              "filterable": false,
+              "freshness": "session",
+              "generation": "session",
+              "id": "position",
+              "identity": [
+                "entry",
+                "session",
+                "driver"
+              ],
+              "label": "Pos",
+              "mobile": 0,
+              "modes": [
+                "live",
+                "replay"
+              ],
+              "path": "drivers[].position",
+              "presentations": [
+                "table",
+                "detail"
+              ],
+              "sessions": [
+                "practice",
+                "qualifying",
+                "sprint_qualifying",
+                "sprint",
+                "race"
+              ],
+              "sortable": true,
+              "source": "current_tyres",
+              "spoiler": true,
+              "timestamps": {
+                "source": "not_provided",
+                "received": "not_provided",
+                "updated": "entity.last_updated",
+                "displayed": "snapshot"
+              },
+              "type": "integer",
+              "unit": null
+            },
+            {
+              "capability": "public_timing",
+              "filterable": true,
+              "freshness": "session",
+              "generation": "session",
+              "id": "driver",
+              "identity": [
+                "entry",
+                "session",
+                "driver"
+              ],
+              "label": "Driver",
+              "mobile": 0,
+              "modes": [
+                "live",
+                "replay"
+              ],
+              "path": "drivers[].racing_number",
+              "presentations": [
+                "table",
+                "detail"
+              ],
+              "sessions": [
+                "practice",
+                "qualifying",
+                "sprint_qualifying",
+                "sprint",
+                "race"
+              ],
+              "sortable": true,
+              "source": "current_tyres",
+              "spoiler": true,
+              "timestamps": {
+                "source": "not_provided",
+                "received": "not_provided",
+                "updated": "entity.last_updated",
+                "displayed": "snapshot"
+              },
+              "type": "driver",
+              "unit": null
+            },
+            {
+              "capability": "public_timing",
+              "filterable": false,
+              "freshness": "session",
+              "generation": "session",
+              "id": "tyre_age",
+              "identity": [
+                "entry",
+                "session",
+                "driver"
+              ],
+              "label": "Tyre age",
+              "mobile": 2,
+              "modes": [
+                "live",
+                "replay"
+              ],
+              "path": "drivers[].stints[].total_laps (current stint)",
+              "presentations": [
+                "table",
+                "detail"
+              ],
+              "sessions": [
+                "practice",
+                "qualifying",
+                "sprint_qualifying",
+                "sprint",
+                "race"
+              ],
+              "sortable": true,
+              "source": "current_tyres",
+              "spoiler": true,
+              "timestamps": {
+                "source": "not_provided",
+                "received": "not_provided",
+                "updated": "entity.last_updated",
+                "displayed": "snapshot"
+              },
+              "type": "integer",
+              "unit": "laps"
+            }
+          ]
+        },
+        {
           "id": "content=statistics",
           "options": {
             "content": "statistics"
@@ -11280,6 +11510,7 @@
       "id": "weather",
       "label": "Weather",
       "sources": [
+        "session_rain_risk",
         "track_weather",
         "weather"
       ],
@@ -11669,6 +11900,42 @@
               },
               "type": "number",
               "unit": "mm"
+            },
+            {
+              "capability": "public_timing",
+              "filterable": false,
+              "freshness": "session",
+              "generation": "session",
+              "id": "session_rain_risk",
+              "identity": [
+                "entry",
+                "session"
+              ],
+              "label": "modular.session_rain_risk",
+              "mobile": 0,
+              "modes": [
+                "live",
+                "replay"
+              ],
+              "path": "percentage",
+              "presentations": [
+                "summary",
+                "list"
+              ],
+              "sessions": [
+                "all"
+              ],
+              "sortable": false,
+              "source": "session_rain_risk",
+              "spoiler": true,
+              "timestamps": {
+                "source": "utc",
+                "received": "not_provided",
+                "updated": "entity.last_updated",
+                "displayed": "snapshot"
+              },
+              "type": "number",
+              "unit": "%"
             }
           ]
         },
@@ -12057,6 +12324,42 @@
               },
               "type": "number",
               "unit": "mm"
+            },
+            {
+              "capability": "public_timing",
+              "filterable": false,
+              "freshness": "session",
+              "generation": "session",
+              "id": "session_rain_risk",
+              "identity": [
+                "entry",
+                "session"
+              ],
+              "label": "modular.session_rain_risk",
+              "mobile": 0,
+              "modes": [
+                "live",
+                "replay"
+              ],
+              "path": "percentage",
+              "presentations": [
+                "summary",
+                "list"
+              ],
+              "sessions": [
+                "all"
+              ],
+              "sortable": false,
+              "source": "session_rain_risk",
+              "spoiler": true,
+              "timestamps": {
+                "source": "utc",
+                "received": "not_provided",
+                "updated": "entity.last_updated",
+                "displayed": "snapshot"
+              },
+              "type": "number",
+              "unit": "%"
             }
           ]
         },
@@ -13211,6 +13514,42 @@
               },
               "type": "rain_indicator",
               "unit": null
+            },
+            {
+              "capability": "public_timing",
+              "filterable": false,
+              "freshness": "session",
+              "generation": "session",
+              "id": "session_rain_risk",
+              "identity": [
+                "entry",
+                "session"
+              ],
+              "label": "modular.session_rain_risk",
+              "mobile": 0,
+              "modes": [
+                "live",
+                "replay"
+              ],
+              "path": "percentage",
+              "presentations": [
+                "summary",
+                "list"
+              ],
+              "sessions": [
+                "all"
+              ],
+              "sortable": false,
+              "source": "session_rain_risk",
+              "spoiler": true,
+              "timestamps": {
+                "source": "utc",
+                "received": "not_provided",
+                "updated": "entity.last_updated",
+                "displayed": "snapshot"
+              },
+              "type": "number",
+              "unit": "%"
             }
           ]
         },
@@ -13599,6 +13938,42 @@
               },
               "type": "number",
               "unit": "mm"
+            },
+            {
+              "capability": "public_timing",
+              "filterable": false,
+              "freshness": "session",
+              "generation": "session",
+              "id": "session_rain_risk",
+              "identity": [
+                "entry",
+                "session"
+              ],
+              "label": "modular.session_rain_risk",
+              "mobile": 0,
+              "modes": [
+                "live",
+                "replay"
+              ],
+              "path": "percentage",
+              "presentations": [
+                "summary",
+                "list"
+              ],
+              "sessions": [
+                "all"
+              ],
+              "sortable": false,
+              "source": "session_rain_risk",
+              "spoiler": true,
+              "timestamps": {
+                "source": "utc",
+                "received": "not_provided",
+                "updated": "entity.last_updated",
+                "displayed": "snapshot"
+              },
+              "type": "number",
+              "unit": "%"
             }
           ]
         },
@@ -13866,6 +14241,42 @@
               },
               "type": "rain_indicator",
               "unit": null
+            },
+            {
+              "capability": "public_timing",
+              "filterable": false,
+              "freshness": "session",
+              "generation": "session",
+              "id": "session_rain_risk",
+              "identity": [
+                "entry",
+                "session"
+              ],
+              "label": "modular.session_rain_risk",
+              "mobile": 0,
+              "modes": [
+                "live",
+                "replay"
+              ],
+              "path": "percentage",
+              "presentations": [
+                "summary",
+                "list"
+              ],
+              "sessions": [
+                "all"
+              ],
+              "sortable": false,
+              "source": "session_rain_risk",
+              "spoiler": true,
+              "timestamps": {
+                "source": "utc",
+                "received": "not_provided",
+                "updated": "entity.last_updated",
+                "displayed": "snapshot"
+              },
+              "type": "number",
+              "unit": "%"
             }
           ]
         }

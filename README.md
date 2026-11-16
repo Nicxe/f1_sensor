@@ -3,7 +3,7 @@
 ### Your home. On race time.
 
 
-![hacs_badge](https://img.shields.io/badge/HACS-Default-41BDF5.svg?style=) <img alt="GitHub last commit" src="https://img.shields.io/github/last-commit/Nicxe/f1_sensor"> [![GitHub Release](https://img.shields.io/github/v/release/Nicxe/f1_sensor?display_name=tag&sort=semver)](https://github.com/Nicxe/f1_sensor/releases)
+<img alt="GitHub last commit" src="https://img.shields.io/github/last-commit/Nicxe/f1_sensor"> [![GitHub Release](https://img.shields.io/github/v/release/Nicxe/f1_sensor?display_name=tag&sort=semver)](https://github.com/Nicxe/f1_sensor/releases)
 
 
 Hi! I'm F1 Sensor 🏎️, a custom integration for Home Assistant that brings Formula 1 race weekends into your home.
@@ -21,6 +21,10 @@ Follow schedules, live timing, results, weather, Race Control messages and your 
 - **Build your pit wall:** Use the included dashboard card, from a simple countdown to a detailed live race view.
 - **Watch in sync:** Match updates to your TV or stream with [Live Delay](https://nicxe.github.io/f1_sensor/features/live-delay), or relive a completed session with [Replay Mode](https://nicxe.github.io/f1_sensor/features/replay-mode).
 - **Bring the race home:** Create automations for session starts, Race Control messages, track status and more.
+
+## Install F1 Sensor
+
+In Home Assistant 2026.11 or later, open **Settings → Marketplace**, search for **F1 Sensor**, and select **Install**. Follow the setup flow when it opens. For older Home Assistant versions, installation with HACS is available. See the [installation guide](https://nicxe.github.io/f1_sensor/getting-started/installation) for details and manual installation.
 
 ## Documentation
 

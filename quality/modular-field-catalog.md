@@ -2,7 +2,7 @@
 
 This catalog is generated from the delivered module registry. It records the source path, data capability, supported modes and sessions, identity boundary, time provenance, freshness rule, unit and presentation for every field in every content-dependent module variant.
 
-Configuration version: 3. Modules: 22. Base field IDs: 154. Resolved sources: 33.
+Configuration version: 3. Modules: 23. Base field IDs: 156. Resolved sources: 34.
 
 A source path describes the contract consumed by the card; it is not a promise that the value is available in every session. `identity` lists the values that must still describe the same observation before fields may be combined. `timestamps` distinguishes source time, receipt time, entity update time and display snapshot time where the source supplies them.
 
@@ -174,7 +174,7 @@ Declared sources: `current_session`, `driver_list`, `driver_positions`, `session
 
 ## Overview (`overview`)
 
-Declared sources: `current_season`, `current_session`, `next_race`, `race_lap_count`, `race_time_to_three_hour_limit`, `replay_player`, `replay_status`, `session_status`, `session_time_elapsed`, `session_time_remaining`, `track_status`.
+Declared sources: `current_season`, `current_session`, `next_race`, `race_lap_count`, `race_time_to_three_hour_limit`, `replay_player`, `replay_status`, `session_rain_risk`, `session_status`, `session_time_elapsed`, `session_time_remaining`, `track_status`.
 
 | Field | Source and path | Coverage | Identity and time | Presentation |
 | --- | --- | --- | --- | --- |
@@ -191,6 +191,7 @@ Declared sources: `current_season`, `current_session`, `next_race`, `race_lap_co
 | `session_time_elapsed` — Session time elapsed | `session_time_elapsed` → `value_seconds` | Capability: public; modes: live, replay; sessions: all; freshness: source; spoiler-protected | Identity: entry, session, part; generation: session; time: source: last_server_utc; received: not_provided; updated: entity.last_updated; displayed: snapshot | Type: session_clock; summary |
 | `session_time_remaining` — Session time remaining | `session_time_remaining` → `value_seconds` | Capability: public; modes: live, replay; sessions: all; freshness: source; spoiler-protected | Identity: entry, session, part; generation: session; time: source: last_server_utc; received: not_provided; updated: entity.last_updated; displayed: snapshot | Type: session_clock; summary |
 | `race_time_to_three_hour_limit` — Time to three-hour limit | `race_time_to_three_hour_limit` → `value_seconds` | Capability: public; modes: live, replay; sessions: all; freshness: source; spoiler-protected | Identity: entry, session, part; generation: session; time: source: last_server_utc; received: not_provided; updated: entity.last_updated; displayed: snapshot | Type: session_clock; summary |
+| `session_rain_risk` — modular.session_rain_risk | `session_rain_risk` → `percentage` | Capability: public_timing; modes: live, replay; sessions: all; freshness: session; spoiler-protected | Identity: entry, session; generation: session; time: source: utc; received: not_provided; updated: entity.last_updated; displayed: snapshot | Type: number; unit: %; summary, list |
 
 ## Pit stops (`pit_stops`)
 
@@ -248,6 +249,13 @@ Declared sources: `current_session`, `race_control`.
 | --- | --- | --- | --- | --- |
 | `event_time` — Time | `race_control_log` → `utc` | Capability: public; modes: live, replay; sessions: all; freshness: source; spoiler-protected | Identity: entry, season, round; generation: session; time: source: events[].utc; received: subscription.received_at; updated: not_provided; displayed: snapshot | Type: datetime; timeline |
 | `message` — Message | `race_control_log` → `message` | Capability: public; modes: live, replay; sessions: all; freshness: source; spoiler-protected | Identity: entry, season, round; generation: session; time: source: events[].utc; received: subscription.received_at; updated: not_provided; displayed: snapshot | Type: text; timeline |
+
+## modular.radar_title (`radar`)
+
+Declared sources: `current_season`, `live_delay_number`, `next_race`, `replay_status`.
+
+| Field | Source and path | Coverage | Identity and time | Presentation |
+| --- | --- | --- | --- | --- |
 
 ## Replay (`replay`)
 
@@ -364,12 +372,12 @@ Declared sources: `analysis`.
 | `stint_start_age` — Starting tyre age | `analysis` → `strategy.stints[].tyre_age_at_start` | Capability: public_timing; modes: live, replay; sessions: practice, qualifying, sprint_qualifying, sprint, race; freshness: session; spoiler-protected | Identity: entry, session, driver; generation: session; time: source: not_provided; received: subscription.received_at; updated: not_provided; displayed: snapshot | Type: integer; table, detail |
 | `clean_pace` — Median clean pace | `analysis` → `strategy.stints[].adjusted_median_clean_pace` | Capability: public_timing; modes: live, replay; sessions: practice, qualifying, sprint_qualifying, sprint, race; freshness: session; spoiler-protected; estimated/derived | Identity: entry, session, driver; generation: session; time: source: not_provided; received: subscription.received_at; updated: not_provided; displayed: snapshot | Type: lap_duration; table, detail |
 | `raw_pace` — Median recorded pace | `analysis` → `strategy.stints[].raw_median_pace` | Capability: public_timing; modes: live, replay; sessions: practice, qualifying, sprint_qualifying, sprint, race; freshness: session; spoiler-protected | Identity: entry, session, driver; generation: session; time: source: not_provided; received: subscription.received_at; updated: not_provided; displayed: snapshot | Type: lap_duration; table, detail |
-| `degradation` — Estimated degradation | `analysis` → `strategy.stints[].degradation_seconds_per_lap` | Capability: public_timing; modes: live, replay; sessions: practice, qualifying, sprint_qualifying, sprint, race; freshness: session; spoiler-protected; estimated/derived | Identity: entry, session, driver; generation: session; time: source: not_provided; received: subscription.received_at; updated: not_provided; displayed: snapshot | Type: degradation; unit: s/lap; table, detail |
+| `degradation` — modular.strategy_trend | `analysis` → `strategy.stints[].lap_time_trend.seconds_per_lap` | Capability: public_timing; modes: live, replay; sessions: practice, qualifying, sprint_qualifying, sprint, race; freshness: session; spoiler-protected; estimated/derived | Identity: entry, session, driver; generation: session; time: source: not_provided; received: subscription.received_at; updated: not_provided; displayed: snapshot | Type: degradation; unit: s/lap; table, detail |
 | `clean_samples` — Clean laps | `analysis` → `strategy.stints[].sample_count` | Capability: public_timing; modes: live, replay; sessions: practice, qualifying, sprint_qualifying, sprint, race; freshness: session; spoiler-protected | Identity: entry, session, driver; generation: session; time: source: not_provided; received: subscription.received_at; updated: not_provided; displayed: snapshot | Type: integer; table, detail |
 | `raw_samples` — Recorded laps | `analysis` → `strategy.stints[].raw_sample_count` | Capability: public_timing; modes: live, replay; sessions: practice, qualifying, sprint_qualifying, sprint, race; freshness: session; spoiler-protected | Identity: entry, session, driver; generation: session; time: source: not_provided; received: subscription.received_at; updated: not_provided; displayed: snapshot | Type: integer; table, detail |
 | `excluded_samples` — Excluded laps | `analysis` → `strategy.stints[].excluded_laps` | Capability: public_timing; modes: live, replay; sessions: practice, qualifying, sprint_qualifying, sprint, race; freshness: session; spoiler-protected | Identity: entry, session, driver; generation: session; time: source: not_provided; received: subscription.received_at; updated: not_provided; displayed: snapshot | Type: integer; table, detail |
 | `exclusion_reasons` — Exclusion reasons | `analysis` → `strategy.stints[].excluded_reason_counts` | Capability: public_timing; modes: live, replay; sessions: practice, qualifying, sprint_qualifying, sprint, race; freshness: session; spoiler-protected | Identity: entry, session, driver; generation: session; time: source: not_provided; received: subscription.received_at; updated: not_provided; displayed: snapshot | Type: reason_counts; table, detail |
-| `strategy_pit_loss` — Estimated stint-change loss | `analysis` → `strategy.stints[].pit_loss_seconds` | Capability: public_timing; modes: live, replay; sessions: practice, qualifying, sprint_qualifying, sprint, race; freshness: session; spoiler-protected; estimated/derived | Identity: entry, session, driver; generation: session; time: source: not_provided; received: subscription.received_at; updated: not_provided; displayed: snapshot | Type: seconds_delta; table, detail |
+| `strategy_pit_loss` — Estimated stint-change loss | `analysis` → `strategy.stints[].stint_change_estimate.seconds` | Capability: public_timing; modes: live, replay; sessions: practice, qualifying, sprint_qualifying, sprint, race; freshness: session; spoiler-protected; estimated/derived | Identity: entry, session, driver; generation: session; time: source: not_provided; received: subscription.received_at; updated: not_provided; displayed: snapshot | Type: seconds_delta; table, detail |
 | `analysis_quality` — Evidence score | `analysis` → `strategy.stints[].confidence` | Capability: analysis; modes: live, replay; sessions: practice, qualifying, sprint_qualifying, sprint, race; freshness: session; spoiler-protected; estimated/derived | Identity: entry, session, driver; generation: session; time: source: not_provided; received: subscription.received_at; updated: not_provided; displayed: snapshot | Type: confidence; table, detail |
 
 ### content=compound_comparison
@@ -388,9 +396,9 @@ Declared sources: `analysis`.
 | --- | --- | --- | --- | --- |
 | `team` — Team | `analysis` → `strategy.teammate_comparisons[].team` | Capability: public_timing; modes: live, replay; sessions: practice, qualifying, sprint_qualifying, sprint, race; freshness: session; spoiler-protected | Identity: entry, session, comparison; generation: session; time: source: not_provided; received: subscription.received_at; updated: not_provided; displayed: snapshot | Type: text; table, detail |
 | `incident_drivers` — Drivers involved | `analysis` → `strategy.teammate_comparisons[].drivers` | Capability: public_timing; modes: live, replay; sessions: practice, qualifying, sprint_qualifying, sprint, race; freshness: session; spoiler-protected | Identity: entry, session, comparison; generation: session; time: source: not_provided; received: subscription.received_at; updated: not_provided; displayed: snapshot | Type: text; table, detail |
-| `comparison_pace` — Median pace by driver | `analysis` → `strategy.teammate_comparisons[].median_clean_pace` | Capability: public_timing; modes: live, replay; sessions: practice, qualifying, sprint_qualifying, sprint, race; freshness: session; spoiler-protected; estimated/derived | Identity: entry, session, comparison; generation: session; time: source: not_provided; received: subscription.received_at; updated: not_provided; displayed: snapshot | Type: driver_paces; table, detail |
-| `comparison_gap` — Pace difference | `analysis` → `strategy.teammate_comparisons[].delta_seconds` | Capability: public_timing; modes: live, replay; sessions: practice, qualifying, sprint_qualifying, sprint, race; freshness: session; spoiler-protected; estimated/derived | Identity: entry, session, comparison; generation: session; time: source: not_provided; received: subscription.received_at; updated: not_provided; displayed: snapshot | Type: seconds_duration; table, detail |
-| `pace_leader` — Lower median pace | `analysis` → `strategy.teammate_comparisons[].faster_driver` | Capability: public_timing; modes: live, replay; sessions: practice, qualifying, sprint_qualifying, sprint, race; freshness: session; spoiler-protected; estimated/derived | Identity: entry, session, comparison; generation: session; time: source: not_provided; received: subscription.received_at; updated: not_provided; displayed: snapshot | Type: text; table, detail |
+| `comparison_pace` — modular.strategy_descriptive_pace | `analysis` → `strategy.teammate_comparisons[].median_clean_pace` | Capability: public_timing; modes: live, replay; sessions: practice, qualifying, sprint_qualifying, sprint, race; freshness: session; spoiler-protected; estimated/derived | Identity: entry, session, comparison; generation: session; time: source: not_provided; received: subscription.received_at; updated: not_provided; displayed: snapshot | Type: driver_paces; table, detail |
+| `comparison_gap` — modular.strategy_paired_difference | `analysis` → `strategy.teammate_comparisons[].matched_comparison.delta_seconds` | Capability: public_timing; modes: live, replay; sessions: practice, qualifying, sprint_qualifying, sprint, race; freshness: session; spoiler-protected; estimated/derived | Identity: entry, session, comparison; generation: session; time: source: not_provided; received: subscription.received_at; updated: not_provided; displayed: snapshot | Type: seconds_delta; table, detail |
+| `pace_leader` — modular.strategy_paired_leader | `analysis` → `strategy.teammate_comparisons[].matched_comparison.faster_driver` | Capability: public_timing; modes: live, replay; sessions: practice, qualifying, sprint_qualifying, sprint, race; freshness: session; spoiler-protected; estimated/derived | Identity: entry, session, comparison; generation: session; time: source: not_provided; received: subscription.received_at; updated: not_provided; displayed: snapshot | Type: text; table, detail |
 | `analysis_quality` — Evidence score | `analysis` → `strategy.teammate_comparisons[].confidence` | Capability: analysis; modes: live, replay; sessions: practice, qualifying, sprint_qualifying, sprint, race; freshness: session; spoiler-protected; estimated/derived | Identity: entry, session, comparison; generation: session; time: source: not_provided; received: subscription.received_at; updated: not_provided; displayed: snapshot | Type: confidence; table, detail |
 
 ### content=crossover
@@ -458,11 +466,12 @@ Declared sources: `analysis`.
 
 ## Timing (`timing`)
 
-Declared sources: `current_session`, `current_tyres`, `driver_list`, `driver_positions`, `session_status`.
+Declared sources: `current_session`, `current_tyres`, `driver_list`, `driver_positions`, `investigations`, `session_status`, `starting_grid`.
 
 | Field | Source and path | Coverage | Identity and time | Presentation |
 | --- | --- | --- | --- | --- |
 | `position` — Pos | `driver_positions` → `current_position` | Capability: public_timing; modes: live, replay; sessions: practice, qualifying, sprint_qualifying, sprint, race; freshness: session; spoiler-protected | Identity: entry, session, driver; generation: session; time: source: not_provided; received: not_provided; updated: entity.last_updated; displayed: snapshot | Type: integer; table, detail |
+| `position_with_change` — Position + change | `driver_positions` → `current_position + starting_grid.grid[].grid_position` | Capability: public_timing; modes: live, replay; sessions: practice, qualifying, sprint_qualifying, sprint, race; freshness: session; spoiler-protected | Identity: entry, session, driver; generation: session; time: source: not_provided; received: not_provided; updated: entity.last_updated; displayed: snapshot | Type: position_with_change; table, detail |
 | `driver` — Driver | `driver_positions` → `racing_number` | Capability: public_timing; modes: live, replay; sessions: practice, qualifying, sprint_qualifying, sprint, race; freshness: session; spoiler-protected | Identity: entry, session, driver; generation: session; time: source: not_provided; received: not_provided; updated: entity.last_updated; displayed: snapshot | Type: driver; table, detail |
 | `team` — Team | `driver_positions` → `team` | Capability: public_timing; modes: live, replay; sessions: practice, qualifying, sprint_qualifying, sprint, race; freshness: session; spoiler-protected | Identity: entry, session, driver; generation: session; time: source: not_provided; received: not_provided; updated: entity.last_updated; displayed: snapshot | Type: text; table, detail |
 | `gap` — To leader | `driver_positions` → `gap_to_leader` | Capability: public_timing; modes: live, replay; sessions: practice, qualifying, sprint_qualifying, sprint, race; freshness: session; spoiler-protected | Identity: entry, session, driver; generation: session; time: source: not_provided; received: not_provided; updated: entity.last_updated; displayed: snapshot | Type: gap; table, detail |
@@ -511,6 +520,14 @@ Declared sources: `current_tyres`, `driver_list`, `tyre_statistics`.
 | `tyre_age` — Tyre age | `current_tyres` → `drivers[].stint_laps` | Capability: public_timing; modes: live, replay; sessions: practice, qualifying, sprint_qualifying, sprint, race; freshness: session; spoiler-protected | Identity: entry, session, driver; generation: session; time: source: not_provided; received: not_provided; updated: entity.last_updated; displayed: snapshot | Type: integer; unit: laps; table, detail |
 | `tyre_new` — New set | `current_tyres` → `drivers[].new` | Capability: public_timing; modes: live, replay; sessions: practice, qualifying, sprint_qualifying, sprint, race; freshness: session; spoiler-protected | Identity: entry, session, driver; generation: session; time: source: not_provided; received: not_provided; updated: entity.last_updated; displayed: snapshot | Type: boolean; table, detail |
 
+### content=history
+
+| Field | Source and path | Coverage | Identity and time | Presentation |
+| --- | --- | --- | --- | --- |
+| `position` — Pos | `current_tyres` → `drivers[].position` | Capability: public_timing; modes: live, replay; sessions: practice, qualifying, sprint_qualifying, sprint, race; freshness: session; spoiler-protected | Identity: entry, session, driver; generation: session; time: source: not_provided; received: not_provided; updated: entity.last_updated; displayed: snapshot | Type: integer; table, detail |
+| `driver` — Driver | `current_tyres` → `drivers[].racing_number` | Capability: public_timing; modes: live, replay; sessions: practice, qualifying, sprint_qualifying, sprint, race; freshness: session; spoiler-protected | Identity: entry, session, driver; generation: session; time: source: not_provided; received: not_provided; updated: entity.last_updated; displayed: snapshot | Type: driver; table, detail |
+| `tyre_age` — Tyre age | `current_tyres` → `drivers[].stints[].total_laps (current stint)` | Capability: public_timing; modes: live, replay; sessions: practice, qualifying, sprint_qualifying, sprint, race; freshness: session; spoiler-protected | Identity: entry, session, driver; generation: session; time: source: not_provided; received: not_provided; updated: entity.last_updated; displayed: snapshot | Type: integer; unit: laps; table, detail |
+
 ### content=statistics
 
 | Field | Source and path | Coverage | Identity and time | Presentation |
@@ -525,7 +542,7 @@ Declared sources: `current_tyres`, `driver_list`, `tyre_statistics`.
 
 ## Weather (`weather`)
 
-Declared sources: `track_weather`, `weather`.
+Declared sources: `session_rain_risk`, `track_weather`, `weather`.
 
 ### content=weather_overview
 
@@ -541,6 +558,7 @@ Declared sources: `track_weather`, `weather`.
 | `visibility` — Visibility | `weather` → `current_visibility` | Capability: public; modes: weather; sessions: all; freshness: source | Identity: entry, season, round, circuit; generation: season_round; time: source: not_provided; received: not_provided; updated: entity.last_updated; displayed: snapshot | Type: number; unit: m; summary, list |
 | `rain_probability` — Rain probability | `weather` → `race_precipitation_probability` | Capability: public; modes: forecast; sessions: all; freshness: source; estimated/derived | Identity: entry, season, round, circuit; generation: season_round; time: source: not_provided; received: not_provided; updated: entity.last_updated; displayed: snapshot | Type: number; unit: %; summary, list |
 | `precipitation` — Precipitation amount | `weather` → `current_precipitation` | Capability: public; modes: weather; sessions: all; freshness: source | Identity: entry, season, round, circuit; generation: season_round; time: source: not_provided; received: not_provided; updated: entity.last_updated; displayed: snapshot | Type: number; unit: mm; summary, list |
+| `session_rain_risk` — modular.session_rain_risk | `session_rain_risk` → `percentage` | Capability: public_timing; modes: live, replay; sessions: all; freshness: session; spoiler-protected | Identity: entry, session; generation: session; time: source: utc; received: not_provided; updated: entity.last_updated; displayed: snapshot | Type: number; unit: %; summary, list |
 
 ### content=current_conditions
 
@@ -556,6 +574,7 @@ Declared sources: `track_weather`, `weather`.
 | `visibility` — Visibility | `weather` → `current_visibility` | Capability: public; modes: weather; sessions: all; freshness: source | Identity: entry, season, round, circuit; generation: season_round; time: source: not_provided; received: not_provided; updated: entity.last_updated; displayed: snapshot | Type: number; unit: m; summary, list |
 | `rain_probability` — Rain probability | `weather` → `current_precipitation_probability` | Capability: public; modes: weather; sessions: all; freshness: source | Identity: entry, season, round, circuit; generation: season_round; time: source: not_provided; received: not_provided; updated: entity.last_updated; displayed: snapshot | Type: number; unit: %; summary, list |
 | `precipitation` — Precipitation amount | `weather` → `current_precipitation` | Capability: public; modes: weather; sessions: all; freshness: source | Identity: entry, season, round, circuit; generation: season_round; time: source: not_provided; received: not_provided; updated: entity.last_updated; displayed: snapshot | Type: number; unit: mm; summary, list |
+| `session_rain_risk` — modular.session_rain_risk | `session_rain_risk` → `percentage` | Capability: public_timing; modes: live, replay; sessions: all; freshness: session; spoiler-protected | Identity: entry, session; generation: session; time: source: utc; received: not_provided; updated: entity.last_updated; displayed: snapshot | Type: number; unit: %; summary, list |
 
 ### content=automatic_conditions
 
@@ -574,6 +593,7 @@ Declared sources: `track_weather`, `weather`.
 | `rain_probability` — Rain probability | `automatic_weather` → `selected_source` | Capability: public; modes: weather, live, replay; sessions: all; freshness: source; spoiler-protected | Identity: entry, season, round; generation: selected_weather_source; time: source: not_provided; received: not_provided; updated: entity.last_updated; displayed: snapshot | Type: number; unit: %; summary |
 | `precipitation` — Precipitation amount | `automatic_weather` → `selected_source` | Capability: public; modes: weather, live, replay; sessions: all; freshness: source; spoiler-protected | Identity: entry, season, round; generation: selected_weather_source; time: source: not_provided; received: not_provided; updated: entity.last_updated; displayed: snapshot | Type: number; unit: mm; summary |
 | `rainfall` — Rain detected | `automatic_weather` → `selected_source` | Capability: public; modes: weather, live, replay; sessions: all; freshness: source; spoiler-protected | Identity: entry, season, round; generation: selected_weather_source; time: source: not_provided; received: not_provided; updated: entity.last_updated; displayed: snapshot | Type: rain_indicator; summary |
+| `session_rain_risk` — modular.session_rain_risk | `session_rain_risk` → `percentage` | Capability: public_timing; modes: live, replay; sessions: all; freshness: session; spoiler-protected | Identity: entry, session; generation: session; time: source: utc; received: not_provided; updated: entity.last_updated; displayed: snapshot | Type: number; unit: %; summary, list |
 
 ### content=race_forecast
 
@@ -589,6 +609,7 @@ Declared sources: `track_weather`, `weather`.
 | `visibility` — Visibility | `weather` → `race_visibility` | Capability: public; modes: forecast; sessions: all; freshness: source; estimated/derived | Identity: entry, season, round, circuit; generation: season_round; time: source: not_provided; received: not_provided; updated: entity.last_updated; displayed: snapshot | Type: number; unit: m; summary, list |
 | `rain_probability` — Rain probability | `weather` → `race_precipitation_probability` | Capability: public; modes: forecast; sessions: all; freshness: source; estimated/derived | Identity: entry, season, round, circuit; generation: season_round; time: source: not_provided; received: not_provided; updated: entity.last_updated; displayed: snapshot | Type: number; unit: %; summary, list |
 | `precipitation` — Precipitation amount | `weather` → `race_precipitation` | Capability: public; modes: forecast; sessions: all; freshness: source; estimated/derived | Identity: entry, season, round, circuit; generation: season_round; time: source: not_provided; received: not_provided; updated: entity.last_updated; displayed: snapshot | Type: number; unit: mm; summary, list |
+| `session_rain_risk` — modular.session_rain_risk | `session_rain_risk` → `percentage` | Capability: public_timing; modes: live, replay; sessions: all; freshness: session; spoiler-protected | Identity: entry, session; generation: session; time: source: utc; received: not_provided; updated: entity.last_updated; displayed: snapshot | Type: number; unit: %; summary, list |
 
 ### content=track_conditions
 
@@ -601,3 +622,4 @@ Declared sources: `track_weather`, `weather`.
 | `wind_direction` — Wind from | `track_weather` → `wind_from_direction_degrees` | Capability: public_timing; modes: live, replay; sessions: all; freshness: session; spoiler-protected | Identity: entry, session; generation: session; time: source: not_provided; received: not_provided; updated: entity.last_updated; displayed: snapshot | Type: bearing; unit: °; summary, list |
 | `pressure` — Air pressure | `track_weather` → `pressure` | Capability: public_timing; modes: live, replay; sessions: all; freshness: session; spoiler-protected | Identity: entry, session; generation: session; time: source: not_provided; received: not_provided; updated: entity.last_updated; displayed: snapshot | Type: number; unit: hPa; summary, list |
 | `rainfall` — Rain detected | `track_weather` → `rainfall` | Capability: public_timing; modes: live, replay; sessions: all; freshness: session; spoiler-protected | Identity: entry, session; generation: session; time: source: not_provided; received: not_provided; updated: entity.last_updated; displayed: snapshot | Type: rain_indicator; summary, list |
+| `session_rain_risk` — modular.session_rain_risk | `session_rain_risk` → `percentage` | Capability: public_timing; modes: live, replay; sessions: all; freshness: session; spoiler-protected | Identity: entry, session; generation: session; time: source: utc; received: not_provided; updated: entity.last_updated; displayed: snapshot | Type: number; unit: %; summary, list |

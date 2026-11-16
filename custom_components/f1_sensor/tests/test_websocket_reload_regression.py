@@ -59,21 +59,26 @@ async def test_analysis_close_terminates_pending_subscriptions(hass):
     subscription = _AnalysisSubscription(hass, connection, 1, hub, 5)
     connection.subscriptions[1] = subscription.unsubscribe
     subscription.async_send_initial()
-    bus.emit("SessionStatus", {"Status": "Started"})
-    assert subscription._pending_handle is not None
     try:
+        bus.emit("SessionStatus", {"Status": "Started"})
+        pending = hub._flush_handle
+        assert pending is not None
+        assert len(connection.events) == 1
         await store.async_close()
+        assert len(connection.events) == 2
         assert connection.events[-1][1]["status"] == "closed"
         assert connection.events[-1][1]["retryable"] is True
+        assert connection.events[-1][1]["session_status"] == "Started"
         assert hub.closed
         assert store not in _ANALYSIS_HUBS
         assert not store._listeners
-        assert subscription._pending_handle is None
-        assert subscription._pending_payload is None
+        assert pending.cancelled()
+        assert hub._flush_handle is None
         assert not connection.subscriptions
         before = len(connection.events)
         subscription.unsubscribe()
         bus.emit("SessionStatus", {"Status": "Finished"})
+        await hass.async_block_till_done()
         assert len(connection.events) == before
     finally:
         subscription.unsubscribe()

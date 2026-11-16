@@ -35,6 +35,38 @@ test('pinned archive identity resolves through catalogue keys without parsing di
   assert.equal(missing.requests.length, 1);
 });
 
+test('archive date-only selection waits for the circuit day and preserves manual choices', () => {
+  const meeting = { meeting_key: 'dates', round: 1, circuit_timezone: 'America/Los_Angeles', sessions: [
+    { session_key: 'qualifying', kind: 'qualifying', date: '2024-03-08', start: '2024-03-08T15:00:00Z' },
+    { session_key: 'race', kind: 'race', date: '2024-03-09', start: null, start_precision: 'date' },
+  ] };
+  const read = query => ({ status: 'ready', data: { payload: query.type.endsWith('/catalog') ? { year: 2024, meetings: [meeting] } : {} } });
+  const plan = (now, options = {}) => archivePlan(module(options), 'one', read, Date.parse(now));
+  assert.equal(plan('2024-03-09T03:00:00Z').session.session_key, 'qualifying');
+  assert.equal(plan('2024-03-10T07:59:59Z').session.session_key, 'qualifying');
+  assert.equal(plan('2024-03-10T08:00:00Z').session.session_key, 'race');
+  assert.equal(plan('2024-03-09T03:00:00Z', { round: '1', session_key: 'race' }).session.session_key, 'race');
+  meeting.circuit_timezone = null;
+  assert.equal(plan('2024-03-10T11:59:59Z').session.session_key, 'qualifying');
+  assert.equal(plan('2024-03-10T12:00:00Z').session.session_key, 'race');
+  meeting.sessions[1].cancelled = true;
+  assert.equal(plan('2024-03-11T12:00:00Z').session.session_key, 'qualifying');
+  assert.equal(plan('2024-03-11T12:00:00Z', { round: '1', session_key: 'race' }).session.session_key, 'race');
+});
+
+test('ambiguous same-day archive order requires selection, while corrected times resolve it', () => {
+  const sessions = [
+    { session_key: 'sprint', kind: 'sprint', date: '2024-03-09', start: null, start_precision: 'date' },
+    { session_key: 'qualifying', kind: 'qualifying', date: '2024-03-09', start: '2024-03-09T15:00:00Z' },
+  ];
+  const read = () => ({ status: 'ready', data: { payload: { year: 2024, meetings: [{ round: 1, sessions }] } } });
+  const now = Date.parse('2024-03-11T00:00:00Z');
+  assert.equal(archivePlan(module(), 'one', read, now).session, null);
+  assert.equal(archivePlan(module({ round: '1', session_key: 'sprint' }), 'one', read, now).session.session_key, 'sprint');
+  sessions[0] = { ...sessions[0], start: '2024-03-09T17:00:00Z', start_precision: 'datetime' };
+  assert.equal(archivePlan(module(), 'one', read, now).session.session_key, 'sprint');
+});
+
 test('archive field contracts and classifications preserve published IDs, zero values and qualifying gaps', () => {
   const config = module(), model = archiveModel(config, 'one', read);
   assert.equal(model.rows[0].id, 'demo-driver-16'); assert.equal(model.rows.at(-1).points, 0);

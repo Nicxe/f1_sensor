@@ -2180,7 +2180,19 @@ async def test_team_radio_sensor_exposes_latest_clip_url(hass) -> None:
 
 @pytest.mark.asyncio
 async def test_driver_positions_sensor_excludes_drivers_from_recorder(hass) -> None:
-    coordinator = _build_coordinator(hass, _build_driver_positions_data(laps=20))
+    data = _build_driver_positions_data(laps=20)
+    data["race_trace_observation"] = {
+        "version": 1,
+        "status": "ready",
+        "reason": None,
+        "context": {"token": "observed-frame-context"},
+        "timing_as_of": {
+            "sequence": 100,
+            "source_time_ms": 100000,
+            "time_domain": "replay_offset",
+        },
+    }
+    coordinator = _build_coordinator(hass, data)
     entry_id = "test_entry_driver_positions"
     _set_entry_context(hass, entry_id, stream_active=True)
 
@@ -2193,12 +2205,15 @@ async def test_driver_positions_sensor_excludes_drivers_from_recorder(hass) -> N
     state = await _add_sensor_and_get_state(hass, sensor)
 
     assert "drivers" in state.attributes
+    assert state.attributes["race_trace_observation"] == data["race_trace_observation"]
     assert "total_laps" in state.attributes
     assert state.state_info is not None
     assert "drivers" in state.state_info["unrecorded_attributes"]
+    assert "race_trace_observation" in state.state_info["unrecorded_attributes"]
 
     shared_attrs, _ = _recorder_shared_attrs(state)
     assert "drivers" not in shared_attrs
+    assert "race_trace_observation" not in shared_attrs
     assert "total_laps" in shared_attrs
 
 

@@ -171,3 +171,14 @@ test('track weather waits across session, delay and replay discontinuities but n
     assert.equal(d.store.weatherAwaitingObservation(d.hass, d.entry), false, 'a new weather payload releases the barrier');
   }
 });
+
+
+test('Race Trace does not retain an entity or detached direct snapshot through an unavailable source', () => {
+  const d = fixture({ type: 'lap_chart', options: { metric: 'cumulative_lap_delta', reference_driver: '4', selected: ['81'] } });
+  assert.equal(retainedSourceKey(d.module), null);
+  assert.equal(d.read().retained, false);
+  assert.equal(d.store.snapshots.size, 0);
+  d.push('driver_positions', 'unavailable');
+  assert.equal(d.read().retained, false);
+  assert.equal(d.store.snapshots.size, 0);
+});

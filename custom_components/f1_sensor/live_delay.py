@@ -42,6 +42,7 @@ class LiveDelayController:
             f"{DOMAIN}_{entry_id}_live_delay_v{storage_version}",
         )
         self._value: int = 0
+        self._epoch = 0
         self._listeners: list[Callable[[int], None]] = []
         self._save_task: asyncio.Task | None = None
         self._loaded = False
@@ -49,6 +50,11 @@ class LiveDelayController:
     @property
     def current(self) -> int:
         return self._value
+
+    @property
+    def epoch(self) -> int:
+        """Identify each real delay change, including a return to an old value."""
+        return self._epoch
 
     async def async_initialize(self, fallback_seconds: Any) -> int:
         """Load stored delay and fall back to config option if missing."""
@@ -69,6 +75,7 @@ class LiveDelayController:
         if new_value == self._value:
             return self._value
         self._value = new_value
+        self._epoch += 1
         if source:
             _LOGGER.debug(
                 "Live delay updated via %s: %ss",

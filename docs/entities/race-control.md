@@ -14,6 +14,8 @@ Race Control messages feed (flags, incidents, key updates).
 
 Feed-style sensor exposing Race Control messages such as flags, incidents, and key session updates. This data is also sent on the [event bus](/entities/events).
 
+[Session Rain Risk](/entities/session-rain-risk) extracts the percentage from session-specific rain-risk messages. Use that value when you want the assessment to remain available after the next unrelated Race Control message arrives.
+
 ## State
 
 - The latest Race Control message text (max 255 characters), or `unknown` when none are available.

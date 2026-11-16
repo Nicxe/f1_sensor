@@ -96,14 +96,24 @@ for (const lineMode of ['off', 'full', 'accent']) {
 test('label placement refreshes after resizing and same-ID annotation changes', async ({ page }) => {
   const record = catalog.circuits.find(item => item.circuit_key === '9');
   await page.evaluate(({ record, variant }) => window.mountCatalogMap(record, variant), { record, variant: variants[0] });
-  const resized = await page.evaluate(async () => {
-    const view = window.catalogView, points = view.model.points;
+  const beforeResize = await page.evaluate(() => {
+    const view = window.catalogView;
+    window.catalogResizeGeometry = view.model.points;
     const before = view.shadowRoot.querySelector('.annotation-number').getAttribute('font-size');
     view.style.width = '640px';
-    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    await view.updateComplete;
-    return { before, after: view.shadowRoot.querySelector('.annotation-number').getAttribute('font-size'), sameGeometry: points === view.model.points, clearance: window.mapClearance() };
+    return before;
   });
+  // ResizeObserver schedules the measurement outside its delivery cycle.
+  // Wait for both the observed width and the actual redrawn label.
+  const view = page.locator('f1-track-map-view');
+  await expect(view).toHaveJSProperty('width', 640);
+  await expect(view.locator('.annotation-number').first()).not.toHaveAttribute('font-size', beforeResize);
+  const resized = await page.evaluate(before => ({
+    before,
+    after: window.catalogView.shadowRoot.querySelector('.annotation-number').getAttribute('font-size'),
+    sameGeometry: window.catalogResizeGeometry === window.catalogView.model.points,
+    clearance: window.mapClearance(),
+  }), beforeResize);
   expect(resized.sameGeometry).toBe(true);
   expect(resized.before).not.toBe(resized.after);
   expect(resized.clearance.trackCollisions).toEqual([]);

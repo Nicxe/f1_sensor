@@ -18,7 +18,7 @@
         },
         "data_description": {
           "live_timing_auth_header": "Manuel backup hvis Token Helper-parring ikke virker. Indsæt kun hele Bearer-tokenet fra F1TV Token Helper som en avanceret nødløsning. Lad feltet stå tomt for at bruge offentlig live-timing uden Replay Mode eller arkivmedier.",
-          "start_f1tv_pairing": "Anbefalet fremgangsmåde. Tilslut et aktivt betalt F1TV-abonnement for Replay Mode, arkivmedier og ekstra live-data. Offentlig live-timing fungerer fortsat uden det.",
+          "start_f1tv_pairing": "Anbefalet fremgangsmåde: Tilslut din Formula 1-konto for genafspilningstilstand og adgang til arkivdata. En gratis konto er nok til genafspilning; yderligere live-data afhænger af kontoens rettigheder og af, om sessionen er tilgængelig. Offentlig live-timing fortsætter uden konto.",
           "install_dashboard_cards": "Registers the bundled F1 Sensor cards in Home Assistant. Disable this if you only use entities and automations. Existing F1 dashboard cards will stop working after you reload the browser.",
           "install_legacy_cards": "Registrer også de udfasede F1-kort. De er slået fra ved nye installationer; eksisterende installationer beholder deres kort. Kræver installation af dashboardkort. Genindlæs browseren efter ændringen. Hvis valget slås fra, virker ældre kort ikke, før de migreres til F1 Sensor-kortet. Ved flere installationer forbliver ældre kort tilgængelige, så længe en aktiv installation anmoder om dem.",
           "operation_mode": "Vælg Live for at forbinde til Formula 1 SignalR, eller Development for at afspille en gemt dump-fil lokalt.",
@@ -46,7 +46,7 @@
         "data_description": {
           "live_timing_auth_header": "Manual backup if Token Helper pairing does not work. Paste a new full Bearer token only as an advanced fallback. Leave blank to keep the current value.",
           "clear_live_timing_auth_header": "Fjern den gemte F1TV-godkendelsesværdi og fortsæt med offentlig live-timing. Replay Mode og arkivmedier vil være utilgængelige.",
-          "start_f1tv_pairing": "Anbefalet fremgangsmåde. Tilslut et aktivt, betalt F1TV-abonnement for genafspilningstilstand, arkivindhold og ekstra live-data. Offentlig live-timing fortsætter uden.",
+          "start_f1tv_pairing": "Anbefalet fremgangsmåde. Tilslut din Formula 1-konto for Genafspilningstilstand og arkivdata. En gratis konto er tilstrækkelig til genafspilning; yderligere live-data afhænger af kontotilladelser og sessionernes tilgængelighed. Offentlig live-timing fungerer stadig uden den.",
           "install_dashboard_cards": "Registers the bundled F1 Sensor cards in Home Assistant. Disable this if you only use entities and automations. Existing F1 dashboard cards will stop working after you reload the browser.",
           "install_legacy_cards": "Registrer også de udfasede F1-kort. De er slået fra ved nye installationer; eksisterende installationer beholder deres kort. Kræver installation af dashboardkort. Genindlæs browseren efter ændringen. Hvis valget slås fra, virker ældre kort ikke, før de migreres til F1 Sensor-kortet. Ved flere installationer forbliver ældre kort tilgængelige, så længe en aktiv installation anmoder om dem.",
           "operation_mode": "Vælg Live for at oprette forbindelse til Formula 1 SignalR, eller Development for at afspille en gemt dumpfil lokalt.",
@@ -66,12 +66,12 @@
         "data_description": {
           "live_timing_auth_header": "Manual backup if Token Helper pairing does not work. Paste a new full Bearer token only as an advanced fallback.",
           "clear_live_timing_auth_header": "Fjern den gemte F1TV-autoriseringsværdi og fortsæt med offentlig live-timing. Genafspilningstilstand og arkivindhold vil være utilgængelige.",
-          "start_f1tv_pairing": "Anbefalet løsning. Tilslut et aktivt betalt F1TV-abonnement for Replay-tilstand, arkivmedier og ekstra live-data. Offentlig live-timing fortsætter uden abonnement."
+          "start_f1tv_pairing": "Anbefalet fremgangsmåde. Forbind din Formula 1-konto for at bruge genafspilningstilstand og få adgang til arkiverede data. En gratis konto er nok til genafspilning; yderligere live-data afhænger af kontoens rettigheder og om sessionen er tilgængelig. Offentlig live-timing fortsætter uden token."
         }
       },
       "f1tv_pairing": {
         "title": "Connect F1TV access",
-        "description": "Brug F1TV Token Helper til at tilslutte et aktivt betalt abonnement. Offentlig live-timing forbliver valgfrit autentificeret, men Replay Mode og arkivmedier kræver F1TV-adgang. Denne parring udløber {expires_at}."
+        "description": "Brug F1TV Token Helper til at forbinde din Formula 1-konto. En gratis konto er tilstrækkelig til genafspilningstilstand; ekstra live-data afhænger af kontoens tilladelser og om sessionen er tilgængelig. Offentlig live-timing fortsætter uden token. Denne parring udløber {expires_at}."
       },
       "sensor_review": {
         "title": "Gennemse sensorændringer",
@@ -238,6 +238,9 @@
       },
       "replay_status": {
         "name": "Genafspilningsstatus"
+      },
+      "session_rain_risk": {
+        "name": "Sessionens regnrisiko"
       }
     },
     "media_player": {
@@ -364,7 +367,7 @@
             "title": "Update F1TV live timing token"
           },
           "f1tv_pairing": {
-            "description": "Brug F1TV Token Helper til at forbinde et aktivt betalt abonnement. Offentlig live timing forbliver valgfrit autentificeret, men Replay Mode og arkivmedier kræver F1TV-adgang. Denne parring udløber {expires_at}.",
+            "description": "Brug F1TV Token Helper til at tilslutte din Formula 1-konto. En gratis konto er tilstrækkelig til Genafspilningstilstand; yderligere live-data afhænger af kontotilladelser og sessioners tilgængelighed. Offentlig live-timing fungerer stadig uden en token. Denne tilknytning udløber {expires_at}.",
             "title": "Tilslut F1TV-adgang"
           }
         }

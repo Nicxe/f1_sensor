@@ -7,6 +7,20 @@ const fixture = (scene = 'replay') => { const demo = makeDemo(scene); return { .
 const read = d => replayModel(d.hass, d.entry);
 const command = (d, action, value, context = read(d).controlContext) => replayCommand(d.hass, d.entry, d.module, action, value, context);
 
+test('replay explains archive identity and normalization failures without conflating them with download errors', () => {
+  const d = fixture(), attrs = d.hass.states[d.entry.entities.replay_status].attributes;
+  for (const code of ['archive_identity_conflict', 'cache_normalization_incompatible']) {
+    attrs.download_error = 'Load failed'; attrs.download_error_code = code;
+    attrs.archive_identity = { status: 'missing' };
+    assert.equal(read(d).downloadErrorCode, code);
+    assert.equal(read(d).archiveIdentity, 'missing');
+  }
+  attrs.download_error = null; attrs.download_error_code = null; attrs.archive_identity = { status: 'matched' };
+  assert.equal(read(d).downloadError, false);
+  assert.equal(read(d).downloadErrorCode, null);
+  assert.equal(read(d).archiveIdentity, 'matched');
+});
+
 test('replay uses media-relative progress and requires matching loaded session and state before playback', () => {
   const d = fixture(), player = d.hass.states[d.entry.entities.replay_player];
   d.hass.states[d.entry.entities.replay_status].attributes.playback_position_s = 100;

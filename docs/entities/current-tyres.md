@@ -1,12 +1,12 @@
 ---
 id: current-tyres
 title: "Current Tyres"
-description: "Current tyre compound per driver \u2014 state, attributes, and examples for F1 Sensor."
+description: "Current tyre compound, tyre age and known stint history per driver for F1 Sensor."
 ---
 
 import {EntityMeta, RelatedReferences} from '@site/src/components/Docs';
 
-See the tyre compound currently fitted to each driver’s car.
+See the tyre compound currently fitted to each driver’s car, its age and the known stint history for the session.
 
 <EntityMeta id="current-tyres" />
 
@@ -28,6 +28,8 @@ Shows the current tyre compound for each driver in the active session.
 | Attribute | Type | Description |
 | --- | --- | --- |
 | drivers | list | List of driver tyre information, sorted by car number |
+| lap_current | number or null | Current reported session lap |
+| lap_total | number or null | Scheduled session laps, when provided by the source |
 
 ### `drivers` entries
 
@@ -42,8 +44,36 @@ Shows the current tyre compound for each driver in the active session.
 | compound_short | string | Single-letter abbreviation ("S", "M", "H", "I", "W") |
 | compound_color | string | Hex color code for the compound (e.g., "#FF0000" for soft) |
 | compound_color_rgb | list | Compound color as RGB values (e.g., `[255, 0, 0]` for soft) |
-| new | boolean | Whether the tyres are brand new |
-| stint_laps | number | Number of laps on the current set |
+| new | boolean or null | Whether the current set was new when fitted; `null` means unknown |
+| stint_laps | number or null | Reported total age of the current set, including laps driven before it was fitted |
+| completed_laps | number or null | Driver's reported number of completed session laps |
+| retired | boolean or null | Whether the driver is reported retired; `null` means unknown |
+| in_pit | boolean or null | Whether the driver is currently reported in the pit lane; `null` means unknown |
+| stint_history_complete | boolean | Whether the available stint history covers the driver from the start of the session |
+| stints | list | Known tyre stints in chronological order; see the fields below |
+
+### `stints` entries
+
+| Field | Type | Description |
+| --- | --- | --- |
+| stint_index | number | Source stint identifier; it is not a pit-stop count |
+| compound | string or null | Tyre compound for this stint |
+| new | boolean or null | Whether the set was new when fitted |
+| first_lap | number or null | First session lap assigned to the stint, when known |
+| last_lap | number or null | Last completed session lap assigned to the stint, when known |
+| stint_laps | number or null | Laps driven in this stint, excluding mileage before fitting |
+| tyre_age_at_start | number or null | Laps already on the set when fitted; zero and unknown are different |
+| total_laps | number or null | Reported total tyre age; final age for a completed stint, latest age for the current stint |
+| is_current | boolean | Whether this is the latest fitted set; it can remain `true` after retirement or session end |
+| coverage | string | `complete` or `partial`, describing whether the stint's lap boundaries and age are known |
+
+The driver's top-level `stint_laps` retains its existing meaning: total age of the current tyres. The nested `stints[].stint_laps` is the distance driven during one stint. For example, a set fitted with three earlier laps and then driven for fourteen laps has `tyre_age_at_start: 3`, `stint_laps: 14` and `total_laps: 17`. Do not add the start age to `total_laps` again.
+
+The [Tyres history view](/cards/modular#show-tyre-history) keeps completed stints visible and shows their total age at the time of the tyre change. A source update that continues the same set is not shown as a new tyre change.
+
+:::info
+History belongs to the selected session and may be incomplete after a late connection, an integration restart or an incomplete source snapshot. Unknown numeric fields remain `null` and appear as **—** in the card. A reported zero remains zero; missing data does not establish that tyres were new.
+:::
 
 ## Examples
 
@@ -120,15 +150,15 @@ Shows the current tyre compound for each driver in the active session.
 {% endif %}
 ```
 
-**List drivers on fresh tyres:**
+**List drivers whose current set was fitted new:**
 ```jinja2
 {% set drivers = state_attr('sensor.f1_current_tyres', 'drivers') or [] %}
 {% for d in drivers if d.new %}
-  {{ d.tla }} - fresh {{ d.compound }}
+  {{ d.tla }} - {{ d.compound }}, fitted new
 {% endfor %}
 ```
 
-**Find driver with most laps on current stint:**
+**Find the oldest current tyre set:**
 ```jinja2
 {% set drivers = state_attr('sensor.f1_current_tyres', 'drivers') or [] %}
 {% if drivers %}

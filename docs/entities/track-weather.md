@@ -14,6 +14,8 @@ Current on-track weather (air temp, track temp, rainfall, wind speed, etc.).
 
 Live trackside weather from F1 Live Timing. Updates only in direct connection with a session, and remains unchanged otherwise.
 
+For the percentage published by Race Control for a specific session, use [Session Rain Risk](/entities/session-rain-risk). That assessment is separate from observed rain in this feed.
+
 ## State
 
 - Number: air temperature in Home Assistant's selected temperature unit, or `unknown`.
