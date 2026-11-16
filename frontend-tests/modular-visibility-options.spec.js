@@ -132,6 +132,83 @@ test('hiding the experimental map text preserves the previous-season baseline wa
   await expect(map.getByRole('img', { name: 'Driver positions on the track' })).toBeVisible();
 });
 
+test('Track map explanations hide the baseline note and marking list while preserving map markings', async ({ page }) => {
+  await page.evaluate(() => window.mountModular({ editor: true, config: { modules: [{ type: 'map', fields: ['track_map', 'map_corners'], options: { show_experimental_notice: false } }] } }));
+  const editor = page.locator('f1-sensor-card-editor');
+  const map = page.locator('#native-preview f1-track-map-view');
+  const baseline = 'Some markings use the previous season’s FIA map as a baseline and may differ from this season.';
+  const setBaseline = async view => {
+    await expect(view.getByRole('img', { name: 'Driver positions on the track' })).toBeVisible();
+    await view.evaluate(node => {
+      node.model = { ...node.model, annotations: { ...node.model.annotations, previousSeasonBaseline: true,
+        corners: [{ id: 'turn_01', label: '1', point: [40, 20], offset: [0, -8] }] } };
+    });
+  };
+  await setBaseline(map);
+  await expect(map.getByText(baseline, { exact: true })).toBeVisible();
+  await expect(map.locator('.annotation-summary summary')).toContainText('Track markings');
+  await expect(map.locator('.annotation-corner-group').first()).toBeVisible();
+  const markings = await map.locator('.annotation-corner-group').count();
+  await editor.getByText('Module options', { exact: true }).click();
+  const control = editor.getByRole('checkbox', { name: 'Show explanations', exact: true });
+  await expect(control).toBeChecked();
+  await control.uncheck();
+  await setBaseline(map);
+  await expect(map.getByText(baseline, { exact: true })).toHaveCount(0);
+  await expect(map.locator('.annotation-summary')).toHaveCount(0);
+  await expect(map.locator('.annotation-corner-group')).toHaveCount(markings);
+  await expect(map.locator('#map-description')).not.toContainText('Track markings are listed below');
+  await control.check();
+  await setBaseline(map);
+  await expect(map.getByText(baseline, { exact: true })).toBeVisible();
+  await expect(map.locator('.annotation-summary summary')).toBeVisible();
+  await control.uncheck();
+  const saved = await reloadSaved(page);
+  expect(saved.modules[0].options.show_explanation).toBe(false);
+  const reloaded = page.locator('f1-track-map-view');
+  await setBaseline(reloaded);
+  await expect(reloaded.getByText(baseline, { exact: true })).toHaveCount(0);
+  await expect(reloaded.locator('.annotation-summary')).toHaveCount(0);
+  await expect(reloaded.locator('.annotation-corner-group')).toHaveCount(markings);
+});
+
+test('Tyre history lap progress can be hidden and saved independently of its axis and stint bars', async ({ page }) => {
+  await page.evaluate(() => window.mountModular({ editor: true, config: { modules: [{ type: 'tyres', options: { content: 'history' } }] } }));
+  const editor = page.locator('f1-sensor-card-editor');
+  const history = page.locator('#native-preview f1-tyre-history-view');
+  await expect(history.locator('.lap-progress')).toHaveText(/Lap \d+ \/ \d+/);
+  await expect(history.locator('.segment').first()).toBeVisible();
+  const axis = await history.locator('.axis span').allTextContents();
+  const segments = await history.locator('.segment').count();
+  expect(axis.length).toBeGreaterThan(1);
+  await editor.getByText('Module options', { exact: true }).click();
+  const control = editor.getByRole('checkbox', { name: 'Show lap progress', exact: true });
+  await expect(control).toBeChecked();
+  await control.uncheck();
+  await expect(history.locator('.lap-progress')).toHaveCount(0);
+  await expect(history.locator('.axis span')).toHaveText(axis);
+  await expect(history.locator('.segment')).toHaveCount(segments);
+  await expect(history.locator('.cursor').first()).toBeVisible();
+  await expect(history.locator('.legend')).toBeVisible();
+  await control.check();
+  await expect(history.locator('.lap-progress')).toHaveText(/Lap \d+ \/ \d+/);
+  await control.uncheck();
+  await editor.getByLabel('Tyre content', { exact: true }).selectOption('current');
+  await expect(control).toHaveCount(0);
+  await editor.getByLabel('Tyre content', { exact: true }).selectOption('statistics');
+  await expect(control).toHaveCount(0);
+  await editor.getByLabel('Tyre content', { exact: true }).selectOption('history');
+  await expect(control).not.toBeChecked();
+  await expect(history.locator('.lap-progress')).toHaveCount(0);
+  const saved = await reloadSaved(page);
+  expect(saved.modules[0].options.show_lap_progress).toBe(false);
+  const reloaded = page.locator('f1-tyre-history-view');
+  await expect(reloaded.locator('.lap-progress')).toHaveCount(0);
+  await expect(reloaded.locator('.axis span')).toHaveText(axis);
+  await expect(reloaded.locator('.segment')).toHaveCount(segments);
+  await expect(reloaded.locator('.segment').first()).toBeVisible();
+});
+
 test('saved Results context preference keeps classification data and status visible', async ({ page }) => {
   await page.evaluate(() => window.mountModular({ config: { modules: [{ type: 'results', options: { show_context: false, show_status: true } }] } }));
   await expect(page.locator('f1-module-view table tbody tr').first()).toBeVisible();

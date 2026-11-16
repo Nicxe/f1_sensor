@@ -128,7 +128,7 @@ export class F1TyreHistoryView extends LitElement {
     for (let tick = step; tick < max; tick += step) if (max - tick >= max * .12) ticks.push(tick);
     ticks.push(max);
     return html`<div class=${`history ${showAge ? '' : 'no-age'}`}>
-      ${current != null ? html`<p class="lap-progress">${this.w('modular.tyre_history_lap_progress', { current: this.value(current), total: this.value(axis.total) })}</p>` : ''}
+      ${this.module.options.show_lap_progress !== false && current != null ? html`<p class="lap-progress">${this.w('modular.tyre_history_lap_progress', { current: this.value(current), total: this.value(axis.total) })}</p>` : ''}
       <div class="history-axis"><span class="sr">${this.w('modular.tyre_history_axis')}</span><span></span><div class="axis" aria-hidden="true">${knownAxis ? ticks.map((tick, index) => html`<span class=${index > 0 && index < ticks.length - 1 ? 'minor' : ''} style=${`left:${tick / max * 100}%`}>${this.value(tick)}</span>`) : ''}</div>${showAge ? html`<span>${this.w('modular.tyre_history_total_age')}</span>` : ''}</div>
       <ol class="drivers">${repeat(rows, row => row.id, row => {
         const open = this.expanded === row.id, detailId = `stints-${encodeURIComponent(row.id)}`;

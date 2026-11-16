@@ -68,7 +68,7 @@ Select a module and open **Module options**. Turn off **Show session and event d
 
 Turn off **Show explanations** to hide help text below timing tables and charts. Analysis modules that already have **Show About section** keep that setting for their explanations. Separate content legends, such as the tyre compound legend, keep their own controls. Data availability and connection messages remain visible.
 
-For **Track map**, turn off **Show experimental notice** to hide the experimental track-markings text, and **Show driver positions and status** to hide the expandable driver list. These choices keep the selected track markings and car markers on the map. **Show map status summary** controls the map's own session and status row; lap progress, track status, driver count and the source footer have separate choices.
+For **Track map**, turn off **Show explanations** to hide the notes below the map, including the previous-season baseline note and the expandable **Track markings** list. **Show experimental notice** controls the experimental text separately while explanations are enabled. Turn off **Show driver positions and status** to hide the expandable driver list. These choices keep the selected track markings and car markers on the map. **Show map status summary** controls the map's own session and status row; lap progress, track status, driver count and the source footer have separate choices.
 
 All these options are on by default. In YAML, place them under the module's `options`:
 
@@ -84,6 +84,7 @@ modules:
     type: map
     options:
       show_context: false
+      show_explanation: false
       show_experimental_notice: false
       show_driver_list: false
 ```
@@ -118,7 +119,9 @@ Select a driver to expand all their known stints directly below the row. Select 
 
 A used tyre can start with earlier mileage. For example, **14** laps in this stint plus **3** before fitting means **17** total. Those earlier three laps do not lengthen the segment on the session-lap timeline. Compound letters accompany the colours, and used tyres have a pattern as well.
 
-**Show compound legend** controls the explanation below the timeline and is on by default. Turn it off to remove the complete legend row. In YAML, configure the module as follows:
+**Show lap progress** controls the **Lap 44 / 71** text above the timeline and is on by default. Turn it off to hide that text while keeping the lap scale and stint bars.
+
+**Show compound legend** controls the explanation below the timeline and is on by default. Turn it off to remove the complete legend row. In YAML, configure these choices as follows:
 
 ```yaml
 type: custom:f1-sensor-card
@@ -127,6 +130,7 @@ modules:
     type: tyres
     options:
       content: history
+      show_lap_progress: false
       show_legend: true
 ```
 

@@ -97,7 +97,7 @@ INDEX_STATUS_ERROR = "error"
 # Index upgrades may rescan compatible frames. A normalization change must
 # instead download the original streams; rescanning cannot recover lost precision.
 CACHE_VERSION = 18
-NORMALIZATION_VERSION = 1
+NORMALIZATION_VERSION = 2
 ARCHIVE_IDENTITY_VERSION = 1
 FORMATION_SEARCH_WINDOW = timedelta(seconds=90)
 FORMATION_HTTP_TIMEOUT = 20
@@ -976,6 +976,21 @@ class ReplaySessionManager:
                     "No frames downloaded - session data may not be available yet"
                 )
             formation_start_utc = None
+            if "TeamRadio" in downloaded:
+                rejected, accepted = await self._hass.async_add_executor_job(
+                    self._align_team_radio_stream_sync, downloaded, session
+                )
+                counts = self._stream_parse_counts.get("TeamRadio")
+                if counts is not None:
+                    counts["accepted"] -= rejected
+                    counts["invalid"] += rejected
+                if not accepted:
+                    downloaded.pop("TeamRadio")
+                if rejected:
+                    _LOGGER.debug(
+                        "Skipped %d radio rows without a reliable replay timestamp",
+                        rejected,
+                    )
             if self._is_race_or_sprint_session(session):
                 formation_start_utc = await self._find_formation_start_utc(session)
             staged_frames = pending_dir / "frames.jsonl"
@@ -1189,6 +1204,176 @@ class ReplaySessionManager:
     def _unlink_if_exists(path: Path) -> None:
         with suppress(FileNotFoundError):
             path.unlink()
+
+    def _session_clock_origin_sync(
+        self, downloaded: dict[str, Path], session: ReplaySession
+    ) -> datetime | None:
+        """Require agreement between independent, session-local clock frames."""
+        origins: list[datetime] = []
+        for stream in ("SessionData", "ExtrapolatedClock"):
+            if (path := downloaded.get(stream)) is None:
+                continue
+            samples = 0
+            with path.open(encoding="utf-8") as handle:
+                for line in handle:
+                    frame = json.loads(line)
+                    if frame["t"] <= 0:
+                        continue  # Initial snapshots can contain older events.
+                    payload = frame["p"]
+                    if not isinstance(payload, dict):
+                        continue
+                    entries = (
+                        payload.get("StatusSeries", {})
+                        if stream == "SessionData"
+                        else [payload]
+                    )
+                    if isinstance(entries, dict):
+                        entries = entries.values()
+                    elif not isinstance(entries, list):
+                        continue
+                    candidates = set()
+                    for entry in entries:
+                        value = entry.get("Utc") if isinstance(entry, dict) else None
+                        utc = self._parse_utc(value) if isinstance(value, str) else None
+                        if utc is None:
+                            continue
+                        utc = utc.replace(microsecond=utc.microsecond // 1000 * 1000)
+                        try:
+                            candidate = utc - timedelta(milliseconds=frame["t"])
+                        except OverflowError:
+                            continue
+                        if abs(candidate - session.start_utc) <= timedelta(hours=12):
+                            candidates.add(candidate)
+                    if len(candidates) == 1:
+                        # A snapshot contributes at most one vote, never its size.
+                        origins.append(candidates.pop())
+                        samples += 1
+                        if samples >= 128:
+                            break
+        # Millisecond truncation can put otherwise matching clocks 1 ms apart.
+        origins.sort()
+        first = 0
+        best: list[datetime] = []
+        for last, origin in enumerate(origins):
+            while origin - origins[first] > timedelta(milliseconds=2):
+                first += 1
+            if last - first + 1 > len(best):
+                best = origins[first : last + 1]
+        if len(best) >= 2 and len(best) * 2 > len(origins):
+            return best[len(best) // 2]
+        return None
+
+    def _align_team_radio_stream_sync(
+        self, downloaded: dict[str, Path], session: ReplaySession
+    ) -> tuple[int, int]:
+        """Align each capture UTC before merge/indexing; keep sorting bounded."""
+        path = downloaded["TeamRadio"]
+        origin = self._session_clock_origin_sync(downloaded, session)
+        rejected = 0
+        accepted = 0
+
+        def rows() -> Iterable[dict[str, Any]]:
+            nonlocal rejected, accepted
+            with path.open(encoding="utf-8") as handle:
+                for line in handle:
+                    frame = json.loads(line)
+                    payload = frame["p"]
+                    if not isinstance(payload, dict):
+                        rejected += 1
+                        continue
+                    captures = payload.get(
+                        "Captures",
+                        payload
+                        if any(
+                            key in payload for key in ("Utc", "Path", "RacingNumber")
+                        )
+                        else [],
+                    )
+                    if isinstance(captures, dict):
+                        captures = (
+                            [captures]
+                            if any(
+                                key in captures
+                                for key in ("Utc", "Path", "RacingNumber")
+                            )
+                            else captures.values()
+                        )
+                    elif not isinstance(captures, list):
+                        rejected += 1
+                        continue
+                    kept = False
+                    for capture in captures:
+                        if not isinstance(capture, dict):
+                            continue
+                        value = capture.get("Utc")
+                        utc = self._parse_utc(value) if isinstance(value, str) else None
+                        if origin is not None and utc is not None:
+                            timestamp = (utc - origin) // timedelta(milliseconds=1)
+                        else:
+                            timestamp = frame["t"]
+                        # Without clock evidence a day-long radio prefix must not
+                        # inflate an ordinary F1 session. Preserve normal feeds.
+                        if not 0 <= timestamp < 86_400_000:
+                            continue
+                        kept = True
+                        yield {
+                            "t": timestamp,
+                            "s": "TeamRadio",
+                            "p": {**payload, "Captures": [capture]},
+                        }
+                    if not kept:
+                        rejected += 1
+                    else:
+                        accepted += 1
+
+        self._sort_replay_stream_sync(rows(), path)
+        return rejected, accepted
+
+    def _sort_replay_stream_sync(
+        self, rows: Iterable[dict[str, Any]], output: Path
+    ) -> None:
+        """Sort bounded chunks with at most logarithmically many merge runs."""
+        with tempfile.TemporaryDirectory(dir=output.parent) as directory:
+            runs: dict[int, Path] = {}
+            batch: list[tuple[int, str]] = []
+            batch_bytes = 0
+            sequence = 0
+
+            def flush() -> None:
+                nonlocal sequence, batch_bytes
+                if not batch:
+                    return
+                run = Path(directory) / str(sequence)
+                sequence += 1
+                batch.sort(key=lambda item: item[0])
+                self._append_lines_file(run, [line for _, line in batch])
+                batch.clear()
+                batch_bytes = 0
+                level = 0
+                while level in runs:
+                    previous = runs.pop(level)
+                    merged = Path(directory) / str(sequence)
+                    sequence += 1
+                    self._merge_stream_files_sync([previous, run], merged)
+                    previous.unlink()
+                    run.unlink()
+                    run = merged
+                    level += 1
+                runs[level] = run
+
+            for row in rows:
+                line = json.dumps(row, separators=(",", ":"))
+                batch.append((row["t"], line))
+                batch_bytes += len(line)
+                if (
+                    len(batch) >= REPLAY_STREAM_BATCH_LINES
+                    or batch_bytes >= REPLAY_STREAM_BATCH_BYTES
+                ):
+                    flush()
+            flush()
+            self._merge_stream_files_sync(
+                [runs[level] for level in sorted(runs, reverse=True)], output
+            )
 
     @staticmethod
     def _append_lines_file(path: Path, lines: list[str]) -> None:
