@@ -133,6 +133,7 @@ from .helpers import (
     fetch_json,
     fetch_text,
     get_next_race,
+    normalize_track_status,
     parse_fia_documents,
 )
 from .history import LAP_ANALYSIS_STREAMS, HistoryService, LapAnalysisStore
@@ -170,15 +171,22 @@ from .lap_position_websocket import (
 )
 from .live_delay import LiveDelayController, LiveDelayReferenceController
 from .live_window import (
+    DEFAULT_PRE_WINDOW,
     EventTrackerScheduleSource,
     LiveAvailabilityTracker,
     LiveSessionSupervisor,
+    _to_utc,
 )
 from .minisector_websocket import (
     MINISECTOR_WS_MARKER,
     async_register_minisector_websocket,
 )
 from .minisectors import MiniSectorStateStore
+from .mode_rules import (
+    low_grip_disables_overtake,
+    safety_car_disables_overtake,
+    straight_mode_for_grip,
+)
 from .no_spoiler import NoSpoilerModeManager
 from .providers import ProviderRegistry
 from .push_laps import PushLapTracker, empty_push_lap
@@ -2916,11 +2924,12 @@ async def _async_setup_entry(
             track_map_store=track_map_store,
         )
     if feature_plan.needs("live_mode"):
-        if race_control_coordinator is None or session_status_coordinator is None:
+        if session_status_coordinator is None:
             raise RuntimeError("Live mode dependencies are incomplete")
         live_mode_coordinator = LiveModeCoordinator(
             hass,
-            race_control_coordinator,
+            analysis_bus,
+            delay_controller=delay_controller,
             session_status_coordinator=session_status_coordinator,
             config_entry=entry,
             live_state=live_state,
@@ -4172,19 +4181,16 @@ class IncidentCoordinator(DataUpdateCoordinator):
 
 
 class LiveModeCoordinator(DataUpdateCoordinator):
-    """Tracks the current 2026 active aero (Straight Mode) and Overtake Mode states.
-
-    Subscribes to RaceControlCoordinator updates to derive cumulative mode state.
-    Automatically resets when the live session window closes or SessionStatus ends.
-    """
+    """Session-bound permissions from the shared, ordered live and replay feed."""
 
     def __init__(
         self,
-        hass: HomeAssistant,
-        race_control_coordinator: RaceControlCoordinator,
-        session_status_coordinator: SessionStatusCoordinator | None = None,
-        config_entry: ConfigEntry | None = None,
-        live_state: LiveAvailabilityTracker | None = None,
+        hass,
+        bus,
+        session_status_coordinator=None,
+        config_entry=None,
+        live_state=None,
+        delay_controller=None,
     ):
         super().__init__(
             hass,
@@ -4193,30 +4199,48 @@ class LiveModeCoordinator(DataUpdateCoordinator):
             update_interval=None,
             config_entry=config_entry,
         )
-        self._rc_coordinator = race_control_coordinator
+        self._bus = bus
         self._session_status_coordinator = session_status_coordinator
+        self._live_state = live_state
+        self._delay_controller = delay_controller
+        self._previous_session_status = None
+        self._started_at = dt_util.utcnow().timestamp()
+        self._unsubs = []
+        self._store = (
+            Store(hass, 1, f"{DOMAIN}_{config_entry.entry_id}_session_modes_v1")
+            if config_entry is not None
+            else None
+        )
+        self._saved = None
+        self._dirty = False
+        self._restore_handle: asyncio.TimerHandle | None = None
+        self._replay_mode = False
         self.available = False
-        self._state: dict = {"overtake_enabled": None, "straight_mode": None}
-        self._rc_unsub: Callable[[], None] | None = None
-        self._status_unsub: Callable[[], None] | None = None
-        self._live_session_key: str | None = None
-        self._live_state_unsub: Callable[[], None] | None = None
+        self._info = {}
+        self._pending = deque(maxlen=128)
+        self._clear_mode_state()
         if live_state is not None:
-            self._live_state_unsub = live_state.add_listener(self._handle_live_state)
+            self._unsubs.append(live_state.add_listener(self._handle_live_state))
 
-    async def async_close(self, *_):
-        if self._rc_unsub:
-            with suppress(Exception):
-                self._rc_unsub()
-            self._rc_unsub = None
-        if self._status_unsub:
-            with suppress(Exception):
-                self._status_unsub()
-            self._status_unsub = None
-        if self._live_state_unsub:
-            with suppress(Exception):
-                self._live_state_unsub()
-            self._live_state_unsub = None
+    def _clear_mode_state(self):
+        self._state = {
+            "overtake_enabled": None,
+            "straight_mode": None,
+            "track_grip": None,
+        }
+        self._times: dict[str, float] = {}
+        self._order: dict[str, int] = {}
+        self._sequence = 0
+        self._safety_car_report: tuple[float, int] | None = None
+        self._restored: set[str] = set()
+        self._restore_handle = _cancel_handle(self._restore_handle)
+
+    @property
+    def mode_session_key(self) -> str | None:
+        return _stream_session_key(self._info)
+
+    def is_restored(self, field: str) -> bool:
+        return field in self._restored
 
     async def _async_update_data(self):
         return (
@@ -4225,10 +4249,302 @@ class LiveModeCoordinator(DataUpdateCoordinator):
             else None
         )
 
+    def _publish_state(self):
+        self.async_set_updated_data(
+            dict(self._state)
+            if any(v is not None for v in self._state.values())
+            else None
+        )
+
+    def _persist(self):
+        if self._store is None or self._replay_mode or self.mode_session_key is None:
+            return
+        value = {
+            "session": self.mode_session_key,
+            "state": dict(self._state),
+            "times": dict(self._times),
+        }
+        # A changed viewing delay may put a previously delivered report in the
+        # viewer's future. Keep that saved field until it is safe to expose.
+        if (
+            self._restore_handle
+            and self._saved
+            and self._saved.get("session") == self.mode_session_key
+        ):
+            for field, stamp in self._saved["times"].items():
+                if stamp > value["times"].get(field, float("-inf")):
+                    value["state"][field] = self._saved["state"][field]
+                    value["times"][field] = stamp
+        if self._saved != value:
+            self._saved = value
+            self._dirty = True
+            self._store.async_delay_save(lambda: self._saved, 1)
+
+    def _restore(self):
+        saved = self._saved
+        if (
+            self._replay_mode
+            or not isinstance(saved, dict)
+            or saved.get("session") != self.mode_session_key
+            or self.mode_session_key is None
+        ):
+            return
+        values = saved.get("state")
+        times = saved.get("times")
+        if not isinstance(values, dict) or not isinstance(times, dict):
+            return
+        latest = self._viewer_time()
+        future = []
+        for key, allowed in (
+            ("track_grip", ("low", "normal")),
+            (
+                "straight_mode",
+                (STRAIGHT_MODE_NORMAL, STRAIGHT_MODE_LOW, STRAIGHT_MODE_DISABLED),
+            ),
+            ("overtake_enabled", (True, False)),
+        ):
+            value = values.get(key)
+            when = times.get(key)
+            if (
+                value is not None
+                and type(value) is type(allowed[0])
+                and value in allowed
+                and isinstance(when, (int, float))
+                and when > self._times.get(key, 0)
+            ):
+                if when <= latest:
+                    self._set(key, value, when, restored=True)
+                else:
+                    future.append(when)
+        self._restore_handle = _cancel_handle(self._restore_handle)
+        if future:
+            self._restore_handle = self.hass.loop.call_later(
+                min(future) - latest, self._restore_due
+            )
+
+    def _restore_due(self):
+        self._restore_handle = None
+        if (
+            self._replay_mode
+            or self.session_is_terminal
+            or _is_no_spoiler_blocked(self)
+        ):
+            return
+        self._restore()
+        self._publish_state()
+
+    def _viewer_time(self) -> float:
+        delay = getattr(self._delay_controller, "current", 0)
+        return dt_util.utcnow().timestamp() - delay
+
+    def _set(self, field, value, when, *, restored=False, order=None):
+        order = self._sequence if order is None else order
+        # The session checkpoint already represents the final field value when
+        # several reports share a source second. Metadata alone cannot revise it.
+        if field in self._times and (when, order) <= (
+            self._times[field],
+            self._order[field],
+        ):
+            return
+        self._order[field] = order
+        self._state[field] = value
+        self._times[field] = when
+        if restored:
+            self._restored.add(field)
+        else:
+            self._restored.discard(field)
+
+    def _message_time(self, item):
+        stamp = item.get("Utc") or item.get("utc") or item.get("_f1_source_utc")
+        if isinstance(stamp, str):
+            utc = _to_utc(stamp, None)
+            if utc is not None:
+                return utc.timestamp()
+        return None
+
+    def _handle_session_info(self, payload):
+        if not isinstance(payload, dict) or _is_no_spoiler_blocked(self):
+            return
+        key = _stream_session_key(payload)
+        if key is None and self.mode_session_key is None and not self._replay_mode:
+            return
+        changed = key is not None and key != self.mode_session_key
+        if changed:
+            if self.mode_session_key is not None:
+                self._pending.clear()
+                self._previous_session_status = getattr(
+                    self._session_status_coordinator, "data", None
+                )
+            self._info = {}
+            self._clear_mode_state()
+        self._info = SessionInfoCoordinator._merge_message(self._info, payload)
+        if self.session_is_terminal:
+            self._handle_session_status_update()
+            return
+        if changed:
+            self._restore()
+        before = (dict(self._state), set(self._restored))
+        if self._safety_car_report and safety_car_disables_overtake(self._info):
+            when, order = self._safety_car_report
+            self._set("overtake_enabled", False, when, order=order)
+        grip = self._state["track_grip"]
+        inferred = straight_mode_for_grip(self._info, grip)
+        if inferred is not None and (
+            self._state["straight_mode"] is None or grip is not None
+        ):
+            self._set(
+                "straight_mode",
+                inferred,
+                self._times.get("track_grip", 0),
+                restored=self.is_restored("track_grip"),
+                order=self._order.get("track_grip", 0),
+            )
+        if grip == "low" and low_grip_disables_overtake(self._info):
+            self._set(
+                "overtake_enabled",
+                False,
+                self._times["track_grip"],
+                restored=self.is_restored("track_grip"),
+                order=self._order.get("track_grip", 0),
+            )
+        if self._pending and (self._replay_mode or self._info.get("StartDate")):
+            pending = list(self._pending)
+            self._pending.clear()
+            for item in pending:
+                self._apply_item(item)
+        if changed or before != (self._state, self._restored):
+            self.available = True
+            self._publish_state()
+            self._persist()
+
+    def _apply_item(self, item):
+        self._sequence += 1
+        when = self._message_time(item)
+        # Reconnect snapshots can contain an earlier session. Confirm the source
+        # time against this SessionInfo before any historical item can seed state.
+        start = _to_utc(self._info.get("StartDate"), self._info.get("GmtOffset"))
+        if (
+            when is not None
+            and not self._replay_mode
+            and start is None
+            and when < self._started_at - 30
+        ):
+            self._pending.append(item)
+            return
+        if (
+            when is not None
+            and start is not None
+            and when < (start - DEFAULT_PRE_WINDOW).timestamp()
+        ):
+            return
+        if (
+            not self._replay_mode
+            and when is not None
+            and when > self._viewer_time() + 1
+        ):
+            return
+        when = (
+            when
+            if when is not None
+            else (
+                max(self._times.values(), default=0)
+                if self._replay_mode
+                else self._viewer_time()
+            )
+        )
+        if (
+            item.get("Category") == "SafetyCar"
+            and item.get("Message") == "SAFETY CAR DEPLOYED"
+        ):
+            report = (when, self._sequence)
+            if self._safety_car_report is None or report > self._safety_car_report:
+                self._safety_car_report = report
+            if safety_car_disables_overtake(self._info):
+                self._set("overtake_enabled", False, when)
+            return
+        if item.get("Category") != "Other":
+            return
+        msg = item.get("Message")
+        if not isinstance(msg, str):
+            return
+        if msg in (RCM_OVERTAKE_ENABLED, RCM_OVERTAKE_DISABLED):
+            enabled = msg == RCM_OVERTAKE_ENABLED
+            if (
+                enabled
+                and self._state["track_grip"] == "low"
+                and low_grip_disables_overtake(self._info)
+            ):
+                return
+            self._set("overtake_enabled", enabled, when)
+        elif msg in (RCM_STRAIGHT_NORMAL, RCM_STRAIGHT_LOW, RCM_STRAIGHT_DISABLED):
+            self._set(
+                "straight_mode",
+                {
+                    RCM_STRAIGHT_NORMAL: STRAIGHT_MODE_NORMAL,
+                    RCM_STRAIGHT_LOW: STRAIGHT_MODE_LOW,
+                    RCM_STRAIGHT_DISABLED: STRAIGHT_MODE_DISABLED,
+                }[msg],
+                when,
+            )
+        elif msg in ("LOW GRIP CONDITIONS", "NORMAL GRIP CONDITIONS"):
+            if when < self._times.get("track_grip", float("-inf")):
+                return
+            grip = "low" if msg == "LOW GRIP CONDITIONS" else "normal"
+            self._set("track_grip", grip, when)
+            inferred = straight_mode_for_grip(self._info, grip)
+            if inferred is not None:
+                self._set("straight_mode", inferred, when)
+            if grip == "low" and low_grip_disables_overtake(self._info):
+                self._set("overtake_enabled", False, when)
+
+    def _on_messages(self, payload):
+        if self.session_is_terminal or _is_no_spoiler_blocked(self):
+            return
+        items = [
+            item
+            for item in RaceControlCoordinator._extract_items(payload)
+            if self._is_mode_item(item)
+        ]
+        if not items:
+            return
+        if self.mode_session_key is None and not (self._replay_mode and self._info):
+            # Before SessionInfo, retain only timestamped, relevant evidence.
+            self._pending.extend(
+                item for item in items if self._message_time(item) is not None
+            )
+            return
+        previous = (dict(self._state), set(self._restored))
+        for item in items:
+            self._apply_item(item)
+        if previous != (self._state, self._restored):
+            self.available = True
+            self._publish_state()
+        self._persist()
+
+    @staticmethod
+    def _is_mode_item(item):
+        return item.get("Message") in (
+            RCM_OVERTAKE_ENABLED,
+            RCM_OVERTAKE_DISABLED,
+            RCM_STRAIGHT_NORMAL,
+            RCM_STRAIGHT_LOW,
+            RCM_STRAIGHT_DISABLED,
+            "LOW GRIP CONDITIONS",
+            "NORMAL GRIP CONDITIONS",
+            "SAFETY CAR DEPLOYED",
+        )
+
+    def _on_track_status(self, payload):
+        if not isinstance(payload, dict) or normalize_track_status(payload) != "SC":
+            return
+        self._on_messages(
+            {**payload, "Category": "SafetyCar", "Message": "SAFETY CAR DEPLOYED"}
+        )
+
     @property
     def session_is_terminal(self) -> bool:
         payload = getattr(self._session_status_coordinator, "data", None)
-        if not isinstance(payload, dict):
+        if not isinstance(payload, dict) or payload is self._previous_session_status:
             return False
         status = str(payload.get("Status") or payload.get("Message") or "").strip()
         if status == "Finished":
@@ -4243,93 +4559,57 @@ class LiveModeCoordinator(DataUpdateCoordinator):
             return True
         return status in {"Finalised", "Ends"}
 
-    def _clear_mode_state(self) -> None:
-        self._state = {"overtake_enabled": None, "straight_mode": None}
-
-    def _publish_state(self) -> None:
-        self.async_set_updated_data(
-            dict(self._state)
-            if any(v is not None for v in self._state.values())
-            else None
-        )
-
-    def _handle_session_status_update(self) -> None:
-        if not self.session_is_terminal:
-            return
-        had_state = (
-            any(v is not None for v in self._state.values()) or self.data is not None
-        )
-        self._clear_mode_state()
-        self.async_set_updated_data(None)
-        if had_state and _LOGGER.isEnabledFor(logging.DEBUG):
-            _LOGGER.debug("LiveMode: cleared state due to terminal SessionStatus")
-
-    def _on_race_control_update(self) -> None:
-        session_key = getattr(self._rc_coordinator, "session_key", None)
-        if session_key is not None and session_key != self._live_session_key:
-            changed = self._live_session_key is not None
-            self._live_session_key = session_key
-            if changed:
-                self._clear_mode_state()
-                self.async_set_updated_data(None)
+    def _handle_session_status_update(self):
         if self.session_is_terminal:
-            return
-        item = self._rc_coordinator.data
-        if not item or not isinstance(item, dict):
-            return
-        if item.get("Category") != "Other":
-            return
-        message = item.get("Message", "")
-        prev = dict(self._state)
-        if message == RCM_OVERTAKE_ENABLED:
-            self._state["overtake_enabled"] = True
-        elif message == RCM_OVERTAKE_DISABLED:
-            self._state["overtake_enabled"] = False
-        elif message == RCM_STRAIGHT_NORMAL:
-            self._state["straight_mode"] = STRAIGHT_MODE_NORMAL
-        elif message == RCM_STRAIGHT_LOW:
-            self._state["straight_mode"] = STRAIGHT_MODE_LOW
-        elif message == RCM_STRAIGHT_DISABLED:
-            self._state["straight_mode"] = STRAIGHT_MODE_DISABLED
-        else:
-            return
-        if self._state != prev:
-            if _is_no_spoiler_blocked(self):
-                return
-            self.available = True
+            self._pending.clear()
+            self._clear_mode_state()
             self._publish_state()
-            if _LOGGER.isEnabledFor(logging.DEBUG):
-                _LOGGER.debug(
-                    "LiveMode: state updated overtake_enabled=%s straight_mode=%s",
-                    self._state["overtake_enabled"],
-                    self._state["straight_mode"],
-                )
+            self._persist()
 
-    def _handle_live_state(self, is_live: bool, reason: str | None) -> None:
-        if reason == "init":
-            return
-        if _is_no_spoiler_live_state(reason):
-            return
-        self.available = is_live
-        if not is_live:
-            self._live_session_key = None
-            self._clear_mode_state()
-            self.async_set_updated_data(None)
-            return
-        if self.session_is_terminal:
-            self._clear_mode_state()
+    def reset_for_replay(self):
+        self._previous_session_status = getattr(
+            self._session_status_coordinator, "data", None
+        )
+        self._info = {}
+        self._pending.clear()
+        self._clear_mode_state()
         self._publish_state()
+
+    def _handle_live_state(self, is_live, reason):
+        if reason == "init" or _is_no_spoiler_live_state(reason):
+            return
+        replay = _is_replay_delay_reason(reason)
+        self.available = is_live
+        if not is_live or replay != self._replay_mode:
+            self.reset_for_replay()
+        else:
+            self._publish_state()
+        self._replay_mode = replay
 
     async def async_config_entry_first_refresh(self):
         await super().async_config_entry_first_refresh()
-        self._rc_unsub = self._rc_coordinator.async_add_listener(
-            self._on_race_control_update
-        )
+        if self._store is not None:
+            self._saved = await self._store.async_load()
         if self._session_status_coordinator is not None:
-            self._status_unsub = self._session_status_coordinator.async_add_listener(
-                self._handle_session_status_update
+            self._unsubs.append(
+                self._session_status_coordinator.async_add_listener(
+                    self._handle_session_status_update
+                )
             )
-            self._handle_session_status_update()
+        for stream, handler in (
+            ("SessionInfo", self._handle_session_info),
+            ("RaceControlMessages", self._on_messages),
+            ("TrackStatus", self._on_track_status),
+        ):
+            self._unsubs.append(self._bus.subscribe(stream, handler))
+
+    async def async_close(self, *_):
+        for unsubscribe in self._unsubs:
+            unsubscribe()
+        self._unsubs.clear()
+        self._restore_handle = _cancel_handle(self._restore_handle)
+        if self._store is not None and self._dirty:
+            await self._store.async_save(self._saved)
 
 
 class LapCountCoordinator(DataUpdateCoordinator):
@@ -8592,9 +8872,7 @@ def _reset_replay_sensitive_coordinator_state(coordinator: Any) -> None:
         return
 
     if isinstance(coordinator, LiveModeCoordinator):
-        coordinator._live_session_key = None
-        coordinator._clear_mode_state()
-        coordinator.async_set_updated_data(None)
+        coordinator.reset_for_replay()
         return
 
     if isinstance(coordinator, LapCountCoordinator):

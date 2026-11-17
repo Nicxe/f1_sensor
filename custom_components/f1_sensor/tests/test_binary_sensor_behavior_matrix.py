@@ -31,6 +31,7 @@ def _coordinator(data=None, *, available=True):
     return SimpleNamespace(
         data=data,
         available=available,
+        is_restored=lambda _field: False,
         async_add_listener=lambda _callback, *_args: Mock(),
     )
 
@@ -381,24 +382,17 @@ async def test_binary_setup_and_restore_exact_paths(hass) -> None:
     assert safety.is_on is True
     assert safety.extra_state_attributes["restored"] is True
 
-    overtake = F1OvertakeModeBinarySensor(
-        _coordinator({}), "overtake_restore", "entry", "F1"
-    )
+    modes = _coordinator({"overtake_enabled": True, "straight_mode": "low_grip"})
+    modes.is_restored = {"overtake_enabled"}.__contains__
+    overtake = F1OvertakeModeBinarySensor(modes, "overtake_restore", "entry", "F1")
     overtake.hass = hass
     overtake.entity_id = "binary_sensor.overtake_restore"
     overtake._is_stream_active = Mock(return_value=True)
-    overtake.async_get_last_state = AsyncMock(
-        return_value=State(
-            "binary_sensor.overtake_restore",
-            "on",
-            {"straight_mode": "low_drag"},
-        )
-    )
     overtake.async_write_ha_state = Mock()
     await overtake.async_added_to_hass()
     assert overtake.is_on is True
     assert overtake.extra_state_attributes == {
-        "straight_mode": "low_drag",
+        "straight_mode": "low_grip",
         "restored": True,
     }
 

@@ -171,16 +171,12 @@ def test_session_status_mapping_metadata_and_track_grip(hass) -> None:
         }
     )
     assert sensor._extract_session_info()["meeting_country"] == "Sweden"
-    sensor._race_control_coordinator = SimpleNamespace(
-        data_list=[{"Text": "NORMAL GRIP CONDITIONS"}]
-    )
+    sensor._live_mode_coordinator = SimpleNamespace(data={"track_grip": "normal"})
     assert sensor._detect_track_grip() == "normal"
-    sensor._race_control_coordinator.data_list.append(
-        {"Message": "LOW GRIP CONDITIONS"}
-    )
+    sensor._live_mode_coordinator.data = {"track_grip": "low"}
     assert sensor._detect_track_grip() == "low"
     sensor._clear_state()
-    assert sensor._track_grip_state is None
+    assert sensor.extra_state_attributes["track_grip"] is None
 
 
 def test_current_session_labels_status_and_metadata(hass) -> None:

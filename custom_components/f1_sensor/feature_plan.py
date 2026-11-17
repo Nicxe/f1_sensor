@@ -48,6 +48,16 @@ _INCIDENT_STREAMS = (
 )
 
 
+_SESSION_MODES = _dependency(
+    "SessionInfo",
+    "SessionStatus",
+    "SessionData",
+    "RaceControlMessages",
+    "TrackStatus",
+    coordinators=("session_info", "session_status", "live_mode"),
+)
+
+
 FEATURE_DEPENDENCIES: dict[str, FeatureDependency] = {
     "current_session": _dependency("SessionInfo", coordinators=("session_info",)),
     "track_weather": _dependency("WeatherData", coordinators=("weather_data",)),
@@ -68,12 +78,7 @@ FEATURE_DEPENDENCIES: dict[str, FeatureDependency] = {
     "favorite_driver": _dependency(*_DRIVER_STREAMS, coordinators=("drivers",)),
     "track_status": _dependency("TrackStatus", coordinators=("track_status",)),
     "safety_car": _dependency("TrackStatus", coordinators=("track_status",)),
-    "session_status": _dependency(
-        "SessionStatus",
-        "SessionInfo",
-        "SessionData",
-        coordinators=("session_status",),
-    ),
+    "session_status": _SESSION_MODES,
     "session_time_remaining": _dependency(
         "ExtrapolatedClock",
         "Heartbeat",
@@ -157,20 +162,8 @@ FEATURE_DEPENDENCIES: dict[str, FeatureDependency] = {
         "TimingAppData",
         coordinators=("starting_grid",),
     ),
-    "overtake_mode": _dependency(
-        "RaceControlMessages",
-        "SessionStatus",
-        "SessionInfo",
-        "SessionData",
-        coordinators=("live_mode", "race_control", "session_status"),
-    ),
-    "straight_mode": _dependency(
-        "RaceControlMessages",
-        "SessionStatus",
-        "SessionInfo",
-        "SessionData",
-        coordinators=("live_mode", "race_control", "session_status"),
-    ),
+    "overtake_mode": _SESSION_MODES,
+    "straight_mode": _SESSION_MODES,
 }
 
 TRACK_MAP_STREAMS = frozenset({"SessionInfo", "DriverList", "Position.z"})

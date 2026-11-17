@@ -517,7 +517,7 @@ export const entityCatalog = [
     "entityIds": [
       "binary_sensor.f1_overtake_mode"
     ],
-    "description": "Check whether track-wide overtake mode is enabled. This 2026 feature is experimental.",
+    "description": "Track-wide permission to use Overtake Mode during live sessions and replays.",
     "availability": "Public live / replay",
     "scope": "live",
     "keywords": "Attribute Description straight_mode restored binary_sensor.f1_overtake_mode on off normal_grip low_grip disabled",
@@ -933,7 +933,7 @@ export const entityCatalog = [
     "entityIds": [
       "sensor.f1_straight_mode"
     ],
-    "description": "Active aerodynamic straight mode state (2026 regulation, experimental).",
+    "description": "Active-aero permission in the circuit’s designated Straight Mode zones.",
     "availability": "Public live / replay",
     "scope": "live",
     "keywords": "Value normal_grip low_grip disabled Attribute Description overtake_enabled restored sensor.f1_straight_mode",

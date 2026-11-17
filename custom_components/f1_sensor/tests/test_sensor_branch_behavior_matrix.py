@@ -38,6 +38,7 @@ def _coordinator(data=None, data_list=None):
         data=data,
         data_list=data_list,
         available=True,
+        is_restored=lambda _field: False,
         async_add_listener=lambda _callback: Mock(),
     )
 
@@ -616,33 +617,21 @@ def test_session_status_metadata_grip_and_update_guards() -> None:
     sensor._session_info_coordinator.data = "bad"
     assert sensor._extract_session_info() == {}
 
-    sensor._race_control_coordinator = _coordinator(
-        data_list=[
-            {"Message": "NORMAL GRIP CONDITIONS"},
-            {"Message": "LOW GRIP CONDITIONS"},
-        ]
-    )
+    sensor._live_mode_coordinator = _coordinator({"track_grip": "low"})
     assert sensor._detect_track_grip() == "low"
-    sensor._race_control_coordinator.data_list = [{"Text": "NORMAL GRIP CONDITIONS"}]
+    sensor._live_mode_coordinator.data = {"track_grip": "normal"}
     assert sensor._detect_track_grip() == "normal"
-    sensor._race_control_coordinator.data_list = [{"Message": "Other"}]
-    sensor._track_grip_state = None
-    assert sensor._detect_track_grip() == "normal"
-    sensor._race_control_coordinator = None
-    assert sensor._detect_track_grip() == "normal"
+    sensor._live_mode_coordinator.data = {"overtake_enabled": True}
+    assert sensor._detect_track_grip() is None
 
     sensor.async_write_ha_state = Mock()
     sensor._is_stream_active = Mock(return_value=False)
     sensor._handle_session_info_update()
-    sensor._handle_race_control_update()
     sensor._is_stream_active = Mock(return_value=True)
     sensor._session_info_coordinator = _coordinator({"Meeting": {"Name": "New"}})
+    sensor._live_mode_coordinator.data = {"track_grip": "low"}
     sensor._handle_session_info_update()
-    sensor._race_control_coordinator = _coordinator(
-        data_list=[{"Message": "LOW GRIP CONDITIONS"}]
-    )
-    sensor._handle_race_control_update()
-    assert sensor._attr_extra_state_attributes["track_grip"] == "low"
+    assert sensor.extra_state_attributes["track_grip"] == "low"
 
     coordinator.data = None
     sensor._handle_stream_state = Mock(return_value=False)

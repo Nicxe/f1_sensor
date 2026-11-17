@@ -40,9 +40,6 @@ from .const import (
     CONF_OPERATION_MODE,
     DEFAULT_OPERATION_MODE,
     OPERATION_MODE_DEVELOPMENT,
-    STRAIGHT_MODE_DISABLED,
-    STRAIGHT_MODE_LOW,
-    STRAIGHT_MODE_NORMAL,
 )
 from .data_helpers import (
     _combine_date_time as _combine_date_time,
@@ -1702,9 +1699,8 @@ class F1SessionStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         self._attr_native_value = None
         self._started_flag = None
         self._session_info_coordinator = None
-        self._race_control_coordinator = None
-        self._track_grip_state: str | None = None
-        self._attr_extra_state_attributes = {}
+        self._live_mode_coordinator = None
+        self._attr_extra_state_attributes = {"track_grip": None}
         # Advertise as enum sensor so HA UI can suggest valid states
         try:
             self._attr_device_class = SensorDeviceClass.ENUM
@@ -1760,35 +1756,19 @@ class F1SessionStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
             else:
                 self._clear_state()
         self._handle_stream_state(updated)
-        # Subscribe to SessionInfo for meeting/session metadata
-        try:
-            reg = entry_runtime_registry(self.hass, self._entry_id)
-            self._session_info_coordinator = reg.get("session_info_coordinator")
-            if self._session_info_coordinator is not None:
-                rem_info = self._session_info_coordinator.async_add_listener(
-                    self._handle_session_info_update
+        reg = entry_runtime_registry(self.hass, self._entry_id)
+        self._session_info_coordinator = reg.get("session_info_coordinator")
+        self._live_mode_coordinator = reg.get("live_mode_coordinator")
+        for coordinator in (
+            self._session_info_coordinator,
+            self._live_mode_coordinator,
+        ):
+            if coordinator is not None:
+                self.async_on_remove(
+                    coordinator.async_add_listener(self._handle_session_info_update)
                 )
-                self.async_on_remove(rem_info)
-                # Initialize attributes from coordinator if available
-                info_attrs = self._extract_session_info()
-                if info_attrs:
-                    self._attr_extra_state_attributes.update(info_attrs)
-        except Exception:
-            self._session_info_coordinator = None
-        # Subscribe to RaceControlCoordinator for track grip detection
-        try:
-            self._race_control_coordinator = reg.get("race_control_coordinator")
-            if self._race_control_coordinator is not None:
-                rem_race_ctrl = self._race_control_coordinator.async_add_listener(
-                    self._handle_race_control_update
-                )
-                self.async_on_remove(rem_race_ctrl)
-                # Initialize track_grip attribute
-                self._attr_extra_state_attributes["track_grip"] = (
-                    self._detect_track_grip()
-                )
-        except Exception:
-            self._race_control_coordinator = None
+        self._attr_extra_state_attributes.update(self._extract_session_info())
+        self._attr_extra_state_attributes["track_grip"] = self._detect_track_grip()
         self.async_write_ha_state()
 
     def _extract_current(self) -> dict | None:
@@ -1802,9 +1782,6 @@ class F1SessionStatusSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
     def _detect_track_grip(self) -> str | None:
         return _live_models.SessionStatusModel._detect_track_grip(self)
-
-    def _handle_race_control_update(self) -> None:
-        return _live_models.SessionStatusModel._handle_race_control_update(self)
 
     def _map_status(self, raw: dict | None) -> str | None:
         return _live_models.SessionStatusModel._map_status(self, raw)
@@ -3571,17 +3548,12 @@ class F1DriverPositionsSensor(F1BaseEntity, RestoreEntity, SensorEntity):
         return _live_models.DriverPositionsModel.__dict__["state"].fget(self)
 
 
-class F1StraightModeSensor(F1BaseEntity, RestoreEntity, SensorEntity):
-    """Sensor for the 2026 Straight Mode (active aero) state.
-
-    Reflects the track-wide active aerodynamic permission broadcasted via
-    Race Control messages. Three states are possible: normal grip (full aero
-    allowed), low grip (limited aero), and disabled (aero off).
-    """
+class F1StraightModeSensor(F1BaseEntity, SensorEntity):
+    """Report the session-wide permission to use active aerodynamic zones."""
 
     _device_category = "session"
     _attr_device_class = SensorDeviceClass.ENUM
-    _attr_options = [STRAIGHT_MODE_NORMAL, STRAIGHT_MODE_LOW, STRAIGHT_MODE_DISABLED]
+    _attr_options = _live_models.StraightModeModel._attr_options
     _attr_icon = "mdi:car-speed-limiter"
     _attr_translation_key = "straight_mode"
 
@@ -3596,28 +3568,7 @@ class F1StraightModeSensor(F1BaseEntity, RestoreEntity, SensorEntity):
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
-        data = self._extract_data()
-        updated = self._has_straight_mode_state(data)
-        restored = False
-        if updated and data is not None:
-            self._apply_data(data)
-        else:
-            if not self._session_is_terminal():
-                last = await self.async_get_last_state()
-                if last and last.state not in (None, "unknown", "unavailable"):
-                    restored_state = str(last.state)
-                    if restored_state in self._attr_options:
-                        self._attr_native_value = restored_state
-                        attrs = dict(last.attributes or {})
-                        self._attr_extra_state_attributes = {
-                            "overtake_enabled": attrs.get("overtake_enabled"),
-                            "restored": True,
-                        }
-                        restored = True
-            if not restored and not self._is_stream_active():
-                self._clear_state()
-        self._stream_last_active = self._is_stream_active()
-        self.async_write_ha_state()
+        self._handle_coordinator_update()
 
     def _extract_data(self) -> dict | None:
         return _live_models.StraightModeModel._extract_data(self)

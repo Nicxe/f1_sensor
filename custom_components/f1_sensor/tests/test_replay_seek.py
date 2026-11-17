@@ -261,7 +261,7 @@ async def _setup_stateful_replay_harness(hass, tmp_path: Path):
     )
     live_mode = LiveModeCoordinator(
         hass,
-        race_control,
+        bus,
         session_status_coordinator=session_status,
         config_entry=entry,
         live_state=live_state,

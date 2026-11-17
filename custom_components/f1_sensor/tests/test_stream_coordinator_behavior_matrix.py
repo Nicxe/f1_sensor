@@ -562,7 +562,8 @@ async def test_live_mode_all_messages_terminal_live_and_close(
     race.data = None
     status = _session_coord()
     status.data = {"Status": "Started"}
-    mode = LiveModeCoordinator(hass, race, status)
+    mode = LiveModeCoordinator(hass, _Bus(), status)
+    mode._handle_session_info({"Key": 123})
     monkeypatch.setattr(
         "custom_components.f1_sensor._is_no_spoiler_blocked", lambda _coord: False
     )
@@ -576,12 +577,12 @@ async def test_live_mode_all_messages_terminal_live_and_close(
         (RCM_STRAIGHT_DISABLED, "straight_mode", "disabled"),
     ):
         race.data = {"Category": "Other", "Message": message}
-        mode._on_race_control_update()
+        mode._on_messages(race.data)
         assert mode._state[key] == value
     race.data = {"Category": "Flag", "Message": "ignored"}
-    mode._on_race_control_update()
+    mode._on_messages(race.data)
     race.data = {"Category": "Other", "Message": "ignored"}
-    mode._on_race_control_update()
+    mode._on_messages(race.data)
     status.data = {"Status": "Finished"}
     status.is_qualifying_like_session = True
     status.qualifying_part = None
