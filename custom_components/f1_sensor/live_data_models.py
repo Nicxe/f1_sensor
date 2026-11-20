@@ -23,9 +23,9 @@ from .const import (
     STRAIGHT_MODE_NORMAL,
 )
 from .data_helpers import (
+    _current_session_phase,
     _extract_driver_position,
     _hex_to_rgb,
-    _map_session_status_payload,
     _parse_lap_time_to_secs,
     _session_identity_year,
     _session_status_mapping_context,
@@ -142,6 +142,7 @@ class LiveProjectionModel(StreamStateMixin, ProjectionModel):
         inputs["session_status_context"] = (
             *_session_status_mapping_context(status_coordinator, use_status_part=True),
             bool(getattr(status_coordinator, "is_testing_session", False)),
+            getattr(status_coordinator, "before_race_start", False) is True,
         )
         # Race Control keeps incremental messages separately from its latest row.
         inputs["messages"] = getattr(self.coordinator, "data_list", None)
@@ -476,18 +477,7 @@ class TrackStatusModel(LiveProjectionModel):
 
     def _session_is_terminal(self) -> bool:
         payload = getattr(self._session_status_coordinator, "data", None)
-        is_qualifying_like, qualifying_part = _session_status_mapping_context(
-            self._session_status_coordinator, use_status_part=True
-        )
-        mapped = _map_session_status_payload(
-            payload,
-            self.hass,
-            is_qualifying_like=is_qualifying_like,
-            qualifying_part=qualifying_part,
-            is_testing_session=bool(
-                getattr(self._session_status_coordinator, "is_testing_session", False)
-            ),
-        )
+        mapped = _current_session_phase(self._session_status_coordinator, payload)
         return mapped in {"finished", "finalised", "ended"}
 
     def _handle_session_status_update(self) -> None:
@@ -614,18 +604,7 @@ class SessionStatusModel(LiveProjectionModel):
         return data.get("track_grip") if isinstance(data, dict) else None
 
     def _map_status(self, raw: dict | None) -> str | None:
-        is_qualifying_like, qualifying_part = _session_status_mapping_context(
-            self.coordinator, use_status_part=True
-        )
-        return _map_session_status_payload(
-            raw,
-            self.hass,
-            is_qualifying_like=is_qualifying_like,
-            qualifying_part=qualifying_part,
-            is_testing_session=bool(
-                getattr(self.coordinator, "is_testing_session", False)
-            ),
-        )
+        return _current_session_phase(self.coordinator, raw)
 
     def refresh_data(self) -> None:
         raw = self._extract_current()
@@ -928,17 +907,8 @@ class CurrentSessionModel(LiveProjectionModel):
         return None
 
     def _mapped_live_status(self) -> str | None:
-        is_qualifying_like, qualifying_part = _session_status_mapping_context(
-            self._status_coordinator, use_status_part=True
-        )
-        return _map_session_status_payload(
-            self._live_status_payload(),
-            self.hass,
-            is_qualifying_like=is_qualifying_like,
-            qualifying_part=qualifying_part,
-            is_testing_session=bool(
-                getattr(self._status_coordinator, "is_testing_session", False)
-            ),
+        return _current_session_phase(
+            self._status_coordinator, self._live_status_payload()
         )
 
     def _apply_payload(self, raw: dict, allow_clear: bool = True) -> None:

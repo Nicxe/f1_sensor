@@ -334,10 +334,10 @@ class LiveDelayCalibrationManager:
         if not isinstance(payload, dict):
             return False
         message = str(payload.get("Status") or payload.get("Message") or "").strip()
-        started = payload.get("Started")
-        if str(started).lower() in ("started", "true"):
-            return True
-        return message in {"Started", "Green", "GreenFlag"}
+        if message:
+            return message in {"Started", "Green", "GreenFlag"}
+        # Older payloads can identify the start with only this field.
+        return str(payload.get("Started")).lower() in {"started", "true"}
 
     def _is_session_finished(self, payload: dict | None) -> bool:
         if not isinstance(payload, dict):

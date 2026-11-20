@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncGenerator, Awaitable, Callable, Iterable
+from collections.abc import AsyncGenerator, Awaitable, Callable, Iterable, Iterator
 from concurrent.futures import TimeoutError as FutureTimeoutError
 from contextlib import suppress
 from copy import deepcopy
@@ -39,6 +39,7 @@ from .formation_start import FormationStartTracker
 from .helpers import CARDATA_MAX_LINE_BYTES, parse_cardata_lines
 from .history import merge_analysis_session_info
 from .lap_history import MAX_TYRE_STINTS_PER_DRIVER, record_lap_time
+from .live_window import race_start_is_stale
 from .replay_start import ReplayStartReferenceController
 from .replay_timestamp import parse_replay_timestamp_ms
 from .signalr import timing_source_payload
@@ -54,13 +55,13 @@ _LOGGER = logging.getLogger(__name__)
 # Streams to download for replay archives. This list is intentionally broader than
 # the public live SignalR contract; live subscriptions stay defined in signalr.py.
 REPLAY_STREAMS = [
+    "SessionInfo",
+    "SessionData",
     "RaceControlMessages",
     "TrackStatus",
     "SessionStatus",
     "WeatherData",
     "LapCount",
-    "SessionInfo",
-    "SessionData",
     "Heartbeat",
     "ExtrapolatedClock",
     "TimingData",
@@ -96,7 +97,7 @@ INDEX_STATUS_NO_DATA = "no_data"
 INDEX_STATUS_ERROR = "error"
 # Index upgrades may rescan compatible frames. A normalization change must
 # instead download the original streams; rescanning cannot recover lost precision.
-CACHE_VERSION = 18
+CACHE_VERSION = 19
 NORMALIZATION_VERSION = 2
 ARCHIVE_IDENTITY_VERSION = 1
 FORMATION_SEARCH_WINDOW = timedelta(seconds=90)
@@ -215,6 +216,31 @@ class ReplayFrame:
     timestamp_ms: int  # Milliseconds from file start
     stream: str
     payload: dict
+
+
+# Equal-time archive snapshots and deltas must bind identity and context before
+# dependent streams. Python's stable sort keeps the source order of other rows.
+_REPLAY_CONTEXT_ORDER = {"SessionInfo": 0, "LapHistory": 1, "SessionData": 2}
+
+
+def _replay_frame_order(frame: ReplayFrame) -> int:
+    return _REPLAY_CONTEXT_ORDER.get(frame.stream, 3)
+
+
+def _ordered_replay_frames(lines: Iterable[bytes]) -> Iterator[ReplayFrame]:
+    """Read one timestamp group at a time, including older physical cache orders."""
+    group: list[ReplayFrame] = []
+    for line in lines:
+        try:
+            data = json.loads(line)
+            frame = ReplayFrame(int(data["t"]), str(data["s"]), data["p"])
+        except (UnicodeDecodeError, ValueError, KeyError, TypeError):
+            continue
+        if group and frame.timestamp_ms != group[0].timestamp_ms:
+            yield from sorted(group, key=_replay_frame_order)
+            group.clear()
+        group.append(frame)
+    yield from sorted(group, key=_replay_frame_order)
 
 
 @dataclass
@@ -1429,6 +1455,22 @@ class ReplaySessionManager:
                 partial.unlink()
         return merged
 
+    def _latest_dated_start(self, session_data: dict) -> datetime | None:
+        """Get start evidence from the status delta or full snapshot at this offset."""
+        rows = session_data.get("StatusSeries")
+        if isinstance(rows, dict):
+            rows = rows.values()
+        elif not isinstance(rows, list):
+            return None
+        starts = []
+        for row in rows:
+            if isinstance(row, dict) and row.get("SessionStatus") == "Started":
+                value = row.get("Utc")
+                utc = self._parse_utc(value) if isinstance(value, str) else None
+                if utc is not None:
+                    starts.append(utc)
+        return max(starts, default=None)
+
     def _scan_merged_frames_sync(
         self,
         frames_file: Path,
@@ -1455,6 +1497,11 @@ class ReplaySessionManager:
         lap_start_ms: dict[int, int] = {}
         qualifying_part_start_ms: dict[int, int] = {}
         current_qualifying_part: int | None = None
+        race_start_utc = (
+            expected_session.start_utc
+            if getattr(expected_session, "session_type", None) in ("Race", "Sprint")
+            else None
+        )
         identity: dict[str, Any] = {
             "status": "missing",
             "session_id": expected_session.unique_id if expected_session else None,
@@ -1526,12 +1573,20 @@ class ReplaySessionManager:
                 return
             group_ms = group[0].timestamp_ms
             started_here = False
+            group.sort(key=_replay_frame_order)
+            latest_started_utc = None
 
             # SessionData can announce a qualifying segment in the same timestamp
             # group as SessionStatus. Read it first so the start marker is exact.
             for frame in group:
                 if frame.stream != "SessionData" or not isinstance(frame.payload, dict):
                     continue
+                if race_start_utc is not None and initial_state is None:
+                    dated = self._latest_dated_start(frame.payload)
+                    if dated is not None and (
+                        latest_started_utc is None or dated > latest_started_utc
+                    ):
+                        latest_started_utc = dated
                 series = frame.payload.get("Series")
                 if isinstance(series, dict):
                     entries = series.values()
@@ -1554,7 +1609,11 @@ class ReplaySessionManager:
                     and isinstance(frame.payload, dict)
                     and frame.payload.get("Status") == "Started"
                 ):
-                    if initial_state is None:
+                    if initial_state is None and not (
+                        race_start_utc is not None
+                        and latest_started_utc is not None
+                        and race_start_is_stale(latest_started_utc, race_start_utc)
+                    ):
                         started_here = True
                     if current_qualifying_part is not None:
                         qualifying_part_start_ms.setdefault(
@@ -2950,7 +3009,7 @@ class ReplayTransport:
         )
 
         try:
-            queue: asyncio.Queue[str | None] = asyncio.Queue(maxsize=500)
+            queue: asyncio.Queue[ReplayFrame | None] = asyncio.Queue(maxsize=500)
             loop = self._hass.loop
 
             def _read_frames_stream() -> None:
@@ -2962,16 +3021,12 @@ class ReplayTransport:
                     with open(self._index.frames_file, "rb") as f:
                         if start_offset > 0:
                             f.seek(start_offset)
-                        for line in f:
+                        for frame in _ordered_replay_frames(f):
                             if self._closed:
                                 break
                             try:
-                                decoded_line = line.decode("utf-8")
-                            except UnicodeDecodeError:
-                                continue
-                            try:
                                 fut = asyncio.run_coroutine_threadsafe(
-                                    queue.put(decoded_line), loop
+                                    queue.put(frame), loop
                                 )
                                 while not self._closed:
                                     try:
@@ -3001,8 +3056,8 @@ class ReplayTransport:
 
             yielded_count = 0
             while True:
-                line = await queue.get()
-                if line is None:
+                frame = await queue.get()
+                if frame is None:
                     break
                 if self._closed:
                     continue
@@ -3012,13 +3067,9 @@ class ReplayTransport:
                 if self._closed:
                     continue
 
-                try:
-                    frame = json.loads(line.strip())
-                    frame_ms = frame["t"]
-                    stream = frame["s"]
-                    payload = frame["p"]
-                except (json.JSONDecodeError, KeyError):
-                    continue
+                frame_ms = frame.timestamp_ms
+                stream = frame.stream
+                payload = frame.payload
 
                 # Skip frames before start point
                 if frame_ms < start_ms or (
@@ -3354,29 +3405,11 @@ class ReplayController:
         with open(frames_file, "rb") as handle:
             if start_offset > 0:
                 handle.seek(start_offset)
-            for raw_line in handle:
-                try:
-                    line = raw_line.decode("utf-8").strip()
-                except UnicodeDecodeError:
-                    continue
-                if not line:
-                    continue
-                try:
-                    frame = json.loads(line)
-                    frame_ms = int(frame["t"])
-                    if frame_ms <= start_exclusive_ms:
-                        continue
-                    if frame_ms > end_inclusive_ms:
-                        break
-                    frames.append(
-                        ReplayFrame(
-                            timestamp_ms=frame_ms,
-                            stream=str(frame["s"]),
-                            payload=frame["p"],
-                        )
-                    )
-                except (TypeError, ValueError, KeyError, json.JSONDecodeError):
-                    continue
+            for frame in _ordered_replay_frames(handle):
+                if frame.timestamp_ms > end_inclusive_ms:
+                    break
+                if frame.timestamp_ms > start_exclusive_ms:
+                    frames.append(frame)
         return frames
 
     @staticmethod
@@ -3517,7 +3550,7 @@ class ReplayController:
         # snapshots seed the latest lap and make the history appear non-empty.
         ordered = sorted(
             initial_state.items(),
-            key=lambda item: {"SessionInfo": 0, "LapHistory": 1}.get(item[0], 2),
+            key=lambda item: _REPLAY_CONTEXT_ORDER.get(item[0], 3),
         )
         for stream, payload in ordered:
             if isinstance(payload, dict):

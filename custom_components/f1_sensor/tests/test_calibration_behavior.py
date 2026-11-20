@@ -147,6 +147,36 @@ async def test_prepare_uses_already_available_session_and_formation_markers(
     assert manager.snapshot()["mode"] == "running"
 
 
+async def test_session_reference_waits_for_pit_exit_after_red_flag(hass) -> None:
+    bus = _Bus()
+    manager, _ = _manager(hass, bus=bus)
+    send_status = bus.callbacks["SessionStatus"]
+    try:
+        # Las Vegas FP2: the session had started, but its restart was pending.
+        send_status({"Status": "Aborted", "Started": "Started"})
+        assert (await manager.async_prepare())["mode"] == "waiting"
+        send_status({"Status": "Inactive", "Started": "Started"})
+        assert manager.snapshot()["mode"] == "waiting"
+        send_status({"Status": "Started", "Started": "Started"})
+        assert manager.snapshot()["mode"] == "running"
+    finally:
+        await manager.async_close()
+
+
+@pytest.mark.parametrize("terminal", ["Finalised", "Ends"])
+async def test_session_reference_ignores_started_hint_at_session_end(
+    hass, terminal
+) -> None:
+    bus = _Bus()
+    manager, _ = _manager(hass, bus=bus)
+    try:
+        await manager.async_prepare()
+        bus.callbacks["SessionStatus"]({"Status": terminal, "Started": "Started"})
+        assert manager.snapshot()["mode"] == "waiting"
+    finally:
+        await manager.async_close()
+
+
 async def test_lap_sync_validation_tick_and_timeout_notifications(hass) -> None:
     bus = _Bus()
     formation = _FormationTracker()

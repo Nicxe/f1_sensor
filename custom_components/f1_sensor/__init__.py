@@ -176,6 +176,7 @@ from .live_window import (
     LiveAvailabilityTracker,
     LiveSessionSupervisor,
     _to_utc,
+    race_start_is_stale,
 )
 from .minisector_websocket import (
     MINISECTOR_WS_MARKER,
@@ -8935,10 +8936,7 @@ def _reset_replay_sensitive_coordinator_state(coordinator: Any) -> None:
 
     if isinstance(coordinator, SessionStatusCoordinator):
         _clear_delayed_ingest_state(coordinator)
-        coordinator.is_qualifying_like_session = False
-        coordinator.qualifying_part = None
-        coordinator.status_qualifying_part = None
-        coordinator._pending_status_part = None
+        coordinator._reset_status_context()
         coordinator._last_message = None
         coordinator.data_list = []
         coordinator.async_set_updated_data(None)
@@ -11351,11 +11349,44 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
         )
         self._context_unsubs: list[Callable[[], None]] = []
         self._live_supervisor = live_supervisor
+        self._reset_status_context()
+
+    def _reset_status_context(self) -> None:
         self.is_qualifying_like_session = False
         self.is_testing_session = False
         self.qualifying_part: int | None = None
         self.status_qualifying_part: int | None = None
         self._pending_status_part: tuple[str, int] | None = None
+        self._session_info: dict[str, Any] = {}
+        self._race_start_utc: datetime | None = None
+        self._dated_status: tuple[datetime, str] | None = None
+        self._status_utc: datetime | None = None
+        self._race_activity_utc: datetime | None = None
+        self._interrupted = False
+
+    @property
+    def before_race_start(self) -> bool:
+        """Recognize pre-race data using the feed's clock, including in replay."""
+        if self._race_start_utc is None or self._status_utc is None:
+            return False
+        raw = self._last_message or {}
+        status = raw.get("Status") or raw.get("Message")
+        if status == "Inactive" and not self._interrupted:
+            if self._status_utc >= self._race_start_utc:
+                return False
+            # A genuinely early race can already have started or been stopped.
+            return not (
+                self._race_activity_utc is not None
+                and self._race_activity_utc <= self._status_utc
+                and not race_start_is_stale(
+                    self._race_activity_utc, self._race_start_utc
+                )
+            )
+        # Some race archives open with a previous day's Started. Allow a genuine
+        # early start inside the normal pre-session connection window.
+        return status == "Started" and race_start_is_stale(
+            self._status_utc, self._race_start_utc
+        )
 
     async def async_close(self, *_):
         if self._context_unsubs:
@@ -11391,8 +11422,15 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
         self.is_testing_session |= window_testing
         self._deliver(msg)
 
+    def _status_window(self):
+        return (
+            None
+            if self._replay_mode
+            else getattr(self._live_supervisor, "current_window", None)
+        )
+
     def _window_context(self) -> tuple[bool, bool]:
-        window = getattr(self._live_supervisor, "current_window", None)
+        window = self._status_window()
         if window is None:
             return False, False
         session_name = str(getattr(window, "session_name", "") or "").casefold()
@@ -11447,11 +11485,42 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
     def _on_session_info_context(self, msg: dict) -> None:
         if not isinstance(msg, dict):
             return
-        window = getattr(self._live_supervisor, "current_window", None)
+        window = self._status_window()
         window_key = getattr(window, "session_key", None)
         if window_key is not None and "Key" in msg:
             if str(msg["Key"]) != str(window_key):
                 return
+        previous_pre = self.before_race_start
+        old_key = self._session_info.get("Key")
+        if (
+            old_key is not None
+            and msg.get("Key") is not None
+            and str(old_key) != str(msg["Key"])
+        ):
+            self._reset_status_context()
+            self._last_message = None
+            self.data_list = []
+            self.async_set_updated_data(None)
+        self._session_info.update(
+            (key, msg[key])
+            for key in ("Key", "Type", "StartDate", "GmtOffset")
+            if key in msg
+        )
+        start = self._session_info.get("StartDate")
+        offset = self._session_info.get("GmtOffset")
+        self._race_start_utc = None
+        if self._session_info.get("Type") == "Race" and isinstance(start, str):
+            # A partial SessionInfo can omit the offset from a circuit-local time.
+            try:
+                parsed = datetime.fromisoformat(start)
+            except ValueError:
+                parsed = None
+            if parsed is not None and parsed.tzinfo is not None:
+                self._race_start_utc = parsed
+            elif isinstance(offset, str) and re.fullmatch(
+                r"[+-]?(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?", offset
+            ):
+                self._race_start_utc = _to_utc(start, offset)
         previous = (self.is_qualifying_like_session, self.is_testing_session)
         window_qualifying, window_testing = self._window_context()
         if "Type" in msg or "Name" in msg:
@@ -11467,7 +11536,9 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
             )
         else:
             self.is_testing_session |= window_testing
-        if previous != (self.is_qualifying_like_session, self.is_testing_session):
+        if self.before_race_start != previous_pre and self._last_message is not None:
+            self.async_set_updated_data(self._last_message)
+        elif previous != (self.is_qualifying_like_session, self.is_testing_session):
             self._refresh_finished_context()
 
     def _on_session_data_context(self, msg: dict) -> None:
@@ -11511,6 +11582,21 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
                 status_events.append((utc, event_status))
             else:
                 incomplete_statuses.add(event_status)
+        if status_events:
+            latest = max(status_events)
+            if self._dated_status is None or latest[0] >= self._dated_status[0]:
+                previous_pre = self.before_race_start
+                self._dated_status = latest
+                activity = (
+                    utc for utc, kind in status_events if kind in {"Started", "Aborted"}
+                )
+                self._race_activity_utc = max(activity, default=self._race_activity_utc)
+                if latest[1] == status and (
+                    self._status_utc is None or latest[0] >= self._status_utc
+                ):
+                    self._status_utc = latest[0]
+                if previous_pre != self.before_race_start:
+                    self.async_set_updated_data(payload)
         if complete_part_history and part_events:
             status_parts = {}
             for event_status in {
@@ -11562,6 +11648,25 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
             previous.get("Status") or previous.get("Message") or ""
         ).strip()
         status = str(msg.get("Status") or msg.get("Message") or "").strip()
+        # A live delta carries UTC. Archive offsets and un-timed snapshots need
+        # the matching dated SessionData row, which can arrive in either order.
+        utc = _to_utc(str(msg.get("_f1_source_utc") or ""), None)
+        if (
+            utc is None
+            and self._dated_status is not None
+            and self._dated_status[1] == status
+        ):
+            utc = self._dated_status[0]
+        if utc is not None and self._status_utc is not None and utc < self._status_utc:
+            return
+        if utc is not None or status != previous_status:
+            self._status_utc = utc
+        if utc is not None and status in {"Started", "Aborted"}:
+            self._race_activity_utc = utc
+        if status != "Inactive" or msg.get("Started") != "Started":
+            self._interrupted = status == "Aborted" and msg.get("Started") == "Started"
+        if self._dated_status is not None and self._dated_status[1] != status:
+            self._dated_status = None
         # Announcing Q3 must not turn Q2's Finished (or its reconnect copy)
         # into a final-session finish before Q3 has actually started.
         pending_status_part = self._pending_status_part
@@ -11587,19 +11692,17 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
         await super().async_config_entry_first_refresh()
         try:
             bus = self._bus or self.hass.data.get(DOMAIN, {}).get("live_bus")
+            # subscribe() immediately replays its cached payload for each stream.
+            for stream, handler in (
+                ("SessionInfo", self._on_session_info_context),
+                ("SessionData", self._on_session_data_context),
+            ):
+                self._context_unsubs.append(
+                    bus.subscribe(stream, _wrap_delayed_handler(self, handler))
+                )
             self._unsub = bus.subscribe(
                 "SessionStatus", _wrap_delayed_handler(self, self._on_bus_message)
-            )  # type: ignore[attr-defined]
-            self._context_unsubs = [
-                bus.subscribe(
-                    "SessionInfo",
-                    _wrap_delayed_handler(self, self._on_session_info_context),
-                ),
-                bus.subscribe(
-                    "SessionData",
-                    _wrap_delayed_handler(self, self._on_session_data_context),
-                ),
-            ]
+            )
         except Exception:
             self._unsub = None
             if self._context_unsubs:
@@ -11622,11 +11725,7 @@ class SessionStatusCoordinator(DataUpdateCoordinator):
             return
         self.available = is_live
         if not is_live:
-            self.is_qualifying_like_session = False
-            self.is_testing_session = False
-            self.qualifying_part = None
-            self.status_qualifying_part = None
-            self._pending_status_part = None
+            self._reset_status_context()
             _clear_delayed_ingest_state(self)
             self._last_message = None
             self.data_list = []
