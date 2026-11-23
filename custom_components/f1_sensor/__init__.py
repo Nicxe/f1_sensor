@@ -20,10 +20,7 @@ from urllib.parse import urljoin
 from homeassistant.components import websocket_api
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall, callback as ha_callback
-from homeassistant.exceptions import (
-    ConfigEntryNotReady,
-    ServiceValidationError,
-)
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv, entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.entity_platform import async_get_platforms
@@ -1796,51 +1793,6 @@ async def _async_get_shared_jolpica_client(
                 await initialization.async_close()
 
 
-async def _async_refresh_static_runtime(
-    *,
-    race_coordinator: Any,
-    next_race_history_coordinator: Any,
-    race_weather_coordinator: Any,
-    driver_coordinator: Any,
-    constructor_coordinator: Any,
-    last_race_coordinator: Any,
-    season_results_coordinator: Any,
-    sprint_results_coordinator: Any,
-    lap_position_progression_coordinator: Any,
-    fia_documents_coordinator: Any,
-) -> None:
-    """Perform the transactional first refresh for static providers."""
-    if race_coordinator:
-        await race_coordinator.async_config_entry_first_refresh()
-    if next_race_history_coordinator:
-        await next_race_history_coordinator.async_refresh()
-    if race_weather_coordinator:
-        await race_weather_coordinator.async_refresh()
-    if driver_coordinator:
-        await driver_coordinator.async_config_entry_first_refresh()
-    if constructor_coordinator:
-        await constructor_coordinator.async_config_entry_first_refresh()
-    if last_race_coordinator:
-        await last_race_coordinator.async_config_entry_first_refresh()
-    if season_results_coordinator:
-        await season_results_coordinator.async_config_entry_first_refresh()
-    if sprint_results_coordinator:
-        await sprint_results_coordinator.async_config_entry_first_refresh()
-    if lap_position_progression_coordinator:
-        await lap_position_progression_coordinator.async_config_entry_first_refresh()
-    if fia_documents_coordinator:
-        try:
-            await fia_documents_coordinator.async_config_entry_first_refresh()
-        except ConfigEntryNotReady as err:
-            fia_documents_coordinator.async_set_updated_data(
-                fia_documents_coordinator.build_empty_result()
-            )
-            _LOGGER.warning(
-                "FIA documents unavailable during setup; continuing without documents: %s",
-                err.__cause__ or err,
-            )
-
-
 async def async_setup_entry(hass: HomeAssistant, entry: F1ConfigEntry) -> bool:
     """Set up one config entry transactionally."""
     await async_notify_card_data(hass, entry)
@@ -2361,15 +2313,10 @@ async def _async_setup_entry(
         "lap_position_progression_coordinator": lap_position_progression_coordinator,
         "fia_documents_coordinator": fia_documents_coordinator,
     }
-    await _async_refresh_static_runtime(
-        **{
-            name: value if name in sensor_sources else None
-            for name, value in static_sources.items()
-        }
+    card_data_sources = CardDataSources(
+        hass, static_sources, sensor_sources, config_entry=entry
     )
-    card_data_sources = CardDataSources(hass, static_sources, sensor_sources)
     transaction.track(card_data_sources)
-    card_data_sources.reconcile(set())
 
     if not feature_plan.live_required:
         track_map_store = TrackMapStore(
@@ -9092,9 +9039,12 @@ class F1DataCoordinator(DataUpdateCoordinator):
                     sources := reg.get("card_data_sources")
                 ) is not None and not sources.is_needed(coord):
                     continue
-                req = getattr(coord, "async_request_refresh", None)
-                if callable(req):
-                    self.hass.async_create_task(req())
+                ce.async_create_background_task(
+                    self.hass,
+                    coord.async_refresh(),
+                    f"Refresh {name} after F1 season rollover",
+                    eager_start=False,
+                )
 
     async def async_close(self, *_):
         """Placeholder for future cleanup."""
@@ -9138,8 +9088,6 @@ class F1DataCoordinator(DataUpdateCoordinator):
                 persist_save=self._persist_save,
                 validator=_validate,
             )
-            # Detect season rollovers in current.json and clear stale caches if needed.
-            self._handle_season_rollover_if_needed(data)
             # No-spoiler: keep the cache warm but don't deliver new data to entities.
             if _is_no_spoiler_jolpica_blocked(self):
                 return self.data
@@ -9151,6 +9099,8 @@ class F1DataCoordinator(DataUpdateCoordinator):
                 ).payload
             if self._url == API_URL:
                 data = await self._async_add_scheduled_laps(data)
+                # Dependent refreshes must see the season this update publishes.
+                self._handle_season_rollover_if_needed(data)
             return data
         except Exception as err:
             raise UpdateFailed(
@@ -9963,20 +9913,19 @@ class F1SeasonResultsCoordinator(DataUpdateCoordinator):
             URL(primary_base).with_query({"limit": str(limit), "offset": str(offset)})
         )
         try:
-            async with asyncio.timeout(15):
-                return await fetch_json(
-                    self.hass,
-                    self._session,
-                    primary_url,
-                    headers=self._headers,
-                    ttl_seconds=ttl_seconds,
-                    cache=self._cache,
-                    inflight=self._inflight,
-                    persist_map=self._persist,
-                    persist_save=self._persist_save,
-                    force_refresh=force_refresh,
-                    validator=validator,
-                )
+            return await fetch_json(
+                self.hass,
+                self._session,
+                primary_url,
+                headers=self._headers,
+                ttl_seconds=ttl_seconds,
+                cache=self._cache,
+                inflight=self._inflight,
+                persist_map=self._persist,
+                persist_save=self._persist_save,
+                force_refresh=force_refresh,
+                validator=validator,
+            )
         except JolpicaRouteNotFoundError:
             fallback_url = str(
                 URL(str(self._base_url)).with_query(
@@ -9985,20 +9934,19 @@ class F1SeasonResultsCoordinator(DataUpdateCoordinator):
             )
             if fallback_url == primary_url:
                 raise
-            async with asyncio.timeout(15):
-                return await fetch_json(
-                    self.hass,
-                    self._session,
-                    fallback_url,
-                    headers=self._headers,
-                    ttl_seconds=ttl_seconds,
-                    cache=self._cache,
-                    inflight=self._inflight,
-                    persist_map=self._persist,
-                    persist_save=self._persist_save,
-                    force_refresh=force_refresh,
-                    validator=validator,
-                )
+            return await fetch_json(
+                self.hass,
+                self._session,
+                fallback_url,
+                headers=self._headers,
+                ttl_seconds=ttl_seconds,
+                cache=self._cache,
+                inflight=self._inflight,
+                persist_map=self._persist,
+                persist_save=self._persist_save,
+                force_refresh=force_refresh,
+                validator=validator,
+            )
 
     @staticmethod
     def _empty_result() -> dict[str, Any]:
@@ -10158,9 +10106,45 @@ class F1LapPositionProgressionCoordinator(DataUpdateCoordinator):
         self._persist = persist_map
         self._persist_save = persist_save
         self._session_payload_cache: dict[str, dict[str, Any]] = {}
+        self._result_source_unsubs: list[Callable[[], None]] = []
+
+    @ha_callback
+    def async_start(self) -> None:
+        """Follow result updates while lap position metadata is in use."""
+        if self._result_source_unsubs:
+            return
+        for source in (
+            self._season_results_coordinator,
+            self._sprint_results_coordinator,
+        ):
+            if source is not None:
+                self._result_source_unsubs.append(
+                    source.async_add_listener(self._handle_results_update)
+                )
+
+    @ha_callback
+    def async_stop(self) -> None:
+        """Release result listeners once there are no consumers."""
+        for unsubscribe in self._result_source_unsubs:
+            unsubscribe()
+        self._result_source_unsubs.clear()
+
+    @ha_callback
+    def _handle_results_update(self) -> None:
+        if self._has_result_data() and not _is_no_spoiler_jolpica_blocked(self):
+            self.async_set_updated_data(self._build_metadata(self._effective_season()))
+
+    def _has_result_data(self) -> bool:
+        return any(
+            getattr(source, "data", None) is not None
+            for source in (
+                self._season_results_coordinator,
+                self._sprint_results_coordinator,
+            )
+        )
 
     async def async_close(self, *_):
-        return
+        self.async_stop()
 
     @staticmethod
     def _utc_now_iso() -> str:
@@ -10287,20 +10271,19 @@ class F1LapPositionProgressionCoordinator(DataUpdateCoordinator):
                 )
             ).with_query({"limit": str(limit), "offset": str(offset)})
         )
-        async with asyncio.timeout(15):
-            return await fetch_json(
-                self.hass,
-                self._session,
-                url,
-                headers=self._headers,
-                ttl_seconds=ttl_seconds,
-                cache=self._cache,
-                inflight=self._inflight,
-                persist_map=self._persist,
-                persist_save=self._persist_save,
-                force_refresh=force_refresh,
-                validator=validator,
-            )
+        return await fetch_json(
+            self.hass,
+            self._session,
+            url,
+            headers=self._headers,
+            ttl_seconds=ttl_seconds,
+            cache=self._cache,
+            inflight=self._inflight,
+            persist_map=self._persist,
+            persist_save=self._persist_save,
+            force_refresh=force_refresh,
+            validator=validator,
+        )
 
     async def _fetch_laps_for_race(
         self, season: str, race: dict, latest_round: int | None
@@ -10734,9 +10717,8 @@ class F1LapPositionProgressionCoordinator(DataUpdateCoordinator):
             "session": session,
         }
 
-    async def _async_update_data(self):
-        season = self._effective_season()
-        result = {
+    def _build_metadata(self, season: str) -> dict[str, Any]:
+        return {
             "season": season,
             "source": "jolpica",
             "updated_at": self._utc_now_iso(),
@@ -10746,11 +10728,15 @@ class F1LapPositionProgressionCoordinator(DataUpdateCoordinator):
             "session_data_type": "f1_sensor/lap_position/session",
         }
 
+    async def _async_update_data(self):
+        season = self._effective_season()
         if _is_no_spoiler_jolpica_blocked(self):
             if isinstance(self.data, dict):
                 return self.data
             return self._empty_result(season)
-        return result
+        if not self._has_result_data():
+            raise UpdateFailed("Race and sprint results are unavailable")
+        return self._build_metadata(season)
 
 
 class FiaDocumentsCoordinator(DataUpdateCoordinator):
@@ -10788,12 +10774,38 @@ class FiaDocumentsCoordinator(DataUpdateCoordinator):
         self._persist = persist_map
         self._persist_save = persist_save
         self._season_url_cache: dict[str, str] = {}
+        self._observed_race: dict[str, Any] = {}
+        self._race_unsub: Callable[[], None] | None = None
+
+    @ha_callback
+    def async_start(self) -> None:
+        """Follow schedule changes while documents are in use."""
+        if self._race_unsub is None:
+            self._race_unsub = self._race_coordinator.async_add_listener(
+                self._handle_schedule_update
+            )
+
+    @ha_callback
+    def async_stop(self) -> None:
+        """Release the schedule listener when documents are no longer in use."""
+        if self._race_unsub is not None:
+            self._race_unsub()
+            self._race_unsub = None
 
     async def async_close(self, *_):
-        return
+        self.async_stop()
+        await self.async_shutdown()
+
+    @ha_callback
+    def _handle_schedule_update(self) -> None:
+        race = self._summarize_race(self._get_next_race())
+        if race and race != self._observed_race:
+            self._observed_race = race
+            self.hass.async_create_task(self.async_request_refresh())
 
     async def _async_update_data(self):
         race = self._get_next_race()
+        self._observed_race = self._summarize_race(race)
         if not race:
             return self.build_empty_result()
 

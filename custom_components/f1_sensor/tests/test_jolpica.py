@@ -13,8 +13,8 @@ from homeassistant.exceptions import ConfigEntryNotReady
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.f1_sensor import F1DataCoordinator
-from custom_components.f1_sensor.const import DOMAIN
+from custom_components.f1_sensor import F1DataCoordinator, F1SprintResultsCoordinator
+from custom_components.f1_sensor.const import DOMAIN, SPRINT_RESULTS_URL
 from custom_components.f1_sensor.jolpica import (
     JOLPICA_CLIENT_KEY,
     JolpicaClient,
@@ -163,6 +163,68 @@ async def test_first_refresh_jolpica_budget_and_recovery(hass, slow_response) ->
         assert coordinator.last_update_success is True
         assert coordinator.data == payload
         assert len(session.calls) == (1 if slow_response else 2)
+    finally:
+        if release is not None:
+            release.cancel()
+        await coordinator.async_shutdown()
+
+
+@pytest.mark.parametrize("within_budget", [True, False])
+async def test_sprint_pagination_honors_shared_jolpica_budget(
+    hass, within_budget
+) -> None:
+    """Accept a page between the old 15 s cutoff and the transport's 30 s limit."""
+    race = {
+        "season": "2026",
+        "round": "1",
+        "SprintResults": [{"position": "1", "Driver": {"driverId": "test"}}],
+    }
+
+    def payload(limit: int) -> dict:
+        return {
+            "MRData": {
+                "total": "1",
+                "limit": str(limit),
+                "offset": "0",
+                "RaceTable": {"season": "2026", "Races": [race]},
+            }
+        }
+
+    gate = asyncio.Event()
+    session = _Session(
+        [_Response(payload=payload(1)), _Response(payload=payload(100), gate=gate)]
+    )
+    hass.data.setdefault(DOMAIN, {})[JOLPICA_CLIENT_KEY] = await _client(hass, session)
+    entry = MockConfigEntry(domain=DOMAIN)
+    entry.add_to_hass(hass)
+    entry.mock_state(hass, ConfigEntryState.SETUP_IN_PROGRESS)
+    coordinator = F1SprintResultsCoordinator(
+        hass,
+        SPRINT_RESULTS_URL,
+        "Sprint results",
+        session=session,
+        config_entry=entry,
+        cache={},
+        inflight={},
+        persist_map={},
+    )
+    timeout = asyncio.timeout
+    # Scale the real deadlines so the regression test takes less than a second.
+    release = hass.loop.call_later(0.2, gate.set) if within_budget else None
+    try:
+        with patch.object(
+            asyncio, "timeout", side_effect=lambda delay: timeout(delay / 100)
+        ):
+            if within_budget:
+                await coordinator.async_config_entry_first_refresh()
+                assert coordinator.data["MRData"]["RaceTable"]["Races"] == [race]
+            else:
+                with pytest.raises(
+                    ConfigEntryNotReady, match="Jolpica request timed out"
+                ):
+                    await coordinator.async_config_entry_first_refresh()
+                assert coordinator.data is None
+        assert len(session.calls) == 2
     finally:
         if release is not None:
             release.cancel()

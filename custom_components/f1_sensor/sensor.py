@@ -78,7 +78,7 @@ class _ReplayOrAuthGatedStreamMixin:
 
 async def _async_setup_points_progression(sensor) -> None:
     sensor._recompute()
-    if sensor._attr_native_value is None:
+    if sensor.available and sensor._attr_native_value is None:
         last = await sensor.async_get_last_state()
         if last and last.state not in (None, "unknown", "unavailable"):
             try:
@@ -612,6 +612,7 @@ class _PointsProgressionBase(F1BaseEntity, RestoreEntity, SensorEntity):
     """Base for points progression sensors with shared setup/refresh logic."""
 
     _device_category = "championship"
+    _standings_coordinator_key: str
 
     def __init__(self, coordinator, unique_id, entry_id, device_name):
         super().__init__(coordinator, unique_id, entry_id, device_name)
@@ -621,13 +622,27 @@ class _PointsProgressionBase(F1BaseEntity, RestoreEntity, SensorEntity):
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
+        registry = entry_runtime_registry(self.hass, self._entry_id)
+        for key in ("sprint_results_coordinator", self._standings_coordinator_key):
+            if (source := registry.get(key)) is not None:
+                self.async_on_remove(
+                    source.async_add_listener(self._handle_coordinator_update)
+                )
         await _async_setup_points_progression(self)
+
+    @property
+    def available(self) -> bool:
+        return (
+            super().available
+            and self.coordinator.data is not None
+            and self._get_sprint_results() is not None
+        )
 
     def _handle_coordinator_update(self) -> None:
         self._recompute()
         self.async_write_ha_state()
 
-    def _get_sprint_results(self) -> list:
+    def _get_sprint_results(self) -> list | None:
         return _static_models.PointsProjection._get_sprint_results(self)
 
 
@@ -1177,6 +1192,7 @@ class F1DriverPointsProgressionSensor(_PointsProgressionBase):
     """
 
     _attr_translation_key = "driver_points_progression"
+    _standings_coordinator_key = "driver_coordinator"
 
     _unrecorded_attributes = frozenset({"drivers", "series"})
 
@@ -1194,6 +1210,7 @@ class F1ConstructorPointsProgressionSensor(_PointsProgressionBase):
     """Constructor points per team by round, including sprint; cumulative series for charts."""
 
     _attr_translation_key = "constructor_points_progression"
+    _standings_coordinator_key = "constructor_coordinator"
 
     _unrecorded_attributes = frozenset({"constructors", "series"})
 
