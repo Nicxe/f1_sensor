@@ -151,7 +151,15 @@ test('real semantic-release carries a beta through cumulative RCs, stable and th
     push();
 
     git('switch', 'beta');
+    commit('fix: Keep the integration available during an API outage');
     git('merge', '--no-ff', 'main', '-m', 'Merge stable history into beta');
+    push();
+    const patchBeta = await run();
+    assert.equal(patchBeta.nextRelease.version, '6.1.1-beta.1');
+    assert.equal(patchBeta.lastRelease.gitTag, 'v6.1.0');
+    assert.match(patchBeta.nextRelease.notes, /Keep the integration available during an API outage/);
+    assert.doesNotMatch(patchBeta.nextRelease.notes, /Add candidate timing view/);
+
     commit('feat: Add next cycle session summary');
     push();
     const nextBeta = await run();
