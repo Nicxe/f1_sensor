@@ -113,11 +113,6 @@ class _BadBus:
         raise RuntimeError("diagnostics")
 
 
-class _BadGetDict(dict):
-    def get(self, _key, _default=None):
-        raise RuntimeError("get")
-
-
 class _BadDataCoordinator:
     @property
     def data(self):
@@ -665,20 +660,15 @@ def test_silver_document_progression_and_status_defensive_paths(
     assert drivers._get_driver_standings() == ({"NOR": 0.0}, None)
     assert constructors._get_constructor_standings() == ({"mclaren": 0.0}, None)
 
-    bad_hass = SimpleNamespace(data=_BadGetDict())
     assert (
-        _map_session_status_payload(
-            {"Message": "Inactive", "Started": "Started"}, bad_hass
-        )
+        _map_session_status_payload({"Message": "Inactive", "Started": "Started"})
         == "suspended"
     )
     assert (
-        _map_session_status_payload(
-            {"Message": "Aborted", "Started": "Started"}, bad_hass
-        )
+        _map_session_status_payload({"Message": "Aborted", "Started": "Started"})
         == "suspended"
     )
-    assert _map_session_status_payload({"Message": "Aborted"}, bad_hass) == "pre"
+    assert _map_session_status_payload({"Message": "Aborted"}) == "pre"
 
 
 def test_silver_stream_update_and_context_fallback_paths(hass, monkeypatch) -> None:

@@ -738,15 +738,8 @@ class F1LiveTimingOnlineBinarySensor(F1AuxEntity, BinarySensorEntity):
         }
 
 
-class F1OvertakeModeBinarySensor(F1BaseEntity, RestoreEntity, BinarySensorEntity):
-    """Binary sensor indicating whether Overtake Mode is currently enabled.
-
-    Overtake Mode is a 2026 F1 regulation feature that allows a driver who
-    was within one second of the car ahead at the final corner detection point
-    to deploy an additional 0.5 MJ of electrical energy on the following lap.
-    Race Control publishes a track-wide OVERTAKE ENABLED / OVERTAKE DISABLED
-    message to signal availability.
-    """
+class F1OvertakeModeBinarySensor(F1BaseEntity, BinarySensorEntity):
+    """Report the session-wide permission to use Overtake Mode."""
 
     _device_category = "session"
     _attr_device_class = None
@@ -764,34 +757,7 @@ class F1OvertakeModeBinarySensor(F1BaseEntity, RestoreEntity, BinarySensorEntity
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
-        data = self._extract_data()
-        updated = self._has_overtake_state(data)
-        restored = False
-        if updated and data is not None:
-            self._apply_data(data)
-        else:
-            if not self._session_is_terminal():
-                last = await self.async_get_last_state()
-                if last and last.state not in (None, "unknown", "unavailable"):
-                    last_state = last.state
-                    if isinstance(last_state, bool):
-                        self._attr_is_on = last_state
-                    else:
-                        self._attr_is_on = str(last_state).lower() in (
-                            "on",
-                            "true",
-                            "1",
-                        )
-                    attrs = dict(last.attributes or {})
-                    self._attr_extra_state_attributes = {
-                        "straight_mode": attrs.get("straight_mode"),
-                        "restored": True,
-                    }
-                    restored = True
-            if not restored and not self._is_stream_active():
-                self._clear_state()
-        self._stream_last_active = self._is_stream_active()
-        self.async_write_ha_state()
+        self._handle_coordinator_update()
 
     def _extract_data(self) -> dict[str, Any] | None:
         data = self.coordinator.data
@@ -807,22 +773,19 @@ class F1OvertakeModeBinarySensor(F1BaseEntity, RestoreEntity, BinarySensorEntity
         self._attr_extra_state_attributes = {
             "straight_mode": data.get("straight_mode"),
         }
+        if self.coordinator.is_restored("overtake_enabled"):
+            self._attr_extra_state_attributes["restored"] = True
 
     def _handle_coordinator_update(self) -> None:
         data = self._extract_data()
-        if self._session_is_terminal():
+        if (
+            self._session_is_terminal()
+            or not self._is_stream_active()
+            or not self._has_overtake_state(data)
+        ):
             self._clear_state()
-            self.async_write_ha_state()
-            return
-        updated = self._has_overtake_state(data)
-        if not self._handle_stream_state(updated):
-            return
-        if not self._is_stream_active():
-            self.async_write_ha_state()
-            return
-        if not updated or data is None:
-            return
-        self._apply_data(data)
+        else:
+            self._apply_data(data)
         self.async_write_ha_state()
 
     @property

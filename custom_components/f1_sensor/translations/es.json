@@ -1,1 +1,476 @@
-{}
+{
+  "device_automation": {
+    "trigger_type": {
+      "race_week_started": "Ha empezado la semana de carrera",
+      "race_week_ended": "Ha terminado la semana de carrera",
+      "safety_car_deployed": "Coche de seguridad desplegado",
+      "safety_car_cleared": "Coche de seguridad retirado",
+      "possible_on_track_incident_detected": "Posible incidente en pista detectado",
+      "possible_on_track_incident_cleared": "Posible incidente en pista resuelto",
+      "on_track_incident_detected": "Incidente en pista detectado",
+      "on_track_incident_cleared": "Incidente en pista resuelto",
+      "formation_start_ready": "Vuelta de formación lista para empezar",
+      "overtake_mode_enabled": "Modo adelantamiento activado",
+      "overtake_mode_disabled": "Modo adelantamiento desactivado",
+      "session_live": "La sesión ha empezado en directo",
+      "track_status_clear": "Estado de la pista: despejada",
+      "track_status_yellow": "Estado de la pista: bandera amarilla",
+      "track_status_safety_car": "Estado de la pista: coche de seguridad",
+      "track_status_vsc": "Estado de la pista: coche de seguridad virtual",
+      "track_status_red_flag": "Estado de la pista: bandera roja",
+      "new_race_control_message": "Nuevo mensaje de Dirección de carrera",
+      "new_fia_document": "Nuevo documento de la FIA publicado",
+      "investigation_changed": "Ha cambiado el estado de una investigación",
+      "new_team_radio": "Nuevo mensaje de radio del equipo",
+      "favorite_driver_position_gained": "El piloto favorito ha ganado una posición",
+      "favorite_driver_position_lost": "El piloto favorito ha perdido una posición",
+      "favorite_driver_entered_pits": "El piloto favorito ha entrado en boxes",
+      "favorite_driver_exited_pits": "El piloto favorito ha salido de boxes",
+      "favorite_driver_retired": "El piloto favorito ha abandonado",
+      "live_timing_online": "El cronometraje en directo se ha conectado",
+      "live_timing_offline": "El cronometraje en directo se ha desconectado"
+    }
+  },
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configuración de F1 Sensor",
+        "data": {
+          "sensor_name": "Nombre del dispositivo",
+          "enabled_sensors": "Sensores activados",
+          "operation_mode": "Modo de funcionamiento",
+          "replay_file": "Ruta del volcado de repetición",
+          "enable_race_control": "Activar la API de F1 en directo (Dirección de carrera/Pista/Sesión)",
+          "install_dashboard_cards": "Instalar las tarjetas de panel incluidas",
+          "race_week_start_day": "Primer día de la semana de carrera",
+          "live_timing_auth_header": "Alternativa manual: valor de autorización de F1TV",
+          "clear_live_timing_auth_header": "Borrar el valor de autorización de F1TV",
+          "start_f1tv_pairing": "Recomendado: conectar el acceso a F1TV con Token Helper",
+          "install_legacy_cards": "Instalar las tarjetas de panel antiguas"
+        },
+        "data_description": {
+          "operation_mode": "Elige Live para conectarte a SignalR de la Fórmula 1, o Development para reproducir localmente un volcado guardado.",
+          "replay_file": "Ruta absoluta a un archivo de volcado de SignalR grabado. Solo es necesaria en el modo Development.",
+          "enable_race_control": "Se conecta a Live Timing de la Fórmula 1 mediante SignalR para recibir actualizaciones en directo. Si se desactiva, estos sensores en directo no se crean.",
+          "install_dashboard_cards": "Registra en Home Assistant las tarjetas de F1 Sensor incluidas. Desactívalo si solo usas entidades y automatizaciones. Las tarjetas de F1 que ya tengas en los paneles dejarán de funcionar al recargar el navegador.",
+          "race_week_start_day": "Elige si la semana de carrera empieza el sábado, el domingo o el lunes.",
+          "live_timing_auth_header": "Alternativa manual si el emparejamiento con Token Helper no funciona. Pega el token Bearer completo de F1TV Token Helper solo como último recurso avanzado. Déjalo en blanco para usar el cronometraje en directo público sin el modo de repetición ni el contenido multimedia del archivo.",
+          "start_f1tv_pairing": "Opción recomendada. Conecta tu cuenta de Fórmula 1 para el modo de repetición y los datos del archivo. Una cuenta gratuita basta para la repetición; los datos en directo adicionales dependen de los permisos de la cuenta y de la disponibilidad de la sesión. El cronometraje en directo público sigue funcionando sin ella.",
+          "install_legacy_cards": "Registra también las tarjetas de F1 obsoletas. Las instalaciones nuevas lo dejan desactivado; las existentes conservan sus tarjetas anteriores. Requiere la instalación de las tarjetas de panel. Recarga el navegador después de cambiar esta opción. Si lo desactivas, las tarjetas antiguas existentes dejarán de funcionar a menos que las migres a la tarjeta F1 Sensor. Si hay varias instalaciones de F1 Sensor, las tarjetas antiguas siguen disponibles mientras alguna instalación activada las solicite."
+        },
+        "description": "La tarjeta F1 Sensor obtiene sus datos automáticamente. «Sensores activados» solo controla las entidades expuestas en Home Assistant. Conserva los sensores que usen tarjetas, plantillas o automatizaciones antiguas. El cronometraje en directo y el acceso a F1TV tienen sus propios ajustes."
+      },
+      "reconfigure": {
+        "title": "Reconfigurar F1 Sensor",
+        "data": {
+          "sensor_name": "Nombre del dispositivo",
+          "enabled_sensors": "Sensores activados",
+          "operation_mode": "Modo de funcionamiento",
+          "replay_file": "Ruta del volcado de repetición",
+          "enable_race_control": "Activar la API de F1 en directo",
+          "install_dashboard_cards": "Instalar las tarjetas de panel incluidas",
+          "race_week_start_day": "Primer día de la semana de carrera",
+          "live_timing_auth_header": "Alternativa manual: valor de autorización de F1TV",
+          "clear_live_timing_auth_header": "Borrar el valor de autorización de F1TV",
+          "start_f1tv_pairing": "Recomendado: conectar el acceso a F1TV con Token Helper",
+          "install_legacy_cards": "Instalar las tarjetas de panel antiguas"
+        },
+        "data_description": {
+          "operation_mode": "Elige Live para conectarte a SignalR de la Fórmula 1, o Development para reproducir localmente un volcado guardado.",
+          "replay_file": "Ruta absoluta a un archivo de volcado de SignalR grabado. Solo es necesaria en el modo Development.",
+          "enable_race_control": "Se conecta a Live Timing de la Fórmula 1 para recibir actualizaciones en directo. Si se desactiva, estos sensores en directo no se crean.",
+          "install_dashboard_cards": "Registra en Home Assistant las tarjetas de F1 Sensor incluidas. Desactívalo si solo usas entidades y automatizaciones. Las tarjetas de F1 que ya tengas en los paneles dejarán de funcionar al recargar el navegador.",
+          "race_week_start_day": "Elige si la semana de carrera empieza el sábado, el domingo o el lunes.",
+          "live_timing_auth_header": "Alternativa manual si el emparejamiento con Token Helper no funciona. Pega un nuevo token Bearer completo solo como último recurso avanzado. Déjalo en blanco para mantener el valor actual.",
+          "clear_live_timing_auth_header": "Elimina el valor de autorización de F1TV guardado y continúa con el cronometraje en directo público. El modo de repetición y el contenido multimedia del archivo no estarán disponibles.",
+          "start_f1tv_pairing": "Opción recomendada. Conecta tu cuenta de Fórmula 1 para el modo de repetición y los datos del archivo. Una cuenta gratuita basta para la repetición; los datos en directo adicionales dependen de los permisos de la cuenta y de la disponibilidad de la sesión. El cronometraje en directo público sigue funcionando sin ella.",
+          "install_legacy_cards": "Registra también las tarjetas de F1 obsoletas. Las instalaciones nuevas lo dejan desactivado; las existentes conservan sus tarjetas anteriores. Requiere la instalación de las tarjetas de panel. Recarga el navegador después de cambiar esta opción. Si lo desactivas, las tarjetas antiguas existentes dejarán de funcionar a menos que las migres a la tarjeta F1 Sensor. Si hay varias instalaciones de F1 Sensor, las tarjetas antiguas siguen disponibles mientras alguna instalación activada las solicite."
+        },
+        "description": "La tarjeta F1 Sensor obtiene sus datos automáticamente. «Sensores activados» solo controla las entidades expuestas en Home Assistant. Conserva los sensores que usen tarjetas, plantillas o automatizaciones antiguas. El cronometraje en directo y el acceso a F1TV tienen sus propios ajustes."
+      },
+      "reauth_confirm": {
+        "title": "Actualizar la autorización de F1TV para el cronometraje en directo",
+        "data": {
+          "live_timing_auth_header": "Alternativa manual: valor de autorización de F1TV",
+          "clear_live_timing_auth_header": "Borrar el valor de autorización de F1TV",
+          "start_f1tv_pairing": "Recomendado: conectar el acceso a F1TV con Token Helper"
+        },
+        "data_description": {
+          "live_timing_auth_header": "Alternativa manual si el emparejamiento con Token Helper no funciona. Pega un nuevo token Bearer completo solo como último recurso avanzado.",
+          "clear_live_timing_auth_header": "Elimina el valor de autorización de F1TV guardado y continúa con el cronometraje en directo público. El modo de repetición y el contenido multimedia del archivo no estarán disponibles.",
+          "start_f1tv_pairing": "Opción recomendada. Conecta tu cuenta de Fórmula 1 para el modo de repetición y los datos del archivo. Una cuenta gratuita basta para la repetición; los datos en directo adicionales dependen de los permisos de la cuenta y de la disponibilidad de la sesión. El cronometraje en directo público sigue funcionando sin ella."
+        }
+      },
+      "f1tv_pairing": {
+        "title": "Conectar el acceso a F1TV",
+        "description": "Usa F1TV Token Helper para conectar tu cuenta de Fórmula 1. Una cuenta gratuita basta para el modo de repetición; los datos en directo adicionales dependen de los permisos de la cuenta y de la disponibilidad de la sesión. El cronometraje en directo público sigue funcionando sin token. Este emparejamiento caduca el {expires_at}."
+      },
+      "sensor_review": {
+        "title": "Revisar los cambios de sensores",
+        "description": "Sensores eliminados de tu selección anterior: {removed_sensors}. Las tarjetas, plantillas y automatizaciones antiguas que usen estas entidades pueden dejar de funcionar. Desactivar los sensores de la forma habitual en Home Assistant conserva los metadatos del registro. Quitar sensores mediante la selección de esta integración puede eliminar sus entradas del registro; si los vuelves a crear más adelante, pueden cambiar los nombres personalizados y los ID de entidad. El resto de los ajustes y los datos guardados se conservan.",
+        "data": {
+          "confirm": "Confirmar los cambios de sensores"
+        }
+      }
+    },
+    "abort": {
+      "reconfigure_successful": "F1 Sensor se ha reconfigurado correctamente.",
+      "f1tv_pairing_unavailable": "El emparejamiento con F1TV no está disponible en esta versión.",
+      "f1tv_pairing_failed": "El emparejamiento con F1TV no se ha completado. Inicia una nueva sesión de emparejamiento y vuelve a intentarlo."
+    },
+    "error": {
+      "replay_required": "Selecciona un archivo de volcado de repetición cuando el modo Development esté activado.",
+      "replay_missing": "No se ha encontrado el archivo de volcado de repetición o no se puede leer.",
+      "auth_header_required": "Introduce el valor de autorización de F1TV o selecciona la opción de borrarlo.",
+      "invalid_auth_header": "Introduce un valor de token Bearer válido.",
+      "auth_token_missing_exp": "El token no incluye una fecha de caducidad.",
+      "auth_token_expired": "El token ha caducado.",
+      "auth_token_expiring_soon": "El token caduca demasiado pronto. Genera un token nuevo y vuelve a intentarlo.",
+      "invalid_choice": "Elige una configuración válida.",
+      "confirmation_required": "Confirma las opciones revisadas antes de guardar."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Configurar las funciones de F1 Sensor",
+        "data": {
+          "enabled_sensors": "Sensores activados",
+          "enable_race_control": "Activar la API de F1 en directo",
+          "install_dashboard_cards": "Instalar las tarjetas de panel incluidas",
+          "race_week_start_day": "Primer día de la semana de carrera",
+          "operation_mode": "Modo de funcionamiento",
+          "replay_file": "Ruta del volcado de repetición",
+          "install_legacy_cards": "Instalar las tarjetas de panel antiguas"
+        },
+        "data_description": {
+          "enable_race_control": "Se conecta a Live Timing de la Fórmula 1 solo cuando las funciones en directo están activadas.",
+          "install_dashboard_cards": "Registra en Home Assistant las tarjetas de F1 Sensor incluidas. Desactívalo si solo usas entidades y automatizaciones. Las tarjetas de F1 que ya tengas en los paneles dejarán de funcionar al recargar el navegador.",
+          "race_week_start_day": "Elige si la semana de carrera empieza el sábado, el domingo o el lunes.",
+          "operation_mode": "Elige Live o el modo Development de repetición local.",
+          "replay_file": "Ruta absoluta a un volcado de repetición que solo se usa en el modo Development.",
+          "install_legacy_cards": "Registra también las tarjetas de F1 obsoletas. Las instalaciones nuevas lo dejan desactivado; las existentes conservan sus tarjetas anteriores. Requiere la instalación de las tarjetas de panel. Recarga el navegador después de cambiar esta opción. Si lo desactivas, las tarjetas antiguas existentes dejarán de funcionar a menos que las migres a la tarjeta F1 Sensor. Si hay varias instalaciones de F1 Sensor, las tarjetas antiguas siguen disponibles mientras alguna instalación activada las solicite."
+        },
+        "description": "La tarjeta F1 Sensor obtiene sus datos automáticamente. «Sensores activados» solo controla las entidades expuestas en Home Assistant. Conserva los sensores que usen tarjetas, plantillas o automatizaciones antiguas. El cronometraje en directo y el acceso a F1TV tienen sus propios ajustes."
+      },
+      "sensor_review": {
+        "title": "Revisar los cambios de sensores",
+        "description": "Sensores eliminados de tu selección anterior: {removed_sensors}. Las tarjetas, plantillas y automatizaciones antiguas que usen estas entidades pueden dejar de funcionar. Desactivar los sensores de la forma habitual en Home Assistant conserva los metadatos del registro. Quitar sensores mediante la selección de esta integración puede eliminar sus entradas del registro; si los vuelves a crear más adelante, pueden cambiar los nombres personalizados y los ID de entidad. El resto de los ajustes y los datos guardados se conservan.",
+        "data": {
+          "confirm": "Confirmar los cambios de sensores"
+        }
+      }
+    },
+    "error": {
+      "replay_required": "Selecciona un archivo de volcado de repetición cuando el modo Development esté activado.",
+      "replay_missing": "No se ha encontrado el archivo de volcado de repetición o no se puede leer.",
+      "invalid_choice": "Elige una configuración válida.",
+      "confirmation_required": "Confirma las opciones revisadas antes de guardar."
+    }
+  },
+  "issues": {
+    "stale_live_data_card_resources": {
+      "description": "Home Assistant aún tiene entradas de recursos de Lovelace obsoletas de la antigua tarjeta F1 independiente ({stale_resource_count} detectadas). Pueden provocar tarjetas duplicadas o mantener visibles las tarjetas de F1 después de desactivar las tarjetas de panel incluidas. Elimina el antiguo repositorio de panel independiente de HACS y sus entradas de recursos de Lovelace obsoletas; después, reinicia Home Assistant o recarga los recursos de Lovelace y fuerza la recarga del navegador.",
+      "title": "Se han detectado recursos de la antigua tarjeta independiente de datos en directo de F1"
+    },
+    "f1tv_token_attention_required": {
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "data": {
+              "start_f1tv_pairing": "Recomendado: conectar el acceso a F1TV con Token Helper",
+              "live_timing_auth_header": "Valor de autorización de F1TV",
+              "clear_live_timing_auth_header": "Borrar el valor de autorización de F1TV"
+            },
+            "data_description": {
+              "start_f1tv_pairing": "Opción recomendada. Inicia una sesión de emparejamiento de corta duración y envía el token desde la extensión del navegador sin copiarlo a mano.",
+              "live_timing_auth_header": "Pega un nuevo valor de token Bearer de F1TV Token Helper para el acceso a F1TV.",
+              "clear_live_timing_auth_header": "Elimina el token de F1TV guardado y continúa con el cronometraje en directo público. El modo de repetición y el contenido multimedia del archivo no estarán disponibles."
+            },
+            "description": "El token de F1TV guardado para {name} requiere atención. El cronometraje en directo público sigue funcionando, pero el modo de repetición, el contenido multimedia del archivo y los datos en directo adicionales de F1TV necesitan un token nuevo.",
+            "title": "Actualizar el token de F1TV para el cronometraje en directo"
+          },
+          "f1tv_pairing": {
+            "title": "Conectar el acceso a F1TV",
+            "description": "Usa F1TV Token Helper para conectar tu cuenta de Fórmula 1. Una cuenta gratuita basta para el modo de repetición; los datos en directo adicionales dependen de los permisos de la cuenta y de la disponibilidad de la sesión. El cronometraje en directo público sigue funcionando sin token. Este emparejamiento caduca el {expires_at}."
+          }
+        }
+      },
+      "title": "El token de F1TV para el cronometraje en directo requiere atención"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "next_race": {
+        "name": "Próxima carrera"
+      },
+      "track_time": {
+        "name": "Hora en el circuito"
+      },
+      "current_season": {
+        "name": "Temporada actual"
+      },
+      "driver_standings": {
+        "name": "Clasificación de pilotos"
+      },
+      "constructor_standings": {
+        "name": "Clasificación de constructores"
+      },
+      "weather": {
+        "name": "Meteorología"
+      },
+      "track_weather": {
+        "name": "Meteorología en el circuito"
+      },
+      "session_rain_risk": {
+        "name": "Riesgo de lluvia en la sesión"
+      },
+      "current_session": {
+        "name": "Sesión actual"
+      },
+      "last_race_results": {
+        "name": "Resultados de la última carrera"
+      },
+      "season_results": {
+        "name": "Resultados de la temporada"
+      },
+      "sprint_results": {
+        "name": "Resultados del sprint"
+      },
+      "lap_position_progression": {
+        "name": "Evolución de posiciones por vuelta"
+      },
+      "race_control": {
+        "name": "Dirección de carrera"
+      },
+      "top_three_p1": {
+        "name": "Tres primeros (P1)"
+      },
+      "top_three_p2": {
+        "name": "Tres primeros (P2)"
+      },
+      "top_three_p3": {
+        "name": "Tres primeros (P3)"
+      },
+      "pitstops": {
+        "name": "Paradas en boxes"
+      },
+      "championship_prediction_drivers": {
+        "name": "Predicción del campeonato (pilotos)"
+      },
+      "championship_prediction_teams": {
+        "name": "Predicción del campeonato (equipos)"
+      },
+      "fia_documents": {
+        "name": "Decisiones de la FIA"
+      },
+      "live_timing_mode": {
+        "name": "Modo del cronometraje en directo"
+      },
+      "f1tv_token_status": {
+        "name": "Estado del token de F1TV",
+        "state": {
+          "not_configured": "Sin configurar",
+          "valid": "Válido",
+          "expiring_soon": "Caduca pronto",
+          "expired": "Caducado",
+          "invalid": "No válido",
+          "rejected": "Rechazado"
+        }
+      },
+      "f1tv_token_expires_at": {
+        "name": "Caducidad del token de F1TV"
+      },
+      "driver_positions": {
+        "name": "Posiciones de los pilotos"
+      },
+      "favorite_driver": {
+        "name": "Piloto favorito"
+      },
+      "starting_grid": {
+        "name": "Parrilla de salida"
+      },
+      "track_limits": {
+        "name": "Límites de pista"
+      },
+      "investigations": {
+        "name": "Investigaciones y sanciones"
+      },
+      "straight_mode": {
+        "name": "Modo recta",
+        "state": {
+          "normal_grip": "Agarre normal",
+          "low_grip": "Agarre bajo",
+          "disabled": "Desactivado"
+        }
+      },
+      "track_status": {
+        "name": "Estado de la pista"
+      },
+      "session_status": {
+        "name": "Estado de la sesión"
+      },
+      "session_time_remaining": {
+        "name": "Tiempo restante de la sesión"
+      },
+      "session_time_elapsed": {
+        "name": "Tiempo transcurrido de la sesión"
+      },
+      "race_time_to_three_hour_limit": {
+        "name": "Tiempo hasta el límite de 3 horas"
+      },
+      "driver_list": {
+        "name": "Lista de pilotos"
+      },
+      "current_tyres": {
+        "name": "Neumáticos actuales"
+      },
+      "tyre_statistics": {
+        "name": "Estadísticas de neumáticos"
+      },
+      "team_radio": {
+        "name": "Radio del equipo"
+      },
+      "race_lap_count": {
+        "name": "Vueltas de la carrera"
+      },
+      "driver_points_progression": {
+        "name": "Evolución de puntos de los pilotos"
+      },
+      "constructor_points_progression": {
+        "name": "Evolución de puntos de los constructores"
+      },
+      "replay_status": {
+        "name": "Estado de la repetición"
+      }
+    },
+    "weather": {
+      "weather": {
+        "name": "Meteorología"
+      }
+    },
+    "button": {
+      "delay_calibration_match": {
+        "name": "Sincronizar el retraso en directo"
+      },
+      "replay_load": {
+        "name": "Cargar sesión"
+      },
+      "replay_play": {
+        "name": "Reproducir"
+      },
+      "replay_pause": {
+        "name": "Pausar"
+      },
+      "replay_back_30": {
+        "name": "Retroceder 30 segundos"
+      },
+      "replay_forward_30": {
+        "name": "Avanzar 30 segundos"
+      },
+      "replay_stop": {
+        "name": "Detener"
+      },
+      "replay_refresh": {
+        "name": "Actualizar sesiones"
+      },
+      "jolpica_ua_test": {
+        "name": "Prueba de user-agent de Jolpica"
+      },
+      "clear_f1tv_access": {
+        "name": "Borrar el acceso a F1TV"
+      },
+      "refresh_f1tv_access": {
+        "name": "Renovar el acceso a F1TV"
+      }
+    },
+    "switch": {
+      "delay_calibration": {
+        "name": "Calibración del retraso"
+      },
+      "no_spoiler_mode": {
+        "name": "Modo sin spoilers"
+      }
+    },
+    "number": {
+      "live_delay": {
+        "name": "Retraso en directo"
+      }
+    },
+    "media_player": {
+      "replay_player": {
+        "name": "Reproductor de repeticiones"
+      }
+    },
+    "select": {
+      "favorite_driver": {
+        "name": "Piloto favorito"
+      },
+      "live_delay_reference": {
+        "name": "Referencia del retraso en directo"
+      },
+      "replay_year": {
+        "name": "Año de la repetición"
+      },
+      "replay_session": {
+        "name": "Sesión de la repetición"
+      },
+      "replay_start_reference": {
+        "name": "Referencia de inicio de la repetición"
+      }
+    },
+    "binary_sensor": {
+      "race_week": {
+        "name": "Semana de carrera"
+      },
+      "live_timing_online": {
+        "name": "Cronometraje en directo conectado"
+      },
+      "safety_car": {
+        "name": "Coche de seguridad"
+      },
+      "on_track_incident": {
+        "name": "Incidente en pista"
+      },
+      "possible_on_track_incident": {
+        "name": "Posible incidente en pista"
+      },
+      "formation_start": {
+        "name": "Inicio de la vuelta de formación"
+      },
+      "overtake_mode": {
+        "name": "Modo adelantamiento"
+      }
+    },
+    "calendar": {
+      "season_calendar": {
+        "name": "Calendario de la temporada"
+      }
+    }
+  },
+  "selector": {},
+  "exceptions": {
+    "card_data_notification_title": {
+      "message": "F1 Sensor: datos automáticos para la tarjeta"
+    },
+    "card_data_notification": {
+      "message": "{name} ahora proporciona datos automáticamente a la tarjeta F1 Sensor. Tus sensores, ajustes y automatizaciones actuales siguen funcionando. Si quieres, puedes reducir los sensores expuestos en Home Assistant en [Ajustes de F1 Sensor]({integration_url}) → Configurar. Conserva los sensores que usen tarjetas, plantillas o automatizaciones antiguas. No hace falta configurar nada. Puedes descartar este mensaje; no volverá a aparecer después de reiniciar o recargar."
+    }
+  },
+  "services": {
+    "clear_race_control_log": {
+      "name": "Borrar el registro de Dirección de carrera",
+      "description": "Borra los mensajes guardados de Dirección de carrera de una instalación de F1 Sensor. Indica una entidad de sensor o una entrada de configuración.",
+      "fields": {
+        "entity_id": {
+          "name": "Entidad de Dirección de carrera",
+          "description": "Sensor de Dirección de carrera de esta instalación. Omítelo si usas entry_id."
+        },
+        "entry_id": {
+          "name": "Entrada de configuración de F1 Sensor",
+          "description": "Úsalo en lugar de entity_id cuando no haya ningún sensor de Dirección de carrera expuesto. Indica solo uno de los dos."
+        }
+      }
+    }
+  }
+}

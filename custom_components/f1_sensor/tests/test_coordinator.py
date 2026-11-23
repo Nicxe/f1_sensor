@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from datetime import UTC, datetime, timedelta
+import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -1046,6 +1047,43 @@ async def test_fia_documents_fetch_timeout_maps_to_update_failed(hass) -> None:
         )
         with pytest.raises(UpdateFailed, match="Error fetching FIA documents"):
             await coordinator._async_update_data()
+
+
+async def test_fia_documents_refresh_after_schedule_recovers(hass, monkeypatch) -> None:
+    schedule = _future_race_payload()
+    race_coordinator = DataUpdateCoordinator(
+        hass,
+        logging.getLogger(__name__),
+        config_entry=None,
+        name="Race schedule",
+        update_method=AsyncMock(
+            side_effect=[UpdateFailed("Jolpica timeout"), schedule]
+        ),
+    )
+    coordinator = FiaDocumentsCoordinator(hass, race_coordinator, session=MagicMock())
+    fetch = AsyncMock(
+        side_effect=[
+            '<a href="/documents/season/season-2026-1234">2026</a>',
+            '<a href="/sites/default/files/decision.pdf">Decision</a>',
+        ]
+    )
+    monkeypatch.setattr("custom_components.f1_sensor.__init__.fetch_text", fetch)
+
+    coordinator.async_start()
+    try:
+        await race_coordinator.async_refresh()
+        await coordinator.async_refresh()
+        assert coordinator.data["event_key"] is None
+        fetch.assert_not_awaited()
+
+        await race_coordinator.async_refresh()
+        await hass.async_block_till_done()
+
+        assert coordinator.data["event_key"] == "2026_1"
+        assert [doc["name"] for doc in coordinator.data["documents"]] == ["Decision"]
+        assert fetch.await_count == 2
+    finally:
+        await coordinator.async_close()
 
 
 @pytest.mark.asyncio

@@ -91,19 +91,15 @@ class PointsProjection(ProjectionModel):
         self._attr_native_value = None
         self._attr_extra_state_attributes = {}
 
-    def _get_sprint_results(self) -> list:
-        try:
-            reg = entry_runtime_registry(self.hass, self._entry_id)
-            sprint_coord = reg.get("sprint_results_coordinator")
-            if sprint_coord and isinstance(sprint_coord.data, dict):
-                return (
-                    sprint_coord.data.get("MRData", {})
-                    .get("RaceTable", {})
-                    .get("Races", [])
-                )
-        except Exception:
+    def _get_sprint_results(self) -> list | None:
+        reg = entry_runtime_registry(self.hass, self._entry_id)
+        sprint_coord = reg.get("sprint_results_coordinator")
+        if sprint_coord is None:
             return []
-        return []
+        data = sprint_coord.data
+        if not isinstance(data, dict):
+            return None
+        return data.get("MRData", {}).get("RaceTable", {}).get("Races", [])
 
 
 class NextRaceModel(NextRaceProjection, ProjectionModel):
@@ -890,6 +886,11 @@ class DriverPointsProgressionModel(PointsProjection):
             return ({}, None)
 
     def _recompute(self) -> None:
+        sprints = self._get_sprint_results()
+        if sprints is None:
+            self._attr_native_value = None
+            self._attr_extra_state_attributes = {}
+            return
         data = self.coordinator.data or {}
         races = data.get("MRData", {}).get("RaceTable", {}).get("Races", [])
         season = None
@@ -949,7 +950,6 @@ class DriverPointsProgressionModel(PointsProjection):
                     per_round_points[code].append(0.0)
                 while len(wins_per_round[code]) < max_len:
                     wins_per_round[code].append(0)
-        sprints = self._get_sprint_results()
         round_index = {r: idx for idx, r in enumerate(round_numbers)}
         for sp in sprints or []:
             rnd = (
@@ -1060,6 +1060,11 @@ class ConstructorPointsProgressionModel(PointsProjection):
     """Projection extracted from F1ConstructorPointsProgressionSensor; shared with its entity adapter."""
 
     def _recompute(self) -> None:
+        sprints = self._get_sprint_results()
+        if sprints is None:
+            self._attr_native_value = None
+            self._attr_extra_state_attributes = {}
+            return
         data = self.coordinator.data or {}
         races = data.get("MRData", {}).get("RaceTable", {}).get("Races", [])
         season = None
@@ -1119,7 +1124,6 @@ class ConstructorPointsProgressionModel(PointsProjection):
                     per_round_points[cid].append(0.0)
                 while len(wins_per_round[cid]) < max_len:
                     wins_per_round[cid].append(0)
-        sprints = self._get_sprint_results()
         round_index = {r: idx for idx, r in enumerate(round_numbers)}
         for sp in sprints or []:
             rnd = (

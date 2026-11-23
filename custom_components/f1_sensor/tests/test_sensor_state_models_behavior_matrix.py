@@ -106,48 +106,43 @@ def test_top_three_state_normalization_and_withheld_paths() -> None:
 
 
 def test_session_status_mapping_metadata_and_track_grip(hass) -> None:
-    hass.data[LATEST_TRACK_STATUS] = {"Status": "1"}
-    assert _map_session_status_payload(None, hass) is None
-    assert _map_session_status_payload({"Status": "Started"}, hass) == "live"
+    assert _map_session_status_payload(None) is None
+    assert _map_session_status_payload({"Status": "Started"}) == "live"
     assert (
         _map_session_status_payload(
-            {"Status": "Finished"}, hass, is_qualifying_like=True, qualifying_part=2
+            {"Status": "Finished"}, is_qualifying_like=True, qualifying_part=2
         )
         == "break"
     )
     assert (
-        _map_session_status_payload(
-            {"Status": "Finished"}, hass, is_qualifying_like=True
-        )
+        _map_session_status_payload({"Status": "Finished"}, is_qualifying_like=True)
+        == "break"
+    )
+    assert (
+        _map_session_status_payload({"Status": "Finished"}, is_testing_session=True)
         == "break"
     )
     assert (
         _map_session_status_payload(
-            {"Status": "Finished"}, hass, is_testing_session=True
-        )
-        == "break"
-    )
-    assert (
-        _map_session_status_payload(
-            {"Status": "Finished"}, hass, is_qualifying_like=True, qualifying_part=3
+            {"Status": "Finished"}, is_qualifying_like=True, qualifying_part=3
         )
         == "finished"
     )
-    assert _map_session_status_payload({"Status": "Finalised"}, hass) == "finalised"
-    assert _map_session_status_payload({"Status": "Ends"}, hass) == "ended"
+    assert _map_session_status_payload({"Status": "Finalised"}) == "finalised"
+    assert _map_session_status_payload({"Status": "Ends"}) == "ended"
     assert (
-        _map_session_status_payload({"Status": "Inactive", "Started": "Finished"}, hass)
+        _map_session_status_payload({"Status": "Inactive", "Started": "Finished"})
         == "break"
     )
     assert (
-        _map_session_status_payload({"Status": "Inactive", "Started": "Started"}, hass)
-        == "live"
-    )
-    assert (
-        _map_session_status_payload({"Status": "Aborted", "Started": "Started"}, hass)
+        _map_session_status_payload({"Status": "Inactive", "Started": "Started"})
         == "suspended"
     )
-    assert _map_session_status_payload({"Status": "unknown"}, hass) == "pre"
+    assert (
+        _map_session_status_payload({"Status": "Aborted", "Started": "Started"})
+        == "suspended"
+    )
+    assert _map_session_status_payload({"Status": "unknown"}) == "pre"
 
     sensor = F1SessionStatusSensor(
         _coordinator(data={"data": {"Status": "Started"}}),
@@ -171,16 +166,12 @@ def test_session_status_mapping_metadata_and_track_grip(hass) -> None:
         }
     )
     assert sensor._extract_session_info()["meeting_country"] == "Sweden"
-    sensor._race_control_coordinator = SimpleNamespace(
-        data_list=[{"Text": "NORMAL GRIP CONDITIONS"}]
-    )
+    sensor._live_mode_coordinator = SimpleNamespace(data={"track_grip": "normal"})
     assert sensor._detect_track_grip() == "normal"
-    sensor._race_control_coordinator.data_list.append(
-        {"Message": "LOW GRIP CONDITIONS"}
-    )
+    sensor._live_mode_coordinator.data = {"track_grip": "low"}
     assert sensor._detect_track_grip() == "low"
     sensor._clear_state()
-    assert sensor._track_grip_state is None
+    assert sensor.extra_state_attributes["track_grip"] is None
 
 
 def test_current_session_labels_status_and_metadata(hass) -> None:

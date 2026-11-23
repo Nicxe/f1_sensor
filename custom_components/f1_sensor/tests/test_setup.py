@@ -7,14 +7,18 @@ from datetime import UTC, datetime, timedelta
 import json
 import logging
 from pathlib import Path
+import re
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from homeassistant.config_entries import ConfigEntryState
+from homeassistant.const import STATE_UNAVAILABLE
 from homeassistant.exceptions import ConfigEntryNotReady, ServiceValidationError
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.entity_platform import DATA_ENTITY_PLATFORM
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
+from yarl import URL
 
 from custom_components.f1_sensor import (
     _JOLPICA_STATS_KEY,
@@ -45,6 +49,7 @@ from custom_components.f1_sensor.const import (
     PLATFORMS,
     SUPPORTED_SENSOR_KEYS,
 )
+from custom_components.f1_sensor.jolpica import JolpicaClient
 from custom_components.f1_sensor.live_delay import LiveDelayReferenceController
 from custom_components.f1_sensor.live_window import LiveAvailabilityTracker
 from custom_components.f1_sensor.runtime import F1RuntimeData
@@ -179,6 +184,15 @@ class DummyCoordinator:
     async def async_config_entry_first_refresh(self) -> None:
         return None
 
+    async def async_refresh(self) -> None:
+        return None
+
+    def async_start(self) -> None:
+        return None
+
+    def async_stop(self) -> None:
+        return None
+
     async def async_close(self) -> None:
         self.closed = True
         self._listeners.clear()
@@ -264,14 +278,13 @@ class DummyRaceControlLogStore:
 
 def _coordinator_patches(
     fia_documents_coordinator_cls=DummyCoordinator,
-    f1_data_coordinator_cls=DummyCoordinator,
 ):
     """Return context managers that replace all coordinator classes with DummyCoordinator."""
     return (
         patch("custom_components.f1_sensor.JolpicaClient", DummyJolpicaClient),
         patch(
             "custom_components.f1_sensor.F1DataCoordinator",
-            f1_data_coordinator_cls,
+            DummyCoordinator,
         ),
         patch(
             "custom_components.f1_sensor.F1SeasonResultsCoordinator",
@@ -322,10 +335,8 @@ class FailingFiaDocumentsCoordinator(DummyCoordinator):
         self.data = None
         FailingFiaDocumentsCoordinator.last_instance = self
 
-    async def async_config_entry_first_refresh(self) -> None:
-        err = ConfigEntryNotReady()
-        err.__cause__ = RuntimeError("403, message='Forbidden'")
-        raise err
+    async def async_refresh(self) -> None:
+        self.last_update_success = False
 
     def async_set_updated_data(self, data) -> None:
         self.data = data
@@ -795,7 +806,7 @@ async def test_failed_first_refresh_rolls_back_all_started_runtime(
         stack.enter_context(
             patch(
                 "custom_components.f1_sensor.LiveSessionCoordinator",
-                DummyCoordinator,
+                _FailingCoordinator,
             )
         )
         stack.enter_context(
@@ -804,9 +815,7 @@ async def test_failed_first_refresh_rolls_back_all_started_runtime(
                 FakeReplayController,
             )
         )
-        for context_manager in _coordinator_patches(
-            f1_data_coordinator_cls=_FailingCoordinator
-        ):
+        for context_manager in _coordinator_patches():
             stack.enter_context(context_manager)
         hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=None)
         hass.config_entries.async_unload_platforms = AsyncMock(return_value=True)
@@ -819,7 +828,8 @@ async def test_failed_first_refresh_rolls_back_all_started_runtime(
         failed_client = DummyJolpicaClient.created[-1]
         assert mock_config_entry.entry_id not in hass.data[DOMAIN]
         assert mock_config_entry.runtime_data is None
-        assert failed_bus is None
+        assert failed_bus is not None
+        assert failed_bus.closed is True
         assert failed_client.closed is True
 
         assert await async_setup_entry(hass, mock_config_entry)
@@ -828,6 +838,156 @@ async def test_failed_first_refresh_rolls_back_all_started_runtime(
         assert retry_bus.started is True
         assert isinstance(mock_config_entry.runtime_data, F1RuntimeData)
         assert await async_unload_entry(hass, mock_config_entry)
+
+
+@pytest.mark.parametrize("complete_outage", [False, True], ids=["sprint", "all"])
+async def test_jolpica_timeout_keeps_entry_live_and_static_data_recovers(
+    hass, enable_custom_integrations, aioclient_mock, monkeypatch, complete_outage
+) -> None:
+    """Test setup and recovery with real HA platforms and unavailable Jolpica data."""
+    static_sensors = {
+        "current_season": "race_coordinator",
+        "driver_standings": "driver_coordinator",
+        "constructor_standings": "constructor_coordinator",
+        "last_race_results": "last_race_coordinator",
+        "season_results": "season_results_coordinator",
+    }
+    progression = {
+        "driver_points_progression": ("drivers", "TST"),
+        "constructor_points_progression": ("constructors", "test_team"),
+    }
+    enabled = {*static_sensors, *progression, "track_status"}
+    if complete_outage:
+        enabled.add("sprint_results")
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        version=4,
+        data={"sensor_name": "F1", "data_choice_version": 1},
+        options={
+            CONF_OPERATION_MODE: OPERATION_MODE_LIVE,
+            "enable_race_control": True,
+            "disabled_sensors": sorted(SUPPORTED_SENSOR_KEYS - enabled),
+        },
+    )
+    entry.add_to_hass(hass)
+    aioclient_mock.get(re.compile(r"https://.*"), json={"Meetings": []})
+
+    race = {
+        "season": "2026",
+        "round": "1",
+        "raceName": "Australian Grand Prix",
+        "date": "2026-03-08",
+        "time": "04:00:00Z",
+    }
+    result = {
+        "position": "1",
+        "positionText": "1",
+        "points": "25",
+        "Driver": {"driverId": "test_driver", "code": "TST", "familyName": "Test"},
+        "Constructor": {"constructorId": "test_team", "name": "Test Team"},
+    }
+    failing = True
+    requested = asyncio.Event()
+    release = asyncio.Event()
+
+    async def fetch_jolpica(_client, url, **_kwargs):
+        request = URL(url)
+        route = request.name
+        if failing and (complete_outage or route == "sprint.json"):
+            requested.set()
+            await release.wait()
+            raise TimeoutError
+        if request.path == "/f1/alpha/core/sessions/":
+            return {"metadata": {"total_pages": 1}, "data": []}
+        metadata = {
+            "limit": request.query.get("limit", "100"),
+            "offset": request.query.get("offset", "0"),
+            "total": "1",
+        }
+        if route == "driverstandings.json":
+            standings = {**race, "DriverStandings": [result]}
+        elif route == "constructorstandings.json":
+            standings = {**race, "ConstructorStandings": [result]}
+        else:
+            if route == "sprint.json":
+                row = {**race, "SprintResults": [{**result, "points": "8"}]}
+            elif route == "results.json":
+                row = {**race, "Results": [result]}
+            else:
+                assert route == "current.json", request.path
+                row = race
+            return {"MRData": {**metadata, "RaceTable": {"Races": [row]}}}
+        return {
+            "MRData": {**metadata, "StandingsTable": {"StandingsLists": [standings]}}
+        }
+
+    monkeypatch.setattr(JolpicaClient, "async_get_json", fetch_jolpica)
+    try:
+        async with asyncio.timeout(5):
+            assert await hass.config_entries.async_setup(entry.entry_id)
+            await requested.wait()
+            await hass.async_block_till_done()
+        assert entry.state is ConfigEntryState.LOADED
+        runtime = entry.runtime_data
+        data = runtime.legacy
+        warmup = data["card_data_sources"]._task
+        assert warmup is not None
+        if complete_outage:
+            assert (
+                hass.states.get("sensor.f1_current_season").state == STATE_UNAVAILABLE
+            )
+            assert (
+                hass.states.get("sensor.f1_sprint_results").state == STATE_UNAVAILABLE
+            )
+
+        data["live_state"].set_state(True, "test session")
+        runtime.live.bus._dispatch("SessionInfo", {"Key": "1", "Type": "Race"})
+        runtime.live.bus._dispatch("SessionStatus", {"Status": "Started"})
+        runtime.live.bus._dispatch("TrackStatus", {"Status": "2", "Message": "Yellow"})
+        await hass.async_block_till_done()
+        assert hass.states.get("sensor.f1_track_status").state == "YELLOW"
+
+        release.set()
+        async with asyncio.timeout(5):
+            await warmup
+            await hass.async_block_till_done()
+        sprint = data["sprint_results_coordinator"]
+        assert sprint.data is None
+        assert not sprint.last_update_success
+
+        for key in static_sensors:
+            state = hass.states.get(f"sensor.f1_{key}")
+            assert state is not None
+            assert (state.state == STATE_UNAVAILABLE) == complete_outage
+        for key in progression:
+            assert hass.states.get(f"sensor.f1_{key}").state == STATE_UNAVAILABLE
+            assert runtime.card_data.snapshot(key)["payload"] is None
+        sprint_state = hass.states.get("sensor.f1_sprint_results")
+        if complete_outage:
+            assert sprint_state.state == STATE_UNAVAILABLE
+        else:
+            assert sprint_state is None
+
+        failing = False
+        if complete_outage:
+            for coordinator_key in static_sensors.values():
+                await data[coordinator_key].async_refresh()
+        await sprint.async_refresh()
+        await hass.async_block_till_done()
+
+        assert entry.runtime_data is runtime
+        assert sprint.last_update_success
+        for key, (attribute, identity) in progression.items():
+            state = hass.states.get(f"sensor.f1_{key}")
+            assert state.state == "1"
+            assert state.attributes[attribute][identity]["points_per_round"] == [33.0]
+            assert runtime.card_data.snapshot(key)["status"] == "ready"
+        if complete_outage:
+            assert hass.states.get("sensor.f1_sprint_results").state == "1"
+    finally:
+        release.set()
+        if entry.state is ConfigEntryState.LOADED:
+            assert await hass.config_entries.async_unload(entry.entry_id)
 
 
 @pytest.mark.asyncio
@@ -1635,6 +1795,9 @@ async def test_async_setup_entry_continues_when_fia_documents_fail(
         hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=None)
 
         result = await async_setup_entry(hass, mock_config_entry)
+        sources = mock_config_entry.runtime_data.legacy["card_data_sources"]
+        if warmup := sources._task:
+            await warmup
 
     assert result is True
     hass.config_entries.async_forward_entry_setups.assert_awaited_once_with(

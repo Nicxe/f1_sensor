@@ -234,6 +234,11 @@ def _normalize_path(path: str | None) -> str | None:
     return cleaned
 
 
+def race_start_is_stale(event_utc: datetime, scheduled_start_utc: datetime) -> bool:
+    """Some race archives include Started from before the connection window."""
+    return event_utc < scheduled_start_utc - DEFAULT_PRE_WINDOW
+
+
 def _ensure_sequence(value: Any) -> list:
     if isinstance(value, list):
         return value

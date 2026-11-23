@@ -17,7 +17,11 @@ from pytest_homeassistant_custom_component.common import (
     async_fire_time_changed,
 )
 
-from custom_components.f1_sensor import LiveDriversCoordinator, RaceControlCoordinator
+from custom_components.f1_sensor import (
+    F1LapPositionProgressionCoordinator,
+    LiveDriversCoordinator,
+    RaceControlCoordinator,
+)
 from custom_components.f1_sensor.card_data import CardDataStore
 from custom_components.f1_sensor.const import DOMAIN
 from custom_components.f1_sensor.live_window import LiveAvailabilityTracker
@@ -322,6 +326,56 @@ async def test_unloaded_loading_stale_and_inactive_sources_remain_distinct(hass)
     assert owner.snapshot("race_lap_count")["status"] == "stale"
     source.available = False
     assert owner.snapshot("race_lap_count")["status"] == "unavailable"
+    await owner.async_close()
+
+
+async def test_static_card_results_recover_when_sprint_data_arrives(hass):
+    entry, data, owner = setup(hass)
+    result = {
+        "position": "1",
+        "points": "25",
+        "Driver": {"code": "NOR", "driverId": "norris"},
+        "Constructor": {"constructorId": "mclaren"},
+    }
+    race = {"season": "2026", "round": "1", "date": "2026-03-08"}
+    season = data["season_results_coordinator"] = Source(
+        hass,
+        {"MRData": {"RaceTable": {"Races": [{**race, "Results": [result]}]}}},
+    )
+    sprint = data["sprint_results_coordinator"] = Source(hass, None)
+    laps = data["lap_position_progression_coordinator"] = (
+        F1LapPositionProgressionCoordinator(
+            hass, None, season, sprint, "Lap progression", session=Mock()
+        )
+    )
+    laps.async_start()
+    await laps.async_refresh()
+
+    points_keys = {"driver_points_progression", "constructor_points_progression"}
+    for key in points_keys:
+        snapshot = owner.snapshot(key)
+        assert snapshot["status"] == "loading"
+        assert snapshot["payload"] is None
+    assert [session["type"] for session in laps.data["sessions"]] == ["race"]
+
+    sprint.data = {
+        "MRData": {
+            "RaceTable": {
+                "Races": [{**race, "SprintResults": [{**result, "points": "8"}]}]
+            }
+        }
+    }
+    sprint.update()
+    for key in points_keys:
+        snapshot = owner.snapshot(key)
+        assert snapshot["status"] == "ready"
+        assert snapshot["payload"]["attributes"]["series"]["series"][0]["data"] == [
+            33.0
+        ]
+    assert {session["type"] for session in laps.data["sessions"]} == {"race", "sprint"}
+
+    await laps.async_close()
+    assert not sprint.listeners
     await owner.async_close()
 
 

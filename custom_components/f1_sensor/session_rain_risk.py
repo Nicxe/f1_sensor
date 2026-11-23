@@ -18,7 +18,11 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
-from .data_helpers import _map_session_status_payload, _session_status_mapping_context
+from .data_helpers import (
+    _current_session_phase,
+    _map_session_status_payload,
+    _session_status_mapping_context,
+)
 from .live_window import DEFAULT_PRE_WINDOW
 
 _LOGGER = logging.getLogger(__name__)
@@ -175,7 +179,6 @@ class SessionRainRiskCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         info_status = _map_session_status_payload(
             {"Status": info.get("SessionStatus")},
-            self.hass,
             is_qualifying_like=qualifying
             or _session_kind(info.get("Name")) in {"qualifying", "sprint_qualifying"},
             qualifying_part=part,
@@ -200,18 +203,7 @@ class SessionRainRiskCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._apply(message)
 
     def _on_session_status(self) -> None:
-        qualifying, part = _session_status_mapping_context(
-            self._session_status, use_status_part=True
-        )
-        state = _map_session_status_payload(
-            self._session_status.data,
-            self.hass,
-            is_qualifying_like=qualifying,
-            qualifying_part=part,
-            is_testing_session=bool(
-                getattr(self._session_status, "is_testing_session", False)
-            ),
-        )
+        state = _current_session_phase(self._session_status, self._session_status.data)
         if state in {"finished", "finalised", "ended"}:
             self._finish()
         elif state in {"pre", "live", "suspended", "break"}:

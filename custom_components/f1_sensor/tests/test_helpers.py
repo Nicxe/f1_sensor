@@ -174,6 +174,37 @@ async def test_http_fetch_helpers_propagate_timeout(hass, fetcher) -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("fetcher", [fetch_json, fetch_text])
+async def test_cancelled_http_fetch_releases_coalesced_waiters(hass, fetcher) -> None:
+    request_started = asyncio.Event()
+
+    async def read_response():
+        request_started.set()
+        await asyncio.Event().wait()
+
+    response = MagicMock()
+    response.text = AsyncMock(side_effect=read_response)
+    session = MagicMock()
+    session.get.return_value.__aenter__.return_value = response
+    inflight = {}
+    producer = asyncio.create_task(
+        fetcher(hass, session, "https://example.com/data", inflight=inflight)
+    )
+    await request_started.wait()
+    waiter = asyncio.create_task(
+        fetcher(hass, session, "https://example.com/data", inflight=inflight)
+    )
+    await asyncio.sleep(0)
+    producer.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await producer
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(waiter, timeout=1)
+
+    session.get.assert_called_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fetcher", [fetch_json, fetch_text])
 async def test_http_fetch_helpers_drain_unretrieved_future_exceptions(
     hass, fetcher
 ) -> None:

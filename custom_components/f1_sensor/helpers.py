@@ -426,6 +426,9 @@ async def fetch_json(
             _LOGGER.debug("Failed to persist data for key=%s", key, exc_info=True)
         fut.set_result(data)
         return data
+    except asyncio.CancelledError:
+        fut.cancel()
+        raise
     except Exception as err:
         if not fut.done():
             fut.set_exception(err)
@@ -441,7 +444,8 @@ async def fetch_json(
 
             async def _cleanup_later():
                 await asyncio.sleep(0)  # next loop tick
-                inflight_map.pop(key, None)
+                if inflight_map.get(key) is fut:
+                    inflight_map.pop(key, None)
 
             loop.create_task(_cleanup_later())
         except Exception:
@@ -536,6 +540,9 @@ async def fetch_text(
             _LOGGER.debug("Failed to persist text data for key=%s", key, exc_info=True)
         fut.set_result(text)
         return text
+    except asyncio.CancelledError:
+        fut.cancel()
+        raise
     except Exception as err:
         if not fut.done():
             fut.set_exception(err)
@@ -549,7 +556,8 @@ async def fetch_text(
 
             async def _cleanup_later():
                 await asyncio.sleep(0)
-                inflight_map.pop(key, None)
+                if inflight_map.get(key) is fut:
+                    inflight_map.pop(key, None)
 
             loop.create_task(_cleanup_later())
         except Exception:

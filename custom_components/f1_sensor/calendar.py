@@ -102,13 +102,6 @@ class F1SeasonCalendar(F1BaseEntity, CalendarEntity):
         self._cached_events: list[CalendarEvent] = []
         self._cached_data_id: int | None = None
 
-    # -- availability --------------------------------------------------------
-
-    @property
-    def available(self) -> bool:
-        """Calendar is available whenever the coordinator has data."""
-        return self.coordinator.last_update_success
-
     # -- calendar interface --------------------------------------------------
 
     @property

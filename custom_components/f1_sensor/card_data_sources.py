@@ -3,42 +3,63 @@
 import asyncio
 from time import monotonic
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 
-# Parent sources must be ready before derived history, forecasts and documents.
-STATIC_SOURCE_STAGES = (
-    ("race_coordinator",),
-    (
-        "driver_coordinator",
-        "constructor_coordinator",
-        "last_race_coordinator",
+STATIC_SOURCE_ORDER = (
+    "race_coordinator",
+    "driver_coordinator",
+    "constructor_coordinator",
+    "last_race_coordinator",
+    "season_results_coordinator",
+    "sprint_results_coordinator",
+    "next_race_history_coordinator",
+    "race_weather_coordinator",
+    "lap_position_progression_coordinator",
+    "fia_documents_coordinator",
+)
+STATIC_SOURCE_PARENTS = {
+    "season_results_coordinator": ("race_coordinator",),
+    "next_race_history_coordinator": ("race_coordinator",),
+    "race_weather_coordinator": ("race_coordinator",),
+    "lap_position_progression_coordinator": (
+        "race_coordinator",
         "season_results_coordinator",
         "sprint_results_coordinator",
     ),
-    (
-        "next_race_history_coordinator",
-        "race_weather_coordinator",
-        "lap_position_progression_coordinator",
-        "fia_documents_coordinator",
-    ),
+    "fia_documents_coordinator": ("race_coordinator",),
+}
+DEMAND_OWNED_STATIC_SOURCES = (
+    "next_race_history_coordinator",
+    "race_weather_coordinator",
+    "lap_position_progression_coordinator",
+    "fia_documents_coordinator",
 )
-STATIC_SOURCE_ORDER = tuple(name for stage in STATIC_SOURCE_STAGES for name in stage)
 
 
 class CardDataSources:
     """Share lazy first reads while coordinator listeners own periodic polling."""
 
     def __init__(
-        self, hass: HomeAssistant, sources: dict, sensor_sources: set[str]
+        self,
+        hass: HomeAssistant,
+        sources: dict,
+        sensor_sources: set[str],
+        *,
+        config_entry: ConfigEntry | None = None,
     ) -> None:
         self.hass = hass
+        self._config_entry = config_entry
         self.sources = {
             key: sources[key]
             for key in STATIC_SOURCE_ORDER
             if sources.get(key) is not None
         }
         self.sensor_sources = sensor_sources & self.sources.keys()
-        self.required = set(self.sensor_sources)
+        for name in self.sensor_sources:
+            # The platform can register before this coordinator has a payload.
+            self.sources[name].requires_initial_data = True
+        self.required: set[str] = set()
         self._refreshed = {
             name: monotonic()
             for name, source in self.sources.items()
@@ -57,12 +78,15 @@ class CardDataSources:
         desired = self.sensor_sources | (card_sources & self.sources.keys())
         acquired = desired - self.required
         pending = {name for name in acquired if self._needs_refresh(name)}
-        if "race_coordinator" in pending | self._queued | self._preparing:
-            pending.update(
-                acquired & {"next_race_history_coordinator", "race_weather_coordinator"}
-            )
+        preparing = pending | self._queued | self._preparing
+        for name in STATIC_SOURCE_ORDER:
+            if name in acquired and preparing.intersection(
+                STATIC_SOURCE_PARENTS.get(name, ())
+            ):
+                pending.add(name)
+                preparing.add(name)
         self._queued.update(pending)
-        for name in ("next_race_history_coordinator", "race_weather_coordinator"):
+        for name in DEMAND_OWNED_STATIC_SOURCES:
             source = self.sources.get(name)
             if source is None:
                 continue
@@ -73,9 +97,17 @@ class CardDataSources:
                 source.async_stop()
         self.required = desired
         if self._queued and self._task is None:
-            self._task = self.hass.async_create_task(
-                self._async_prepare(), eager_start=False
-            )
+            if self._config_entry is None:
+                self._task = self.hass.async_create_task(
+                    self._async_prepare(), eager_start=False
+                )
+            else:
+                self._task = self._config_entry.async_create_background_task(
+                    self.hass,
+                    self._async_prepare(),
+                    "Warm F1 static data sources",
+                    eager_start=False,
+                )
 
     def _needs_refresh(self, name: str) -> bool:
         source = self.sources[name]
@@ -111,24 +143,41 @@ class CardDataSources:
                 names = self._queued
                 self._queued = set()
                 self._preparing = names
-                for stage in STATIC_SOURCE_STAGES:
-                    await asyncio.gather(
-                        *(
-                            self._async_prepare_source(name)
-                            for name in stage
-                            if name in names
+                tasks = {}
+                async with asyncio.TaskGroup() as group:
+                    for name in STATIC_SOURCE_ORDER:
+                        if name not in names:
+                            continue
+                        parents = tuple(
+                            tasks[parent]
+                            for parent in STATIC_SOURCE_PARENTS.get(name, ())
+                            if parent in tasks
                         )
-                    )
+                        tasks[name] = group.create_task(
+                            self._async_prepare_source(name, parents)
+                        )
         finally:
             self._preparing.clear()
             self._task = None
 
-    async def _async_prepare_source(self, name: str) -> None:
+    async def _async_prepare_source(
+        self, name: str, parents: tuple[asyncio.Task[None], ...]
+    ) -> None:
+        for parent in parents:
+            await parent
         if name not in self.required:
             return
-        if name in {"next_race_history_coordinator", "race_weather_coordinator"}:
-            self.sources[name].async_start()
-        await self.sources[name].async_request_refresh()
+        source = self.sources[name]
+        if name in DEMAND_OWNED_STATIC_SOURCES:
+            source.async_start()
+        await source.async_refresh()
+        if (
+            name == "fia_documents_coordinator"
+            and name in self.sensor_sources
+            and source.data is None
+            and not source.last_update_success
+        ):
+            source.async_set_updated_data(source.build_empty_result())
         self.mark_updated(name)
 
     async def async_close(self) -> None:
@@ -139,4 +188,7 @@ class CardDataSources:
             task = self._task
             task.cancel()
             await asyncio.gather(task, return_exceptions=True)
+        for name in DEMAND_OWNED_STATIC_SOURCES:
+            if name in self.required:
+                self.sources[name].async_stop()
         self.required.clear()

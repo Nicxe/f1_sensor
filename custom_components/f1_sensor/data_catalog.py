@@ -138,7 +138,7 @@ for key, (coordinator, model) in LIVE_PRODUCTS.items():
         "session_status_coordinator",
         *model.context_bindings.values(),
     }
-    if key in {"investigations", "track_limits", "session_status"}:
+    if key in {"investigations", "track_limits"}:
         context_dependencies.add("race_control_coordinator")
     DATA_DEPENDENCIES[key] = tuple(sorted({coordinator, *context_dependencies}))
 DATA_DEPENDENCIES["session_context"] = (

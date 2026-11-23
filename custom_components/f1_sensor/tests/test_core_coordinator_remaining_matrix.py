@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 from homeassistant.helpers.update_coordinator import UpdateFailed
 import pytest
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.f1_sensor import (
     API_URL,
@@ -177,6 +179,8 @@ async def test_f1_data_validation_provider_rollover_and_failure_matrix(
     }
     persisted = dict(current_cache)
     persist_save = Mock()
+    entry = MockConfigEntry(domain="f1_sensor")
+    entry.add_to_hass(hass)
     coordinator = F1DataCoordinator(
         hass,
         API_URL,
@@ -185,6 +189,7 @@ async def test_f1_data_validation_provider_rollover_and_failure_matrix(
         cache=current_cache,
         persist_map=persisted,
         persist_save=persist_save,
+        config_entry=entry,
     )
     assert coordinator._last_seen_season == "2025"
     assert coordinator._extract_season(None) is None
@@ -195,21 +200,15 @@ async def test_f1_data_validation_provider_rollover_and_failure_matrix(
         == "2026"
     )
 
-    refresh = AsyncMock()
-    coordinator.config_entry = SimpleNamespace(entry_id="entry")
-    hass.data.setdefault("f1_sensor", {})["entry"] = {
-        "driver_coordinator": SimpleNamespace(async_request_refresh=refresh),
+    async def check_new_season():
+        assert coordinator.data["MRData"]["RaceTable"]["season"] == "2026"
+        assert not any("/ergast/f1/current" in key for key in current_cache)
+
+    refresh = AsyncMock(side_effect=check_new_season)
+    hass.data.setdefault("f1_sensor", {})[entry.entry_id] = {
+        "driver_coordinator": SimpleNamespace(async_refresh=refresh),
         "constructor_coordinator": None,
     }
-    coordinator._handle_season_rollover_if_needed(
-        {"MRData": {"RaceTable": {"season": "2026"}}}
-    )
-    await hass.async_block_till_done()
-    assert coordinator._last_seen_season == "2026"
-    assert "keep" in current_cache
-    assert not any("/ergast/f1/current" in key for key in current_cache)
-    persist_save.assert_called_once()
-    refresh.assert_awaited_once()
 
     validator_calls = []
 
@@ -231,6 +230,21 @@ async def test_f1_data_validation_provider_rollover_and_failure_matrix(
     )
     monkeypatch.setattr("custom_components.f1_sensor.race_leaf_keys", lambda *_args: [])
 
+    async def enrich_schedule(data):
+        await asyncio.sleep(0)
+        return data
+
+    monkeypatch.setattr(coordinator, "_async_add_scheduled_laps", enrich_schedule)
+    await coordinator.async_refresh()
+    await hass.async_block_till_done(wait_background_tasks=True)
+    await coordinator.async_refresh()
+    await hass.async_block_till_done(wait_background_tasks=True)
+    assert coordinator._last_seen_season == "2026"
+    assert "keep" in current_cache
+    assert not any("/ergast/f1/current" in key for key in current_cache)
+    persist_save.assert_called_once()
+    refresh.assert_awaited_once()
+
     for suffix in (
         "driverstandings.json",
         "constructorstandings.json",
@@ -244,7 +258,7 @@ async def test_f1_data_validation_provider_rollover_and_failure_matrix(
             session=Mock(),
         )
         assert await item._async_update_data()
-    assert len(validator_calls) == 4
+    assert len(validator_calls) == 6
 
     provider = SimpleNamespace(
         normalize=Mock(return_value=SimpleNamespace(payload={"normalized": True}))
