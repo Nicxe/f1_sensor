@@ -305,6 +305,14 @@ class F1BaseEntity(StreamStateMixin, CoordinatorEntity):
         self._stream_last_active: bool | None = None
 
     @property
+    def available(self) -> bool:
+        """Keep cold static entities unavailable until their first payload."""
+        return super().available and (
+            not getattr(self.coordinator, "requires_initial_data", False)
+            or self.coordinator.data is not None
+        )
+
+    @property
     def name(self) -> str | None:
         """Return entity name from translations, without device prefix."""
         return _entity_name_from_key(

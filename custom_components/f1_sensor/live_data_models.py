@@ -18,11 +18,14 @@ from homeassistant.util import dt as dt_util
 from .card_data_models import DataSnapshot
 from .const import (
     LATEST_TRACK_STATUS,
+    STRAIGHT_MODE_DISABLED,
+    STRAIGHT_MODE_LOW,
+    STRAIGHT_MODE_NORMAL,
 )
 from .data_helpers import (
+    _current_session_phase,
     _extract_driver_position,
     _hex_to_rgb,
-    _map_session_status_payload,
     _parse_lap_time_to_secs,
     _session_identity_year,
     _session_status_mapping_context,
@@ -139,6 +142,7 @@ class LiveProjectionModel(StreamStateMixin, ProjectionModel):
         inputs["session_status_context"] = (
             *_session_status_mapping_context(status_coordinator, use_status_part=True),
             bool(getattr(status_coordinator, "is_testing_session", False)),
+            getattr(status_coordinator, "before_race_start", False) is True,
         )
         # Race Control keeps incremental messages separately from its latest row.
         inputs["messages"] = getattr(self.coordinator, "data_list", None)
@@ -155,8 +159,6 @@ class LiveProjectionModel(StreamStateMixin, ProjectionModel):
             self._last_inputs = deepcopy(inputs)
             if hasattr(self, "_handle_session_info_update"):
                 self._handle_session_info_update()
-            if hasattr(self, "_handle_race_control_update"):
-                self._handle_race_control_update()
             self.refresh_data()
         if type(self).__name__ == "DriverListModel" and self._attr_native_value is None:
             self._bootstrap_from_ergast()
@@ -475,18 +477,7 @@ class TrackStatusModel(LiveProjectionModel):
 
     def _session_is_terminal(self) -> bool:
         payload = getattr(self._session_status_coordinator, "data", None)
-        is_qualifying_like, qualifying_part = _session_status_mapping_context(
-            self._session_status_coordinator, use_status_part=True
-        )
-        mapped = _map_session_status_payload(
-            payload,
-            self.hass,
-            is_qualifying_like=is_qualifying_like,
-            qualifying_part=qualifying_part,
-            is_testing_session=bool(
-                getattr(self._session_status_coordinator, "is_testing_session", False)
-            ),
-        )
+        mapped = _current_session_phase(self._session_status_coordinator, payload)
         return mapped in {"finished", "finalised", "ended"}
 
     def _handle_session_status_update(self) -> None:
@@ -549,9 +540,8 @@ class SessionStatusModel(LiveProjectionModel):
         self._attr_native_value = None
         self._started_flag = None
         self._session_info_coordinator = None
-        self._race_control_coordinator = None
-        self._track_grip_state: str | None = None
-        self._attr_extra_state_attributes = {}
+        self._live_mode_coordinator = None
+        self._attr_extra_state_attributes = {"track_grip": None}
         try:
             self._attr_device_class = SensorDeviceClass.ENUM
         except Exception:
@@ -600,59 +590,21 @@ class SessionStatusModel(LiveProjectionModel):
         """Update attributes when SessionInfo changes."""
         if not self._is_stream_active():
             return
-        new_attrs = self._extract_session_info()
+        new_attrs = {
+            **self._extract_session_info(),
+            "track_grip": self._detect_track_grip(),
+        }
         if new_attrs != self._attr_extra_state_attributes:
             self._attr_extra_state_attributes = new_attrs
             self._notify()
 
     def _detect_track_grip(self) -> str | None:
-        """Detect current track grip condition from Race Control messages.
-
-        Returns:
-            "low": LOW GRIP CONDITIONS declared
-            "normal": NORMAL GRIP CONDITIONS declared or default when unset
-            None: No data available yet
-        """
-        if self._race_control_coordinator is None:
-            return self._track_grip_state
-        messages = getattr(self._race_control_coordinator, "data_list", None)
-        if not isinstance(messages, list) or not messages:
-            return self._track_grip_state
-        for msg in reversed(messages):
-            message_text = (msg.get("Message") or msg.get("Text") or "").upper()
-            if "LOW GRIP CONDITIONS" in message_text:
-                self._track_grip_state = "low"
-                return "low"
-            if "NORMAL GRIP CONDITIONS" in message_text:
-                self._track_grip_state = "normal"
-                return "normal"
-        if self._track_grip_state is None:
-            self._track_grip_state = "normal"
-        return self._track_grip_state
-
-    def _handle_race_control_update(self) -> None:
-        """Update track_grip attribute when race control messages change."""
-        if not self._is_stream_active():
-            return
-        grip = self._detect_track_grip()
-        current = self._attr_extra_state_attributes.get("track_grip")
-        if current != grip:
-            self._attr_extra_state_attributes["track_grip"] = grip
-            self._notify()
+        """Return the latest confirmed grip for the active timing session."""
+        data = getattr(self._live_mode_coordinator, "data", None)
+        return data.get("track_grip") if isinstance(data, dict) else None
 
     def _map_status(self, raw: dict | None) -> str | None:
-        is_qualifying_like, qualifying_part = _session_status_mapping_context(
-            self.coordinator, use_status_part=True
-        )
-        return _map_session_status_payload(
-            raw,
-            self.hass,
-            is_qualifying_like=is_qualifying_like,
-            qualifying_part=qualifying_part,
-            is_testing_session=bool(
-                getattr(self.coordinator, "is_testing_session", False)
-            ),
-        )
+        return _current_session_phase(self.coordinator, raw)
 
     def refresh_data(self) -> None:
         raw = self._extract_current()
@@ -696,12 +648,11 @@ class SessionStatusModel(LiveProjectionModel):
     def _clear_state(self) -> None:
         self._attr_native_value = None
         self._started_flag = None
-        self._track_grip_state = None
-        self._attr_extra_state_attributes = {}
+        self._attr_extra_state_attributes = {"track_grip": None}
 
     context_bindings = {
         "_session_info_coordinator": "session_info_coordinator",
-        "_race_control_coordinator": "race_control_coordinator",
+        "_live_mode_coordinator": "live_mode_coordinator",
     }
 
 
@@ -956,17 +907,8 @@ class CurrentSessionModel(LiveProjectionModel):
         return None
 
     def _mapped_live_status(self) -> str | None:
-        is_qualifying_like, qualifying_part = _session_status_mapping_context(
-            self._status_coordinator, use_status_part=True
-        )
-        return _map_session_status_payload(
-            self._live_status_payload(),
-            self.hass,
-            is_qualifying_like=is_qualifying_like,
-            qualifying_part=qualifying_part,
-            is_testing_session=bool(
-                getattr(self._status_coordinator, "is_testing_session", False)
-            ),
+        return _current_session_phase(
+            self._status_coordinator, self._live_status_payload()
         )
 
     def _apply_payload(self, raw: dict, allow_clear: bool = True) -> None:
@@ -3495,10 +3437,15 @@ class DriverPositionsModel(LiveProjectionModel):
 class StraightModeModel(LiveProjectionModel):
     """Shared calculation for StraightMode."""
 
+    _attr_options = [STRAIGHT_MODE_NORMAL, STRAIGHT_MODE_LOW, STRAIGHT_MODE_DISABLED]
+
     def __init__(self, coordinator, unique_id, entry_id, device_name):
         super().__init__(coordinator, unique_id, entry_id, device_name)
         self._attr_native_value: str | None = None
         self._attr_extra_state_attributes: dict[str, object] = {}
+
+    def _snapshot_primary_input(self):
+        return self.coordinator.data, self.coordinator.is_restored("straight_mode")
 
     def _session_is_terminal(self) -> bool:
         return bool(getattr(self.coordinator, "session_is_terminal", False))
@@ -3520,22 +3467,19 @@ class StraightModeModel(LiveProjectionModel):
         self._attr_extra_state_attributes = {
             "overtake_enabled": data.get("overtake_enabled")
         }
+        if self.coordinator.is_restored("straight_mode"):
+            self._attr_extra_state_attributes["restored"] = True
 
     def refresh_data(self) -> None:
         data = self._extract_data()
-        if self._session_is_terminal():
+        if (
+            self._session_is_terminal()
+            or not self._is_stream_active()
+            or not self._has_straight_mode_state(data)
+        ):
             self._clear_state()
-            self._notify()
-            return
-        updated = self._has_straight_mode_state(data)
-        if not self._handle_stream_state(updated):
-            return
-        if not self._is_stream_active():
-            self._notify()
-            return
-        if not updated or data is None:
-            return
-        self._apply_data(data)
+        else:
+            self._apply_data(data)
         self._notify()
 
     @property

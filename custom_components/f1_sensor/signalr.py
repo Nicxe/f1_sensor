@@ -936,10 +936,13 @@ class LiveBus:
                 meaningful = True
         result = payload.get("R")
         if isinstance(result, dict):
-            # Establish an initial snapshot's session before applying its data.
-            # The provider can place SessionInfo after status or driver streams.
+            # A status snapshot has no event time of its own. Deliver its session
+            # identity and dated lifecycle history before subscribers interpret it.
+            context_order = {"SessionInfo": 0}
+            if "SessionStatus" in result:
+                context_order["SessionData"] = 1
             for stream, data in sorted(
-                result.items(), key=lambda item: item[0] != "SessionInfo"
+                result.items(), key=lambda item: context_order.get(item[0], 2)
             ):
                 if not isinstance(stream, str) or data is None:
                     continue

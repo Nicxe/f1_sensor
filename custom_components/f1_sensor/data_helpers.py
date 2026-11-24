@@ -9,13 +9,9 @@ from zoneinfo import ZoneInfo
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
-from .const import (
-    LATEST_TRACK_STATUS,
-)
 from .helpers import (
     get_circuit_timezone,
     get_timezone,
-    normalize_track_status,
 )
 
 
@@ -164,11 +160,11 @@ def _hex_to_rgb(color: str | None) -> list[int] | None:
 
 def _map_session_status_payload(
     raw: dict | None,
-    hass: HomeAssistant | None,
     *,
     is_qualifying_like: bool = False,
     qualifying_part: int | None = None,
     is_testing_session: bool = False,
+    before_race_start: bool = False,
 ) -> str | None:
     """Map raw SessionStatus payloads to semantic states."""
     if not raw:
@@ -176,7 +172,7 @@ def _map_session_status_payload(
     message = str(raw.get("Status") or raw.get("Message") or "").strip()
     started_hint = str(raw.get("Started") or "").strip()
     if message == "Started":
-        return "live"
+        return "pre" if before_race_start else "live"
     if message == "Finished":
         if is_testing_session or (
             is_qualifying_like and qualifying_part in (None, 1, 2)
@@ -191,17 +187,8 @@ def _map_session_status_payload(
         if started_hint == "Finished":
             return "break"
         if started_hint == "Started":
-            track_state = None
-            try:
-                cache = hass.data.get(LATEST_TRACK_STATUS) if hass is not None else None
-                track_state = (
-                    normalize_track_status(cache) if isinstance(cache, dict) else None
-                )
-            except Exception:
-                track_state = None
-            if track_state and track_state != "RED":
-                return "live"
-            return "suspended"
+            # The track can clear minutes before Race Control reopens the pit exit.
+            return "pre" if before_race_start else "suspended"
         return "pre"
     if message == "Aborted":
         if started_hint == "Started":
@@ -227,6 +214,20 @@ def _session_status_mapping_context(
     except (TypeError, ValueError):
         qualifying_part = None
     return (is_qualifying_like, qualifying_part)
+
+
+def _current_session_phase(coordinator, raw: dict | None) -> str | None:
+    """Apply the context belonging to the status that entities actually received."""
+    qualifying, part = _session_status_mapping_context(
+        coordinator, use_status_part=True
+    )
+    return _map_session_status_payload(
+        raw,
+        is_qualifying_like=qualifying,
+        qualifying_part=part,
+        is_testing_session=bool(getattr(coordinator, "is_testing_session", False)),
+        before_race_start=getattr(coordinator, "before_race_start", False) is True,
+    )
 
 
 def _session_identity_year(value: object) -> int | None:

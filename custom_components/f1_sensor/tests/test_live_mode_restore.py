@@ -3,11 +3,13 @@ from __future__ import annotations
 import logging
 from unittest.mock import AsyncMock
 
+from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import STATE_UNAVAILABLE
 from homeassistant.core import State
 from homeassistant.helpers.entity_component import EntityComponent
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 import pytest
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.f1_sensor import (
     LiveModeCoordinator,
@@ -36,6 +38,7 @@ from custom_components.f1_sensor.sensor import (
     F1TrackStatusSensor,
     F1TrackWeatherSensor,
 )
+from custom_components.f1_sensor.signalr import LiveBus
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -63,26 +66,6 @@ class _LiveState:
             callback(is_live, reason)
 
 
-class _ListenerCoordinator:
-    def __init__(self, data=None) -> None:
-        self.data = data
-        self._listeners = []
-
-    def async_add_listener(self, callback):
-        self._listeners.append(callback)
-
-        def _remove():
-            if callback in self._listeners:
-                self._listeners.remove(callback)
-
-        return _remove
-
-    def push(self, data) -> None:
-        self.data = data
-        for callback in list(self._listeners):
-            callback()
-
-
 class _LiveBus:
     def __init__(self, activity_age: float | None = 0.0) -> None:
         self._activity_age = activity_age
@@ -100,6 +83,7 @@ def _build_coordinator(hass, data: dict | None) -> DataUpdateCoordinator:
     )
     coordinator.data = data
     coordinator.available = True
+    coordinator.is_restored = lambda _field: False
     return coordinator
 
 
@@ -123,359 +107,181 @@ async def _add_entity_and_get_state(hass, domain: str, entity):
     return state
 
 
-@pytest.mark.asyncio
-async def test_overtake_mode_restores_state_when_stream_active(hass) -> None:
-    entry_id = "test_entry"
-    hass.data.setdefault(DOMAIN, {})[entry_id] = {
-        CONF_OPERATION_MODE: OPERATION_MODE_DEVELOPMENT,
-        "live_state": _LiveState(True),
-    }
-    coordinator = _build_coordinator(hass, None)
-    entity = F1OvertakeModeBinarySensor(
-        coordinator,
-        f"{entry_id}_overtake_mode",
-        entry_id,
-        "F1",
-    )
-    entity.async_get_last_state = AsyncMock(
-        return_value=State(
-            "binary_sensor.f1_overtake_mode",
+@pytest.mark.parametrize(
+    ("entity_type", "domain", "expected", "cross_attribute", "cross_value"),
+    [
+        (
+            F1OvertakeModeBinarySensor,
+            "binary_sensor",
             "on",
-            {"straight_mode": STRAIGHT_MODE_LOW},
-        )
-    )
-
-    state = await _add_entity_and_get_state(hass, "binary_sensor", entity)
-
-    assert state.state == "on"
-    assert state.attributes["straight_mode"] == STRAIGHT_MODE_LOW
-    assert state.attributes["restored"] is True
-
-
-@pytest.mark.asyncio
-async def test_overtake_mode_does_not_restore_when_session_is_terminal(hass) -> None:
-    entry_id = "test_entry"
-    hass.data.setdefault(DOMAIN, {})[entry_id] = {
-        CONF_OPERATION_MODE: OPERATION_MODE_DEVELOPMENT,
-        "live_state": _LiveState(True),
-    }
-    coordinator = _build_coordinator(hass, None)
-    coordinator.session_is_terminal = True
-    entity = F1OvertakeModeBinarySensor(
-        coordinator,
-        f"{entry_id}_overtake_mode",
-        entry_id,
-        "F1",
-    )
-    entity.async_get_last_state = AsyncMock(
-        return_value=State("binary_sensor.f1_overtake_mode", "on", {})
-    )
-
-    state = await _add_entity_and_get_state(hass, "binary_sensor", entity)
-
-    assert state.state == STATE_UNAVAILABLE
-
-
-@pytest.mark.asyncio
-async def test_overtake_mode_is_unavailable_without_live_value_or_restore(hass) -> None:
-    entry_id = "test_entry"
-    hass.data.setdefault(DOMAIN, {})[entry_id] = {
-        CONF_OPERATION_MODE: OPERATION_MODE_DEVELOPMENT,
-        "live_state": _LiveState(True),
-    }
-    coordinator = _build_coordinator(hass, None)
-    entity = F1OvertakeModeBinarySensor(
-        coordinator,
-        f"{entry_id}_overtake_mode",
-        entry_id,
-        "F1",
-    )
-    entity.async_get_last_state = AsyncMock(return_value=None)
-
-    state = await _add_entity_and_get_state(hass, "binary_sensor", entity)
-
-    assert state.state == STATE_UNAVAILABLE
-
-
-@pytest.mark.asyncio
-async def test_overtake_mode_keeps_restored_state_until_new_live_value(hass) -> None:
-    entry_id = "test_entry"
-    hass.data.setdefault(DOMAIN, {})[entry_id] = {
-        CONF_OPERATION_MODE: OPERATION_MODE_DEVELOPMENT,
-        "live_state": _LiveState(True),
-    }
-    coordinator = _build_coordinator(hass, None)
-    entity = F1OvertakeModeBinarySensor(
-        coordinator,
-        f"{entry_id}_overtake_mode",
-        entry_id,
-        "F1",
-    )
-    entity.async_get_last_state = AsyncMock(
-        return_value=State("binary_sensor.f1_overtake_mode", "on", {})
-    )
-
-    initial = await _add_entity_and_get_state(hass, "binary_sensor", entity)
-    assert initial.state == "on"
-
-    coordinator.async_set_updated_data(None)
-    await hass.async_block_till_done()
-
-    after = hass.states.get(entity.entity_id)
-    assert after is not None
-    assert after.state == "on"
-
-
-@pytest.mark.asyncio
-async def test_overtake_mode_clears_when_session_becomes_terminal(hass) -> None:
-    entry_id = "test_entry"
-    hass.data.setdefault(DOMAIN, {})[entry_id] = {
-        CONF_OPERATION_MODE: OPERATION_MODE_DEVELOPMENT,
-        "live_state": _LiveState(True),
-    }
-    coordinator = _build_coordinator(hass, None)
-    coordinator.session_is_terminal = False
-    entity = F1OvertakeModeBinarySensor(
-        coordinator,
-        f"{entry_id}_overtake_mode",
-        entry_id,
-        "F1",
-    )
-    entity.async_get_last_state = AsyncMock(
-        return_value=State("binary_sensor.f1_overtake_mode", "on", {})
-    )
-
-    initial = await _add_entity_and_get_state(hass, "binary_sensor", entity)
-    assert initial.state == "on"
-
-    coordinator.session_is_terminal = True
-    coordinator.async_set_updated_data(None)
-    await hass.async_block_till_done()
-
-    after = hass.states.get(entity.entity_id)
-    assert after is not None
-    assert after.state == STATE_UNAVAILABLE
-
-
-@pytest.mark.asyncio
-async def test_overtake_mode_restores_even_before_live_state_turns_on(hass) -> None:
-    entry_id = "test_entry"
-    live_bus = _LiveBus(0.0)
-    hass.data.setdefault(DOMAIN, {})[entry_id] = {
-        CONF_OPERATION_MODE: OPERATION_MODE_LIVE,
-        "live_state": _LiveState(False),
-        "live_bus": live_bus,
-    }
-    coordinator = _build_coordinator(hass, None)
-    entity = F1OvertakeModeBinarySensor(
-        coordinator,
-        f"{entry_id}_overtake_mode",
-        entry_id,
-        "F1",
-    )
-    entity.async_get_last_state = AsyncMock(
-        return_value=State("binary_sensor.f1_overtake_mode", "on", {})
-    )
-
-    state = await _add_entity_and_get_state(hass, "binary_sensor", entity)
-
-    assert state.state == STATE_UNAVAILABLE
-    hass.data[DOMAIN][entry_id]["live_state"].is_live = True
-    entity.async_write_ha_state()
-    await hass.async_block_till_done()
-    state_after_live = hass.states.get(entity.entity_id)
-    assert state_after_live is not None
-    assert state_after_live.state == "on"
-
-
-@pytest.mark.asyncio
-async def test_straight_mode_restores_state_when_stream_active(hass) -> None:
-    entry_id = "test_entry"
-    hass.data.setdefault(DOMAIN, {})[entry_id] = {
-        CONF_OPERATION_MODE: OPERATION_MODE_DEVELOPMENT,
-        "live_state": _LiveState(True),
-    }
-    coordinator = _build_coordinator(hass, None)
-    entity = F1StraightModeSensor(
-        coordinator,
-        f"{entry_id}_straight_mode",
-        entry_id,
-        "F1",
-    )
-    entity.async_get_last_state = AsyncMock(
-        return_value=State(
-            "sensor.f1_straight_mode",
+            "straight_mode",
             STRAIGHT_MODE_LOW,
-            {"overtake_enabled": True},
-        )
-    )
-
-    state = await _add_entity_and_get_state(hass, "sensor", entity)
-
-    assert state.state == STRAIGHT_MODE_LOW
-    assert state.attributes["overtake_enabled"] is True
-    assert state.attributes["restored"] is True
-
-
-@pytest.mark.asyncio
-async def test_straight_mode_is_unavailable_without_live_value_or_restore(hass) -> None:
-    entry_id = "test_entry"
-    hass.data.setdefault(DOMAIN, {})[entry_id] = {
-        CONF_OPERATION_MODE: OPERATION_MODE_DEVELOPMENT,
-        "live_state": _LiveState(True),
-    }
-    coordinator = _build_coordinator(hass, None)
-    entity = F1StraightModeSensor(
-        coordinator,
-        f"{entry_id}_straight_mode",
-        entry_id,
-        "F1",
-    )
-    entity.async_get_last_state = AsyncMock(return_value=None)
-
-    state = await _add_entity_and_get_state(hass, "sensor", entity)
-
-    assert state.state == STATE_UNAVAILABLE
-
-
-@pytest.mark.asyncio
-async def test_straight_mode_keeps_restored_state_until_new_live_value(hass) -> None:
-    entry_id = "test_entry"
-    hass.data.setdefault(DOMAIN, {})[entry_id] = {
-        CONF_OPERATION_MODE: OPERATION_MODE_DEVELOPMENT,
-        "live_state": _LiveState(True),
-    }
-    coordinator = _build_coordinator(hass, None)
-    entity = F1StraightModeSensor(
-        coordinator,
-        f"{entry_id}_straight_mode",
-        entry_id,
-        "F1",
-    )
-    entity.async_get_last_state = AsyncMock(
-        return_value=State("sensor.f1_straight_mode", STRAIGHT_MODE_LOW, {})
-    )
-
-    initial = await _add_entity_and_get_state(hass, "sensor", entity)
-    assert initial.state == STRAIGHT_MODE_LOW
-
-    coordinator.async_set_updated_data(None)
-    await hass.async_block_till_done()
-
-    after = hass.states.get(entity.entity_id)
-    assert after is not None
-    assert after.state == STRAIGHT_MODE_LOW
-
-
-@pytest.mark.asyncio
-async def test_straight_mode_clears_when_session_becomes_terminal(hass) -> None:
-    entry_id = "test_entry"
-    hass.data.setdefault(DOMAIN, {})[entry_id] = {
-        CONF_OPERATION_MODE: OPERATION_MODE_DEVELOPMENT,
-        "live_state": _LiveState(True),
-    }
-    coordinator = _build_coordinator(hass, None)
-    coordinator.session_is_terminal = False
-    entity = F1StraightModeSensor(
-        coordinator,
-        f"{entry_id}_straight_mode",
-        entry_id,
-        "F1",
-    )
-    entity.async_get_last_state = AsyncMock(
-        return_value=State("sensor.f1_straight_mode", STRAIGHT_MODE_LOW, {})
-    )
-
-    initial = await _add_entity_and_get_state(hass, "sensor", entity)
-    assert initial.state == STRAIGHT_MODE_LOW
-
-    coordinator.session_is_terminal = True
-    coordinator.async_set_updated_data(None)
-    await hass.async_block_till_done()
-
-    after = hass.states.get(entity.entity_id)
-    assert after is not None
-    assert after.state == STATE_UNAVAILABLE
-
-
-@pytest.mark.asyncio
-async def test_straight_mode_restores_even_before_live_state_turns_on(hass) -> None:
-    entry_id = "test_entry"
-    live_bus = _LiveBus(0.0)
+        ),
+        (F1StraightModeSensor, "sensor", STRAIGHT_MODE_LOW, "overtake_enabled", True),
+    ],
+)
+@pytest.mark.parametrize("initially_live", [False, True])
+async def test_mode_entities_display_confirmed_session_restore_and_updates(
+    hass, entity_type, domain, expected, cross_attribute, cross_value, initially_live
+) -> None:
+    entry_id = "mode_entry"
+    live_state = _LiveState(initially_live)
     hass.data.setdefault(DOMAIN, {})[entry_id] = {
         CONF_OPERATION_MODE: OPERATION_MODE_LIVE,
-        "live_state": _LiveState(False),
-        "live_bus": live_bus,
+        "live_state": live_state,
+        "live_bus": _LiveBus(0.0),
+    }
+    payload = {"overtake_enabled": True, "straight_mode": STRAIGHT_MODE_LOW}
+    coordinator = _build_coordinator(hass, payload)
+    confirmed_restores = {"overtake_enabled", "straight_mode"}
+    coordinator.is_restored = confirmed_restores.__contains__
+    entity = entity_type(coordinator, "mode", entry_id, "F1")
+    state = await _add_entity_and_get_state(hass, domain, entity)
+    if not initially_live:
+        assert state.state == STATE_UNAVAILABLE
+        live_state.set_live(True)
+        coordinator.async_set_updated_data(payload)
+        state = hass.states.get(entity.entity_id)
+
+    assert state.state == expected
+    assert state.attributes[cross_attribute] == cross_value
+    assert state.attributes["restored"] is True
+
+    companion_value = False if cross_attribute == "overtake_enabled" else "disabled"
+    payload[cross_attribute] = companion_value
+    confirmed_restores.discard(cross_attribute)
+    coordinator.async_set_updated_data(payload)
+    state = hass.states.get(entity.entity_id)
+    assert state.state == expected
+    assert state.attributes[cross_attribute] == companion_value
+    assert state.attributes["restored"] is True
+
+    confirmed_restores.clear()
+    coordinator.async_set_updated_data(payload)
+    state = hass.states.get(entity.entity_id)
+    assert state.state == expected
+    assert not state.attributes.get("restored")
+
+    coordinator.session_is_terminal = True
+    coordinator.async_set_updated_data(payload)
+    assert hass.states.get(entity.entity_id).state == STATE_UNAVAILABLE
+
+
+@pytest.mark.parametrize(
+    ("entity_type", "domain", "value", "attribute", "other_value"),
+    [
+        (
+            F1OvertakeModeBinarySensor,
+            "binary_sensor",
+            "on",
+            "straight_mode",
+            "low_grip",
+        ),
+        (F1StraightModeSensor, "sensor", "low_grip", "overtake_enabled", True),
+    ],
+)
+async def test_mode_entities_do_not_carry_values_into_next_session(
+    hass, entity_type, domain, value, attribute, other_value
+) -> None:
+    entry_id = "mode_entry"
+    hass.data.setdefault(DOMAIN, {})[entry_id] = {
+        CONF_OPERATION_MODE: OPERATION_MODE_DEVELOPMENT,
+        "live_state": _LiveState(True),
+    }
+    coordinator = _build_coordinator(
+        hass, {"overtake_enabled": True, "straight_mode": STRAIGHT_MODE_LOW}
+    )
+    entity = entity_type(coordinator, "mode", entry_id, "F1")
+    initial = await _add_entity_and_get_state(hass, domain, entity)
+    assert initial.state == value
+    assert initial.attributes[attribute] == other_value
+
+    coordinator.async_set_updated_data(None)
+    assert hass.states.get(entity.entity_id).state == STATE_UNAVAILABLE
+
+
+@pytest.mark.parametrize(
+    ("entity_type", "domain", "old_value"),
+    [
+        (F1OvertakeModeBinarySensor, "binary_sensor", "on"),
+        (F1StraightModeSensor, "sensor", STRAIGHT_MODE_LOW),
+    ],
+)
+@pytest.mark.parametrize("has_previous_state", [False, True])
+async def test_mode_entities_remain_unavailable_without_current_session_evidence(
+    hass, entity_type, domain, old_value, has_previous_state
+) -> None:
+    entry_id = "mode_entry"
+    hass.data.setdefault(DOMAIN, {})[entry_id] = {
+        CONF_OPERATION_MODE: OPERATION_MODE_DEVELOPMENT,
+        "live_state": _LiveState(True),
     }
     coordinator = _build_coordinator(hass, None)
-    entity = F1StraightModeSensor(
-        coordinator,
-        f"{entry_id}_straight_mode",
-        entry_id,
-        "F1",
-    )
+    entity = entity_type(coordinator, "mode", entry_id, "F1")
     entity.async_get_last_state = AsyncMock(
-        return_value=State("sensor.f1_straight_mode", STRAIGHT_MODE_LOW, {})
+        return_value=State(f"{domain}.old", old_value) if has_previous_state else None
     )
 
-    state = await _add_entity_and_get_state(hass, "sensor", entity)
-
+    state = await _add_entity_and_get_state(hass, domain, entity)
     assert state.state == STATE_UNAVAILABLE
-    hass.data[DOMAIN][entry_id]["live_state"].is_live = True
-    entity.async_write_ha_state()
-    await hass.async_block_till_done()
-    state_after_live = hass.states.get(entity.entity_id)
-    assert state_after_live is not None
-    assert state_after_live.state == STRAIGHT_MODE_LOW
 
 
 @pytest.mark.asyncio
 async def test_live_mode_coordinator_notifies_when_live_window_opens(hass) -> None:
     tracker = LiveAvailabilityTracker()
-    coordinator = LiveModeCoordinator(
-        hass,
-        _ListenerCoordinator(),
-        live_state=tracker,
-    )
+    bus = LiveBus(hass, AsyncMock())
+    entry = MockConfigEntry(domain=DOMAIN)
+    entry.add_to_hass(hass)
+    entry.mock_state(hass, ConfigEntryState.SETUP_IN_PROGRESS)
+    coordinator = LiveModeCoordinator(hass, bus, live_state=tracker, config_entry=entry)
     observed: list[object] = []
     unsub = coordinator.async_add_listener(lambda: observed.append(coordinator.data))
     try:
+        await coordinator.async_config_entry_first_refresh()
         tracker.set_state(True, "live-Test")
         await hass.async_block_till_done()
+        assert observed
     finally:
         unsub()
-
-    assert observed
+        await coordinator.async_close()
+        await bus.async_close()
 
 
 @pytest.mark.asyncio
 async def test_live_mode_coordinator_clears_state_when_session_finishes(hass) -> None:
     tracker = LiveAvailabilityTracker()
-    race_control = _ListenerCoordinator()
-    session_status = _ListenerCoordinator({"Status": "Started", "Started": "Started"})
+    bus = LiveBus(hass, AsyncMock())
+    entry = MockConfigEntry(domain=DOMAIN)
+    entry.add_to_hass(hass)
+    entry.mock_state(hass, ConfigEntryState.SETUP_IN_PROGRESS)
+    status = _build_coordinator(hass, {"Status": "Started", "Started": "Started"})
     coordinator = LiveModeCoordinator(
         hass,
-        race_control,
-        session_status_coordinator=session_status,
+        bus,
+        session_status_coordinator=status,
         live_state=tracker,
+        config_entry=entry,
     )
-    coordinator._rc_unsub = race_control.async_add_listener(  # noqa: SLF001
-        coordinator._on_race_control_update  # noqa: SLF001
-    )
-    coordinator._status_unsub = session_status.async_add_listener(  # noqa: SLF001
-        coordinator._handle_session_status_update  # noqa: SLF001
-    )
-    coordinator._handle_session_status_update()  # noqa: SLF001
-    tracker.set_state(True, "live-Race")
-    race_control.push({"Category": "Other", "Message": "OVERTAKE ENABLED"})
-    await hass.async_block_till_done()
-    assert coordinator.data == {"overtake_enabled": True, "straight_mode": None}
-
-    session_status.push({"Status": "Finished", "Started": "Finished"})
-    await hass.async_block_till_done()
-
-    assert coordinator.session_is_terminal is True
-    assert coordinator.data is None
+    try:
+        await coordinator.async_config_entry_first_refresh()
+        tracker.set_state(True, "live-Race")
+        bus.inject_message("SessionInfo", {"Key": 11412, "Type": "Race"})
+        bus.inject_message(
+            "RaceControlMessages", {"Category": "Other", "Message": "OVERTAKE ENABLED"}
+        )
+        await hass.async_block_till_done()
+        assert coordinator.data == {
+            "overtake_enabled": True,
+            "straight_mode": None,
+            "track_grip": None,
+        }
+        status.async_set_updated_data({"Status": "Finished", "Started": "Finished"})
+        await hass.async_block_till_done()
+        assert coordinator.session_is_terminal is True
+        assert coordinator.data is None
+    finally:
+        await coordinator.async_close()
+        await bus.async_close()
 
 
 class _FormationTracker:

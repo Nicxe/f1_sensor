@@ -142,8 +142,9 @@ async def test_new_session_clears_old_modes_before_delivering_new_race_control(
     race_control = integration.RaceControlCoordinator(
         hass, schedule, bus=bus, live_state=live, config_entry=entry
     )
+    ordered = integration._DelayedAnalysisBus(hass, bus, 0, None, live)
     mode = integration.LiveModeCoordinator(
-        hass, race_control, live_state=live, config_entry=entry
+        hass, ordered, live_state=live, config_entry=entry
     )
     try:
         live.set_state(True, "live-Qualifying")
@@ -158,7 +159,11 @@ async def test_new_session_clears_old_modes_before_delivering_new_race_control(
             {"Category": "Other", "Message": "STRAIGHT MODE - NORMAL GRIP"},
         )
         await hass.async_block_till_done()
-        assert mode.data == {"overtake_enabled": True, "straight_mode": "normal_grip"}
+        assert mode.data == {
+            "overtake_enabled": True,
+            "straight_mode": "normal_grip",
+            "track_grip": None,
+        }
 
         bus.inject_message(
             "SessionInfo", {"Key": 11408, "ArchiveStatus": {"Status": "Generating"}}
@@ -167,6 +172,7 @@ async def test_new_session_clears_old_modes_before_delivering_new_race_control(
         assert mode.data["overtake_enabled"] is True
 
         race_control.set_delay(delay)
+        ordered.set_delay(delay)
         bus.inject_message("SessionInfo", {"Key": 11409, "Type": "Race"})
         following = {"Category": "Flag", "Flag": "GREEN", "Message": "GREEN LIGHT"}
         bus.inject_message("RaceControlMessages", following)
@@ -180,6 +186,7 @@ async def test_new_session_clears_old_modes_before_delivering_new_race_control(
         assert live.is_live
     finally:
         await mode.async_close()
+        await ordered.async_close()
         await race_control.async_close()
         await bus.async_close()
     assert not bus._subs

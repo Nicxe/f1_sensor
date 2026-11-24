@@ -7,7 +7,7 @@ import logging
 from pathlib import Path
 import threading
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.helpers.entity_component import EntityComponent
@@ -144,6 +144,97 @@ async def test_equal_timestamp_order_is_independent_of_download_completion(
         ("SessionStatus", {"Status": "Started"}),
     ]
     assert index.archive_identity["status"] == "matched"
+
+
+async def test_cached_mexico_race_starts_on_race_day(hass, tmp_path):
+    case = json.loads(
+        (
+            Path(__file__).parent / "fixtures/issue_1033_session_restarts.json"
+        ).read_text()
+    )["before_race"]
+    manager = _manager(hass, tmp_path)
+    session = ReplaySession(
+        2026,
+        1298,
+        "Mexico City Grand Prix",
+        11404,
+        "Race",
+        "Race",
+        case["source"],
+        datetime(2026, 11, 1, 20, tzinfo=UTC),
+        datetime(2026, 11, 1, 22, tzinfo=UTC),
+    )
+    frames, index_file = _cache(
+        tmp_path, session, normalization_version=replay_mode.NORMALIZATION_VERSION
+    )
+    metadata = json.loads(index_file.read_text())
+    metadata.update(
+        cache_version=18,
+        identity_version=replay_mode.ARCHIVE_IDENTITY_VERSION,
+        archive_identity={
+            "status": "matched",
+            "session_id": session.unique_id,
+            "meeting_key": 1298,
+            "session_key": 11404,
+        },
+        session_started_at_ms=618756,
+    )
+    index_file.write_text(json.dumps(metadata))
+    rows = [{"t": 0, "s": "SessionInfo", "p": case["info"]}]
+    for offset, stream, payload in case["frames"]:
+        rows.append(
+            {
+                "t": replay_mode.parse_replay_timestamp_ms(offset),
+                "s": stream,
+                "p": payload,
+            }
+        )
+    # Previous cache versions wrote the status before its context at the same offset.
+    rows.sort(key=lambda row: (row["t"], row["s"] != "SessionStatus"))
+    contents = "".join(json.dumps(row) + "\n" for row in rows)
+    frames.write_text(contents)
+    index = await manager._download_and_index_session(session)
+    assert index.session_started_at_ms == 96_051_858
+    assert index.lap_start_ms[1] == index.session_started_at_ms
+    assert index.initial_state["SessionStatus"]["Status"] == "Started"
+    assert (
+        index.initial_state["SessionData"]["StatusSeries"][-1]["Utc"]
+        == "2026-11-01T20:03:25.51Z"
+    )
+    assert frames.read_text() == contents
+    assert not manager._http.mock_calls
+
+
+async def test_playback_seek_and_snapshot_bind_context_before_status(hass, tmp_path):
+    order = ["TrackStatus", "SessionStatus", "TimingData", "SessionInfo", "SessionData"]
+    frames = tmp_path / "frames.jsonl"
+    frames.write_text(
+        "".join(json.dumps({"t": 10, "s": stream, "p": {}}) + "\n" for stream in order)
+    )
+    index = replay_mode.ReplayIndex("id", 5, 10, 10, frames, tmp_path / "index.json")
+    transport = replay_mode.ReplayTransport(hass, index)
+    delivered = [message["M"][0]["A"][0] async for message in transport.messages()]
+    expected = [
+        "SessionInfo",
+        "SessionData",
+        "TrackStatus",
+        "SessionStatus",
+        "TimingData",
+    ]
+    assert delivered == expected
+    sought = replay_mode.ReplayController._read_frames_range_sync(
+        frames, start_exclusive_ms=0, end_inclusive_ms=10
+    )
+    assert [frame.stream for frame in sought] == expected
+    bus = Mock()
+    snapshot = dict.fromkeys([*order, "LapHistory"], {})
+    replay_mode.ReplayController._inject_initial_state(
+        SimpleNamespace(_live_bus=bus), snapshot
+    )
+    restored = [call.args[0] for call in bus.inject_message.call_args_list]
+    assert restored.index("SessionInfo") == 0
+    assert restored.index("SessionData") < restored.index("SessionStatus")
+    assert restored.index("LapHistory") < restored.index("TimingData")
 
 
 @pytest.mark.parametrize("failure", ["offline", "scan", "index_write"])

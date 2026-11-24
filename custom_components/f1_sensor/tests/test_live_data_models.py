@@ -37,7 +37,12 @@ MODEL_TYPES = [
 @pytest.mark.parametrize("model_type", MODEL_TYPES)
 def test_live_models_handle_empty_feed_without_entities(hass, model_type):
     coordinator = SimpleNamespace(
-        hass=hass, data={}, data_list=[], last_update_success=True, available=True
+        hass=hass,
+        data={},
+        data_list=[],
+        last_update_success=True,
+        available=True,
+        is_restored=lambda _field: False,
     )
     hass.data[DOMAIN] = {
         "entry": {
@@ -50,6 +55,29 @@ def test_live_models_handle_empty_feed_without_entities(hass, model_type):
     snapshot = model.snapshot()
     assert isinstance(snapshot.attributes, dict)
     assert not hass.states.async_all()
+
+
+def test_straight_mode_projection_updates_cross_attribute_and_clears_on_reset(hass):
+    coordinator = SimpleNamespace(
+        hass=hass,
+        data={"straight_mode": "disabled", "overtake_enabled": True},
+        is_restored=lambda _field: False,
+    )
+    hass.data[DOMAIN] = {
+        "entry": {"live_state": SimpleNamespace(is_live=True, reason="replay")}
+    }
+    model = models.StraightModeModel(coordinator, None, "entry", None)
+    first = model.snapshot()
+    assert first.value == "disabled"
+    assert first.attributes["overtake_enabled"] is True
+    coordinator.is_restored = {"straight_mode"}.__contains__
+    assert model.snapshot().attributes["restored"] is True
+    coordinator.is_restored = lambda _field: False
+    assert "restored" not in model.snapshot().attributes
+    coordinator.data = {"straight_mode": "disabled", "overtake_enabled": False}
+    assert model.snapshot().attributes["overtake_enabled"] is False
+    coordinator.data = None
+    assert model.snapshot().value is None
 
 
 def test_lap_count_keeps_last_distance_when_delta_omits_it(hass):

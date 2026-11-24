@@ -58,13 +58,12 @@ async def test_track_and_session_status_startup_lifecycle(hass) -> None:
             "EndDate": "2026-09-01T12:00:00Z",
         },
     )
-    race_control = _coordinator(hass, {"Message": "NORMAL GRIP CONDITIONS"})
-    race_control.data_list = [{"Message": "NORMAL GRIP CONDITIONS"}]
+    modes = _coordinator(hass, {"track_grip": "normal"})
     hass.data[DOMAIN]["entry"].update(
         {
             "session_status_coordinator": status_coordinator,
             "session_info_coordinator": info_coordinator,
-            "race_control_coordinator": race_control,
+            "live_mode_coordinator": modes,
         }
     )
 
@@ -84,6 +83,14 @@ async def test_track_and_session_status_startup_lifecycle(hass) -> None:
     assert session.extra_state_attributes["meeting_name"] == "Test GP"
     assert session.extra_state_attributes["track_grip"] == "normal"
     assert session.async_write_ha_state.called
+
+    modes.async_set_updated_data({"track_grip": "low"})
+    assert session.extra_state_attributes["track_grip"] == "low"
+    info_coordinator.async_set_updated_data({"Meeting": {"Name": "Updated GP"}})
+    assert session.extra_state_attributes["meeting_name"] == "Updated GP"
+    assert session.extra_state_attributes["track_grip"] == "low"
+    modes.async_set_updated_data(None)
+    assert session.extra_state_attributes["track_grip"] is None
 
 
 async def test_track_and_session_status_restore_when_payload_missing(hass) -> None:
@@ -117,6 +124,7 @@ async def test_track_and_session_status_restore_when_payload_missing(hass) -> No
     assert session.extra_state_attributes == {
         "meeting_name": "Saved GP",
         "circuit_short_name": "Saved Ring",
+        "track_grip": None,
     }
 
 
