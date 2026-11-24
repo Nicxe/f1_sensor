@@ -21,9 +21,9 @@ jobs:
     # After policy changes are committed and reviewed, update both uses and
     # tools_ref here and in security-health.yml to the same reviewed commit SHA.
     # Commit that pin refresh locally before pushing either commit.
-    uses: Nicxe/f1_sensor/.github/workflows/security-snapshot.yml@f0342b2b819e8d212a5cd188c5a787cada2f2cf8
+    uses: Nicxe/f1_sensor/.github/workflows/security-snapshot.yml@85d803469b113b50c48e28567602e04e31957970
     with:
-      tools_ref: 'f0342b2b819e8d212a5cd188c5a787cada2f2cf8'
+      tools_ref: '85d803469b113b50c48e28567602e04e31957970'
       target_ref: ${{ inputs.checkout_ref || (github.event.inputs.pull_request && format('refs/pull/{0}/merge', github.event.inputs.pull_request)) || github.sha }}
       mode: ${{ inputs.mode }}
       base: ${{ inputs.base }}
