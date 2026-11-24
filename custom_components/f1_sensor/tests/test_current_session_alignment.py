@@ -111,10 +111,9 @@ def _set_replay_context(
 
 
 @pytest.mark.asyncio
-async def test_current_session_keeps_label_when_status_is_inactive_started(
-    hass,
-) -> None:
-    entry_id = "test_entry_current_session_inactive"
+@pytest.mark.parametrize("status", ["Aborted", "Inactive"])
+async def test_current_session_is_inactive_during_interruption(hass, status) -> None:
+    entry_id = "test_entry_current_session_interruption"
     status_coordinator = _build_coordinator(
         hass,
         {"Status": "Started", "Started": "Started"},
@@ -138,51 +137,7 @@ async def test_current_session_keeps_label_when_status_is_inactive_started(
     )
     await _add_sensors(hass, [status_sensor, current_sensor])
 
-    status_coordinator.async_set_updated_data(
-        {"Status": "Inactive", "Started": "Started"}
-    )
-    await hass.async_block_till_done()
-
-    status_state = hass.states.get(status_sensor.entity_id)
-    assert status_state is not None
-    assert status_state.state == "live"
-
-    current_state = hass.states.get(current_sensor.entity_id)
-    assert current_state is not None
-    assert current_state.state == "Practice 3"
-    assert current_state.attributes["live_status"] == "Inactive"
-    assert current_state.attributes["active"] is True
-
-
-@pytest.mark.asyncio
-async def test_current_session_is_inactive_when_status_is_aborted_started(hass) -> None:
-    entry_id = "test_entry_current_session_aborted"
-    status_coordinator = _build_coordinator(
-        hass,
-        {"Status": "Started", "Started": "Started"},
-    )
-    info_coordinator = _build_coordinator(hass, _session_info_payload())
-
-    _set_live_context(hass, entry_id, status_coordinator=status_coordinator)
-    hass.data[LATEST_TRACK_STATUS] = {"Status": "1", "Message": "AllClear"}
-
-    status_sensor = F1SessionStatusSensor(
-        status_coordinator,
-        f"{entry_id}_session_status",
-        entry_id,
-        "F1",
-    )
-    current_sensor = F1CurrentSessionSensor(
-        info_coordinator,
-        f"{entry_id}_current_session",
-        entry_id,
-        "F1",
-    )
-    await _add_sensors(hass, [status_sensor, current_sensor])
-
-    status_coordinator.async_set_updated_data(
-        {"Status": "Aborted", "Started": "Started"}
-    )
+    status_coordinator.async_set_updated_data({"Status": status, "Started": "Started"})
     await hass.async_block_till_done()
 
     status_state = hass.states.get(status_sensor.entity_id)
@@ -192,7 +147,7 @@ async def test_current_session_is_inactive_when_status_is_aborted_started(hass) 
     current_state = hass.states.get(current_sensor.entity_id)
     assert current_state is not None
     assert current_state.state == STATE_UNKNOWN
-    assert current_state.attributes["live_status"] == "Aborted"
+    assert current_state.attributes["live_status"] == status
     assert current_state.attributes["active"] is False
     assert current_state.attributes["last_label"] == "Practice 3"
 
@@ -417,7 +372,7 @@ async def test_current_session_keeps_replay_qualifying_label_after_scheduled_end
     assert current_state is not None
     assert current_state.state == "Qualifying"
     assert current_state.attributes["live_status"] == "Inactive"
-    assert current_state.attributes["active"] is True
+    assert current_state.attributes["active"] is False
 
 
 @pytest.mark.parametrize(

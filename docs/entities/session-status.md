@@ -49,7 +49,7 @@ After finalised or ended, logic resets and next session begins at **pre**.
 | gmt_offset | string | Event GMT offset |
 | start | string | Session start ISO‑8601 |
 | end | string | Session end ISO‑8601 |
-| track_grip | string | Track grip state from Race Control, when available (best effort) |
+| track_grip | string or null | The most recent official grip declaration for this session, `low` or `normal`. The attribute has no value until Race Control declares a condition. |
 
 ## Related references
 

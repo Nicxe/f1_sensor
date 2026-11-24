@@ -82,7 +82,8 @@ Use this section to understand the possible values for enum-type states and attr
 | --- | --- |
 | `normal_grip` | Normal aerodynamic configuration permitted on straight sections |
 | `low_grip` | Restricted aerodynamic configuration on straight sections |
-| `disabled` | Straight mode system is not active |
+| `disabled` | Straight Mode is disabled or the event has no designated activation zones |
+| `unavailable` | The current session has ended or permission cannot be determined from the available data |
 
 
 

@@ -341,6 +341,12 @@ class CardDataStore:
                 status, reason = "unavailable", "source_not_loaded"
             elif coordinator.data is None:
                 status, reason = "loading", "waiting_for_data"
+            elif (
+                key in {"driver_points_progression", "constructor_points_progression"}
+                and (sprint := self.data.get("sprint_results_coordinator")) is not None
+                and sprint.data is None
+            ):
+                status, reason = "loading", "waiting_for_data"
             else:
                 if isinstance(projector, type) and issubclass(
                     projector, ProjectionModel

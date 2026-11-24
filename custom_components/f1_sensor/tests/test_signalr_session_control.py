@@ -26,21 +26,31 @@ def test_control_updates_retain_source_time(hass, stream):
 
 
 def test_control_snapshot_is_identified_and_session_arrives_first(hass):
-    """A cached status is distinguishable from a newly emitted lifecycle event."""
+    """A cached status arrives with its session identity and dated history available."""
     bus = LiveBus(hass, AsyncMock())
     received = []
-    for stream in ("SessionInfo", "SessionStatus", "SessionData"):
+    for stream in ("SessionInfo", "SessionStatus", "SessionData", "TrackStatus"):
         bus.subscribe(stream, lambda data, name=stream: received.append((name, data)))
     snapshot = {
-        "SessionStatus": {"Status": "Finished", "Started": "Finished"},
-        "SessionData": {"Series": {"0": {"QualifyingPart": 1}}},
-        "SessionInfo": {"Key": 11408, "Name": "Qualifying"},
+        "TrackStatus": {"Status": "1", "Message": "AllClear"},
+        "SessionStatus": {"Status": "Inactive", "Started": "Started"},
+        "SessionData": {
+            "StatusSeries": {
+                "4": {"Utc": "2026-11-01T19:09:00.471Z", "SessionStatus": "Inactive"}
+            }
+        },
+        "SessionInfo": {"Key": 11404, "Name": "Race"},
     }
     original = deepcopy(snapshot)
 
     assert bus._process_payload({"R": snapshot})
 
-    assert received[0][0] == "SessionInfo"
+    assert [name for name, _ in received] == [
+        "SessionInfo",
+        "SessionData",
+        "TrackStatus",
+        "SessionStatus",
+    ]
     for _, data in received:
         assert data["_f1_snapshot"] is True
         assert "_f1_source_utc" not in data

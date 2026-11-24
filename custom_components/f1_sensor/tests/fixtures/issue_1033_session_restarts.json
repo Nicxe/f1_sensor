@@ -1,0 +1,69 @@
+{
+  "description": "Selected F1 archive frames in stream order. SessionInfo is reduced to fields used to identify and date each session. Offsets are relative to the archive, not local time.",
+  "restarts": [
+    {
+      "event": "Las Vegas FP2",
+      "source": "2026/2026-11-21_Las_Vegas_Grand_Prix/2026-11-19_Practice_2/",
+      "label": "Practice 2",
+      "info": {"Key": 11414, "Name": "Practice 2", "Type": "Practice", "Number": 2, "StartDate": "2026-11-19T20:00:00", "GmtOffset": "-08:00:00", "Meeting": {"Name": "Las Vegas Grand Prix"}},
+      "frames": [
+        ["00:13:05.513", "SessionStatus", {"Status": "Started", "Started": "Started"}, "live"],
+        ["01:02:13.900", "SessionStatus", {"Status": "Aborted", "Started": "Started"}, "suspended"],
+        ["01:02:14.235", "TrackStatus", {"Status": "5", "Message": "Red"}, "suspended"],
+        ["01:04:31.669", "TrackStatus", {"Status": "1", "Message": "AllClear"}, "suspended"],
+        ["01:04:55.135", "SessionStatus", {"Status": "Inactive", "Started": "Started"}, "suspended"],
+        ["01:05:21.079", "TrackStatus", {"Status": "2", "Message": "Yellow"}, "suspended"],
+        ["01:06:23.824", "TrackStatus", {"Status": "1", "Message": "AllClear"}, "suspended"],
+        ["01:07:05.529", "SessionStatus", {"Status": "Started", "Started": "Started"}, "live"]
+      ]
+    },
+    {
+      "event": "Singapore SQ1",
+      "source": "2026/2026-10-11_Singapore_Grand_Prix/2026-10-09_Sprint_Qualifying/",
+      "label": "Sprint Qualifying",
+      "info": {"Key": 11379, "Name": "Sprint Qualifying", "Type": "Qualifying", "StartDate": "2026-10-09T20:30:00", "GmtOffset": "08:00:00", "Meeting": {"Name": "Singapore Grand Prix"}},
+      "frames": [
+        ["00:12:32.224", "SessionStatus", {"Status": "Started", "Started": "Started"}, "live"],
+        ["00:18:21.510", "SessionStatus", {"Status": "Aborted", "Started": "Started"}, "suspended"],
+        ["00:18:21.840", "TrackStatus", {"Status": "5", "Message": "Red"}, "suspended"],
+        ["00:20:52.610", "TrackStatus", {"Status": "1", "Message": "AllClear"}, "suspended"],
+        ["00:21:21.154", "TrackStatus", {"Status": "2", "Message": "Yellow"}, "suspended"],
+        ["00:24:49.056", "SessionStatus", {"Status": "Inactive", "Started": "Started"}, "suspended"],
+        ["00:25:03.837", "TrackStatus", {"Status": "1", "Message": "AllClear"}, "suspended"],
+        ["00:28:30.125", "SessionStatus", {"Status": "Started", "Started": "Started"}, "live"]
+      ]
+    },
+    {
+      "event": "Bahrain testing day 3",
+      "source": "2026/2026-02-20_Pre-Season_Testing/2026-02-20_Day_3/",
+      "label": "Practice 3",
+      "info": {"Key": 11468, "Name": "Day 3", "Type": "Practice", "Number": 3, "StartDate": "2026-02-20T10:00:00", "GmtOffset": "03:00:00", "Meeting": {"Name": "Pre-Season Testing"}},
+      "frames": [
+        ["00:12:22.203", "SessionStatus", {"Status": "Started", "Started": "Started"}, "live"],
+        ["02:23:47.262", "SessionStatus", {"Status": "Aborted", "Started": "Started"}, "suspended"],
+        ["02:23:47.575", "TrackStatus", {"Status": "5", "Message": "Red"}, "suspended"],
+        ["02:25:40.498", "TrackStatus", {"Status": "1", "Message": "AllClear"}, "suspended"],
+        ["02:25:42.600", "TrackStatus", {"Status": "2", "Message": "Yellow"}, "suspended"],
+        ["02:28:23.850", "TrackStatus", {"Status": "1", "Message": "AllClear"}, "suspended"],
+        ["02:28:35.169", "SessionStatus", {"Status": "Inactive", "Started": "Started"}, "suspended"],
+        ["02:29:22.200", "SessionStatus", {"Status": "Started", "Started": "Started"}, "live"]
+      ]
+    }
+  ],
+  "before_race": {
+    "source": "2026/2026-11-01_Mexico_City_Grand_Prix/2026-11-01_Race/",
+    "info": {"Key": 11404, "Name": "Race", "Type": "Race", "StartDate": "2026-11-01T14:00:00", "GmtOffset": "-06:00:00", "Meeting": {"Name": "Mexico City Grand Prix"}},
+    "frames": [
+      ["00:00:00.000", "TrackStatus", {"Status": "1", "Message": "AllClear"}],
+      ["00:00:00.000", "SessionData", {"Series": [], "StatusSeries": [{"Utc": "2026-10-31T17:22:33.652Z", "TrackStatus": "AllClear"}]}],
+      ["00:10:18.756", "SessionData", {"StatusSeries": {"1": {"Utc": "2026-10-31T17:32:52.408Z", "SessionStatus": "Started"}}}],
+      ["00:10:18.756", "SessionStatus", {"Status": "Started", "Started": "Started"}],
+      ["1.01:46:26.209", "SessionData", {"Series": [{"Utc": "2026-11-01T19:08:59.861Z", "Lap": 1}], "StatusSeries": [{"Utc": "2026-10-31T17:22:33.652Z", "TrackStatus": "AllClear"}, {"Utc": "2026-10-31T17:32:52.408Z", "SessionStatus": "Started"}, {"Utc": "2026-10-31T17:42:52.411Z", "TrackStatus": "Yellow"}, {"Utc": "2026-10-31T17:42:56.048Z", "TrackStatus": "AllClear"}]}],
+      ["1.01:46:26.819", "SessionData", {"StatusSeries": {"4": {"Utc": "2026-11-01T19:09:00.471Z", "SessionStatus": "Inactive"}}}],
+      ["1.01:46:26.819", "SessionStatus", {"Status": "Inactive", "Started": "Started"}],
+      ["1.01:46:28.822", "SessionStatus", {"Status": "Inactive", "Started": "Started"}],
+      ["1.02:40:51.858", "SessionData", {"Series": [{"Utc": "2026-11-01T19:08:59.861Z", "Lap": 1}], "StatusSeries": [{"Utc": "2026-10-31T17:22:33.652Z", "TrackStatus": "AllClear"}, {"Utc": "2026-10-31T17:32:52.408Z", "SessionStatus": "Started"}, {"Utc": "2026-10-31T17:42:52.411Z", "TrackStatus": "Yellow"}, {"Utc": "2026-10-31T17:42:56.048Z", "TrackStatus": "AllClear"}, {"Utc": "2026-11-01T19:09:00.471Z", "SessionStatus": "Inactive"}, {"Utc": "2026-11-01T20:03:25.51Z", "SessionStatus": "Started"}]}],
+      ["1.02:40:51.858", "SessionStatus", {"Status": "Started", "Started": "Started"}]
+    ]
+  }
+}

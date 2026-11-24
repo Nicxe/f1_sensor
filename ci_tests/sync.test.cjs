@@ -70,13 +70,35 @@ test('already queued PR is left running without duplicate dispatch',async()=>{
   assert.equal(await syncOne(env,'main',source,'dev'),'queued');
   assert.ok(!env.writes.some(x=>x[0]==='ci'));
 });
-test('published stable releases only reconcile content',async()=>{
+test('published stable releases reconcile content and development history',async()=>{
   const env=environment('identical'),refs=[];
   env.context.payload.release={draft:false,prerelease:false,target_commitish:'main',tag_name:'v5.7.3'};
   env.github.rest.git.getRef=async ({ref})=>{refs.push(ref);return {data:{object:{sha:source}}};};
   env.github.rest.repos.getCommit=async()=>({data:{sha:source}});
   await synchronize(env);
-  assert.deepEqual(refs,['heads/content']);
+  assert.deepEqual(refs,['heads/content','heads/dev']);
+});
+test('stable release queues a verified main to dev synchronization',async()=>{
+  const env=environment();
+  env.context.payload.release={draft:false,prerelease:false,target_commitish:'main',tag_name:'v6.3.0'};
+  env.github.rest.repos.getCommit=async()=>({data:{sha:source,commit:{tree:{sha:'source-tree'}}}});
+  env.github.rest.repos.compareCommits=async({base:target})=>({data:{status:target===base?'diverged':'identical'}});
+  env.github.rest.git.getRef=async({ref})=>({data:{object:{sha:ref==='heads/dev'?base:source}}});
+  await synchronize(env);
+  assert.deepEqual(env.writes.map(item=>item[0]),['snapshot','merge','pr','pending','ci','queue']);
+  assert.equal(env.writes.find(item=>item[0]==='pr')[1].base,'dev');
+});
+test('stable release still attempts development sync when content synchronization fails',async()=>{
+  const env=environment('identical'),refs=[];
+  env.context.payload.release={draft:false,prerelease:false,target_commitish:'main',tag_name:'v6.3.0'};
+  env.github.rest.repos.getCommit=async()=>({data:{sha:source}});
+  env.github.rest.git.getRef=async({ref})=>{
+    refs.push(ref);
+    if(ref==='heads/content') throw new Error('content unavailable');
+    return {data:{object:{sha:source}}};
+  };
+  await assert.rejects(synchronize(env),/content: content unavailable/);
+  assert.deepEqual(refs,['heads/content','heads/dev']);
 });
 test('published beta and RC releases do not create an automatic synchronization PR',async()=>{
   for (const tag of ['v5.8.0-beta.6', 'v5.8.0-rc.1']) {
@@ -93,8 +115,15 @@ test('published beta and RC releases do not create an automatic synchronization 
 test('manual synchronization requires an explicit supported pair',async()=>{
   const env=environment('identical');
   await assert.rejects(synchronize(env),/requires a valid source and target/);
-  env.context.payload.inputs={source:'main',target:'dev'};
+  env.context.payload.inputs={source:'beta',target:'content'};
   await assert.rejects(synchronize(env),/Unsupported manual synchronization/);
+});
+test('manual main to dev synchronization can recover a missed stable release',async()=>{
+  const env=environment('identical'),refs=[];
+  env.context.payload.inputs={source:'main',target:'dev'};
+  env.github.rest.git.getRef=async({ref})=>{refs.push(ref);return {data:{object:{sha:source}}};};
+  await synchronize(env);
+  assert.deepEqual(refs,['heads/main','heads/dev']);
 });
 test('manual synchronization reads only the requested source',async()=>{
   const env=environment('identical'),refs=[];

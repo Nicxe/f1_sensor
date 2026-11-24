@@ -71,7 +71,7 @@ function manualSynchronization(context) {
   if (!['main', 'beta'].includes(source) || !['content', 'dev'].includes(target)) {
     throw new Error('Manual synchronization requires a valid source and target.');
   }
-  if ((source === 'main' && target !== 'content') || (source === 'beta' && target !== 'dev')) {
+  if (source === 'beta' && target !== 'dev') {
     throw new Error(`Unsupported manual synchronization: ${source} -> ${target}.`);
   }
   return {source, target};
@@ -95,7 +95,7 @@ async function synchronize(environment) {
       return;
     }
     sha = (await github.rest.repos.getCommit({...context.repo, ref:release.tag_name})).data.sha;
-    targets = ['content'];
+    targets = ['content', 'dev'];
   } else {
     const manual = manualSynchronization(context);
     source = manual.source;
@@ -104,7 +104,7 @@ async function synchronize(environment) {
   }
   const failures = [];
   for (const target of targets) {
-    const autoMerge = source === 'main' && target === 'content';
+    const autoMerge = source === 'main';
     try { await syncOne(environment, source, sha, target, {autoMerge}); }
     catch (error) { failures.push(`${target}: ${error.message}`); }
   }
