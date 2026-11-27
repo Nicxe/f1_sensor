@@ -54,8 +54,8 @@
           "enable_race_control": "Si connette a F1 Live Timing con SignalR per ricevere aggiornamenti in diretta. Se disattivato, alcuni sensori non verranno creati.",
           "install_dashboard_cards": "Registra in Home Assistant le schede F1 Sensor incluse. Disattiva questa opzione se utilizzi solo entità e automazioni. Le schede F1 esistenti smetteranno di funzionare dopo aver ricaricato il browser.",
           "race_week_start_day": "Scegli se il weekend di gara inizia di Sabato, Domenica o Lunedì.",
-          "live_timing_auth_header": "Backup manuale se il pairing con Token Helper non funziona. Incolla il token Bearer completo da F1TV Token Helper solo come fallback avanzato. Lascia vuoto per usare solo la telemetria pubblica.",
-          "start_f1tv_pairing": "Percorso consigliato. Avvia una sessione di pairing breve e invia il token dall’estensione del browser senza copiarlo manualmente. L’accesso F1TV è facoltativo; la telemetria pubblica continua a funzionare senza token.",
+          "live_timing_auth_header": "Riserva manuale se il pairing con Token Helper non funziona. Incolla il token Bearer completo da F1TV Token Helper solo come fallback avanzato. Lascia vuoto per usare la telemetria pubblica senza Modalità Replay né contenuti d'archivio.",
+          "start_f1tv_pairing": "Percorso consigliato. Collega il tuo account Formula 1 per la Modalità Replay e i dati d'archivio. Per il replay basta un account gratuito; gli altri dati dal vivo dipendono dai permessi dell'account e dalla disponibilità della sessione. Senza account la telemetria pubblica continua a funzionare.",
           "install_legacy_cards": "Registra anche le schede F1 obsolete. Disattivato per le nuove installazioni; quelle esistenti mantengono le schede. Richiede l’installazione delle schede dashboard. Ricarica il browser dopo la modifica. Disattivando questa opzione, le vecchie schede smettono di funzionare senza migrazione alla scheda F1 Sensor. Con più installazioni, restano disponibili finché un’installazione attiva le richiede."
         },
         "description": "La card F1 Sensor acquisisce i dati automaticamente. I sensori abilitati controllano soltanto le entità esposte in Home Assistant. Mantieni i sensori utilizzati dalle vecchie schede, modelli o automazioni. Il Live Timing e l'accesso a F1TV seguono le loro configurazioni."
@@ -82,8 +82,8 @@
           "install_dashboard_cards": "Registra in Home Assistant le schede F1 Sensor incluse. Disattiva questa opzione se utilizzi solo entità e automazioni. Le schede F1 esistenti smetteranno di funzionare dopo aver ricaricato il browser.",
           "race_week_start_day": "Scegli se il weekend di gara inizia di Sabato, Domenica o Lunedì.",
           "live_timing_auth_header": "Backup manuale se il pairing con Token Helper non funziona. Incolla un nuovo token Bearer completo solo come fallback avanzato. Lascia vuoto per mantenere il valore attuale.",
-          "clear_live_timing_auth_header": "Rimuovi il valore di autorizzazione F1TV salvato e continua solo con la telemetria pubblica.",
-          "start_f1tv_pairing": "Percorso consigliato. Avvia una sessione di pairing breve e invia il token dall’estensione del browser senza copiarlo manualmente. L’accesso F1TV è facoltativo; la telemetria pubblica continua a funzionare senza token.",
+          "clear_live_timing_auth_header": "Rimuovi il valore di autorizzazione F1TV salvato e continua con la telemetria pubblica. Modalità Replay e contenuti d'archivio non saranno disponibili.",
+          "start_f1tv_pairing": "Percorso consigliato. Collega il tuo account Formula 1 per la Modalità Replay e i dati d'archivio. Per il replay basta un account gratuito; gli altri dati dal vivo dipendono dai permessi dell'account e dalla disponibilità della sessione. Senza account la telemetria pubblica continua a funzionare.",
           "install_legacy_cards": "Registra anche le schede F1 obsolete. Disattivato per le nuove installazioni; quelle esistenti mantengono le schede. Richiede l’installazione delle schede dashboard. Ricarica il browser dopo la modifica. Disattivando questa opzione, le vecchie schede smettono di funzionare senza migrazione alla scheda F1 Sensor. Con più installazioni, restano disponibili finché un’installazione attiva le richiede."
         },
         "description": "La card F1 Sensor acquisisce i dati automaticamente. I sensori abilitati controllano soltanto le entità esposte in Home Assistant. Mantieni i sensori utilizzati dalle vecchie schede, modelli o automazioni. Il Live Timing e l'accesso a F1TV seguono le loro configurazioni."
@@ -97,13 +97,13 @@
         },
         "data_description": {
           "live_timing_auth_header": "Backup manuale se il pairing con Token Helper non funziona. Incolla un nuovo token Bearer completo solo come fallback avanzato.",
-          "clear_live_timing_auth_header": "Rimuovi il valore di autorizzazione F1TV salvato e continua solo con la telemetria pubblica.",
-          "start_f1tv_pairing": "Percorso consigliato. Avvia una sessione di pairing breve e invia il token dall’estensione del browser senza copiarlo manualmente. L’accesso F1TV è facoltativo; la telemetria pubblica continua a funzionare senza token."
+          "clear_live_timing_auth_header": "Rimuovi il valore di autorizzazione F1TV salvato e continua con la telemetria pubblica. Modalità Replay e contenuti d'archivio non saranno disponibili.",
+          "start_f1tv_pairing": "Percorso consigliato. Collega il tuo account Formula 1 per la Modalità Replay e i dati d'archivio. Per il replay basta un account gratuito; gli altri dati dal vivo dipendono dai permessi dell'account e dalla disponibilità della sessione. Senza account la telemetria pubblica continua a funzionare."
         }
       },
       "f1tv_pairing": {
         "title": "Connetti accesso F1TV",
-        "description": "Usa F1TV Token Helper per inviare il token a Home Assistant. L’accesso F1TV è facoltativo e questo pairing scade alle {expires_at}."
+        "description": "Usa F1TV Token Helper per collegare il tuo account Formula 1. Per la Modalità Replay basta un account gratuito; gli altri dati dal vivo dipendono dai permessi dell'account e dalla disponibilità della sessione. Senza token la telemetria pubblica continua a funzionare. Questo pairing scade alle {expires_at}."
       },
       "sensor_review": {
         "title": "Esamina le modifiche del sensore",
@@ -142,10 +142,10 @@
             },
             "data_description": {
               "live_timing_auth_header": "Incolla un nuovo token Bearer da F1TV Token Helper per l’accesso F1TV.",
-              "clear_live_timing_auth_header": "Rimuovi il token F1TV salvato e continua solo con la telemetria pubblica.",
+              "clear_live_timing_auth_header": "Rimuovi il token F1TV salvato e continua con la telemetria pubblica. Modalità Replay e contenuti d'archivio non saranno disponibili.",
               "start_f1tv_pairing": "Procedura consigliata. Avvia una sessione di associazione temporanea e invia il token dall’estensione del browser senza doverlo copiare manualmente."
             },
-            "description": "Il token F1TV salvato per {name} ha bisogno di attenzione. La telemetria pubblica continua a funzionare, ma i dati live F1TV non saranno usati finché il token non verrà sostituito.",
+            "description": "Il token F1TV salvato per {name} richiede attenzione. La telemetria pubblica continua a funzionare, ma Modalità Replay, contenuti d'archivio e gli altri dati dal vivo F1TV richiedono un token nuovo.",
             "title": "Aggiorna il token F1TV"
           },
           "f1tv_pairing": {
@@ -468,7 +468,8 @@
           "description": "Utilizzare questo parametro al posto di entity_id quando non è esposto alcun sensore Race Control. Fornire un indirizzo."
         }
       },
-      "name": "Pulisci i registri della Race Control"
+      "name": "Pulisci i registri della Race Control",
+      "description": "Cancella i messaggi della direzione gara salvati di un'installazione di F1 Sensor. Indica un'entità sensore oppure una voce di configurazione."
     }
   }
 }
